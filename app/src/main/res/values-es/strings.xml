@@ -66,6 +66,9 @@
     <string name="recommended">Recomendados para aprender</string>
     <string name="results">Resultados</string>
     <string name="no_results">No encontramos libros. Prueba con otro título o autor.</string>
+    <string name="level_all">Todos</string>
+    <string name="level_all_description">Todos los niveles</string>
+    <string name="no_books_at_level">No hay libros recomendados en este nivel.</string>
     <string name="catalog_failed">No se pudo cargar el catálogo. Revisa tu conexión.</string>
     <string name="retry">Reintentar</string>
     <string name="get">Obtener</string>

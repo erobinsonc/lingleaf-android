@@ -31,6 +31,7 @@ the same intent on both platforms. A change to behaviour updates this file in
 | S10 | Import | A plain-text `.txt` file can be imported; Gutenberg license headers are removed. |
 | S11 | Settings | Daily goal, text size, speech speed and translation language persist. "Translate into" shows "Ask me when I tap a word" until a language is chosen. |
 | S12 | Offline | Without internet the reader, saved words and review work; the card says translation/definition are unavailable. Saving a word never waits for translation; a missing translation is filled in on the device as soon as it is available, and Review shows "No translation yet. Connect to the internet once to get it." until then. |
+| S13 | Level filter | Discover shows chips "All" plus each level in the recommended list (A2–C2); "All" is selected by default, a level shows only its recommended books, in order; an empty level says "No recommended books at this level."; the chips hide while search results show. |
 | S14 | Translation language | The default is the first language in the device's preferred-language list that is supported and not English (Chinese → Simplified). If there is none, the first word card asks once "Translate into:" with up to 6 languages (the region's language first, then Español, Português, Français, 中文, العربية) and "More languages"; the choice is saved. Each saved word records its translation language; words in another language are translated again when shown. |
 | S15 | Saved state on the card | A saved word's card shows "✓ Saved" or "✓ I know it"; tapping the checked button removes that state, with Undo. Deleting a word in Words happens at once and offers Undo for 5 s (no confirmation dialog). |
 
@@ -43,4 +44,6 @@ the same intent on both platforms. A change to behaviour updates this file in
 - Streak: consecutive days meeting the goal; an unfinished today doesn't break it.
 - Translation language pick: preferred-language list order; skip English and unsupported; `zh-*` → Simplified Chinese; none → ask.
 - Words needing translation: empty translation, or a recorded translation language different from the current one.
+- Recommended books (Gutenberg id, level), easiest first: A2 21; B1 55, 16, 236; B2 11, 74, 120, 1661;
+  C1 1342, 84, 174, 1400, 345; C2 2701, 219, 145. Levels: A1, A2, B1, B2, C1, C2. The level filter keeps order.
 - Imported .txt: title is the file name without its extension (empty → "Book"); Gutenberg header/footer removed; files over 10 MB or with no text are refused.
