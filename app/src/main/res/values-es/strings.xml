@@ -54,10 +54,10 @@
     <string name="save_word">Guardar palabra</string>
     <string name="card_known">✓ Ya la sé</string>
     <string name="card_saved">✓ Guardada</string>
-    <string name="word_saved_message">«%1$s» guardada en Palabras</string>
-    <string name="word_known_message">«%1$s» marcada como conocida</string>
-    <string name="word_removed_message">«%1$s» quitada de Palabras</string>
-    <string name="word_deleted_message">«%1$s» eliminada</string>
+    <string name="word_saved_message">“%1$s” guardada en Palabras</string>
+    <string name="word_known_message">“%1$s” marcada como conocida</string>
+    <string name="word_removed_message">Se quitó “%1$s” de Palabras</string>
+    <string name="word_deleted_message">“%1$s” eliminada</string>
     <string name="undo">Deshacer</string>
 
     <string name="discover_title">Descubrir</string>
@@ -99,7 +99,7 @@
     <string name="review_title">Repaso</string>
     <string name="show_meaning">Mostrar significado</string>
     <string name="again">Otra vez</string>
-    <string name="i_know_it">La sé</string>
+    <string name="i_know_it">Ya la sé</string>
     <string name="no_translation">Aún sin traducción. Conéctate a internet una vez para obtenerla.</string>
     <string name="review_done">¡Listo!</string>
     <plurals name="reviewed_count">
