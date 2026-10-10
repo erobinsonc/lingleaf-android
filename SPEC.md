@@ -43,7 +43,7 @@ the same intent on both platforms. A change to behaviour updates this file in
 - Spaced repetition: boxes with 1, 3, 7, 14, 30 day intervals.
 - Streak: consecutive days meeting the goal; an unfinished today doesn't break it.
 - Translation language pick: preferred-language list order; skip English and unsupported; `zh-*` → Simplified Chinese; none → ask.
-- Words needing translation: empty translation, or a recorded translation language different from the current one.
+- Words needing translation: empty translation, or a translation language that is not recorded (words saved before it was) or differs from the current one.
 - Recommended books (Gutenberg id, level), easiest first: A2 21; B1 55, 16, 236; B2 11, 74, 120, 1661;
   C1 1342, 84, 174, 1400, 345; C2 2701, 219, 145. Levels: A1, A2, B1, B2, C1, C2. The level filter keeps order.
 - Imported .txt: title is the file name without its extension (empty → "Book"); Gutenberg header/footer removed; files over 10 MB or with no text are refused.
