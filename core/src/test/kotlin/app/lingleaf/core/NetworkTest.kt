@@ -32,6 +32,21 @@ class GutenbergTest {
     }
 
     @Test
+    fun `catalog titles and authors are shortened for display`() {
+        fun book(
+            title: String,
+            author: String,
+        ) = GutenbergBook(1, title, listOf(GutenbergBook.Person(author)))
+        assertEquals("Peter Pan", book("Peter Pan : \$b [Peter and Wendy]", "x").displayTitle)
+        assertEquals("Moby-Dick", book("Moby-Dick; Or, The Whale", "x").displayTitle)
+        assertEquals("Frankenstein", book("Frankenstein\r\nOr, The Modern Prometheus", "x").displayTitle)
+        assertEquals("Treasure Island", book("Treasure Island", "x").displayTitle)
+        assertEquals("L. Frank Baum", book("x", "Baum, L. Frank (Lyman Frank)").authorName)
+        assertEquals("J. M. Barrie", book("x", "Barrie, J. M. (James Matthew)").authorName)
+        assertEquals("Aesop", book("x", "Aesop").authorName)
+    }
+
+    @Test
     fun `recommended books parse and keep curated order`() =
         runTest {
             val client =

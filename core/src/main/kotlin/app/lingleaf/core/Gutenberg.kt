@@ -18,10 +18,19 @@ data class GutenbergBook(
     /** "Carroll, Lewis" → "Lewis Carroll" */
     val authorName: String?
         get() {
-            val name = authors.firstOrNull()?.name ?: return null
+            val raw = authors.firstOrNull()?.name ?: return null
+            // "Baum, L. Frank (Lyman Frank)" → "Baum, L. Frank": drop the catalog's full-name note.
+            val name = raw.replace(Regex("""\s*\([^)]*\)"""), "").trim()
             val parts = name.split(",", limit = 2)
             return if (parts.size == 2) "${parts[1].trim()} ${parts[0].trim()}" else name
         }
+
+    /**
+     * Short title for lists: catalog titles carry subtitles and MARC markers
+     * ("Peter Pan : $b [Peter and Wendy]", "Moby-Dick; Or, The Whale").
+     */
+    val displayTitle: String
+        get() = title.split(" : ", ";", "\$b", "\n", "\r").first().trim().ifEmpty { title.trim() }
 
     val coverUrl: String? get() = formats["image/jpeg"]
 

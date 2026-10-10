@@ -96,7 +96,7 @@ fun DiscoverScreen() {
                     withContext(container.io) {
                         val text = container.gutenberg.downloadText(book)
                         container.library.addBook(
-                            title = book.title,
+                            title = book.displayTitle,
                             author = book.authorName ?: context.getString(R.string.unknown_author),
                             text = text,
                             level = GutenbergClient.levelFor(book.id),
@@ -104,8 +104,8 @@ fun DiscoverScreen() {
                         )
                     }
                 }.fold(
-                    onSuccess = { context.getString(R.string.downloaded, book.title) },
-                    onFailure = { context.getString(R.string.download_failed, book.title) },
+                    onSuccess = { context.getString(R.string.downloaded, book.displayTitle) },
+                    onFailure = { context.getString(R.string.download_failed, book.displayTitle) },
                 )
             downloading -= book.id
             snackbar.showSnackbar(message)
@@ -170,8 +170,8 @@ fun DiscoverScreen() {
                     items(books, key = { it.id }) { book ->
                         ListItem(
                             colors = ListItemDefaults.colors(containerColor = Color.Transparent),
-                            leadingContent = { BookCover(book.title) },
-                            headlineContent = { Text(book.title, maxLines = 2, overflow = TextOverflow.Ellipsis) },
+                            leadingContent = { BookCover(book.displayTitle) },
+                            headlineContent = { Text(book.displayTitle, maxLines = 2, overflow = TextOverflow.Ellipsis) },
                             supportingContent = {
                                 Row(verticalAlignment = Alignment.CenterVertically, horizontalArrangement = Arrangement.Start) {
                                     GutenbergClient.levelFor(book.id)?.let {
