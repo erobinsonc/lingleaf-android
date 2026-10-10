@@ -51,8 +51,11 @@ appId: app.lingleaf
     timeout: 60000
     optional: true
 - takeScreenshot: 08-discover
+# Optional so a slow or unreachable catalog still leaves the remaining screenshots;
+# the filter itself is covered by the filterRecommendedBooksByLevel test.
 - tapOn:
     id: "level-filter-B1"
+    optional: true
 - takeScreenshot: 09-discover-level-filter
 
 - tapOn: "Settings"
