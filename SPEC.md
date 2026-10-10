@@ -31,7 +31,7 @@ the same intent on both platforms. A change to behaviour updates this file in
 | S10 | Import | A plain-text `.txt` file can be imported; Gutenberg license headers are removed. |
 | S11 | Settings | Daily goal, text size, speech speed and translation language persist. |
 | S12 | Offline | Without internet the reader, saved words and review work; the card says translation/definition are unavailable. |
-| S13 | Level filter | Recommended books go from A2 to C2. Chips "All" plus each level present in the list filter it (one at a time, "All" by default); hidden while search results show; "No recommended books at this level." if none match. |
+| S13 | Level filter | Discover shows chips "All" plus each level in the recommended list (A2–C2); "All" is selected by default, a level shows only its recommended books, in order; an empty level says "No recommended books at this level."; the chips hide while search results show. |
 
 ## Shared logic (same rules, same tests on both platforms)
 

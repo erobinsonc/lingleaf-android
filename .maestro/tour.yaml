@@ -45,7 +45,7 @@ appId: app.lingleaf
 - takeScreenshot: 08-discover
 - tapOn:
     id: "level-filter-B1"
-- takeScreenshot: 09-discover-level-b1
+- takeScreenshot: 09-discover-level-filter
 
 - tapOn: "Settings"
 - takeScreenshot: 10-settings
