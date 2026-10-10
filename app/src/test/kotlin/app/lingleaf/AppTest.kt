@@ -1,15 +1,20 @@
 package app.lingleaf
 
 import androidx.compose.ui.geometry.Offset
+import androidx.compose.ui.semantics.LiveRegionMode
 import androidx.compose.ui.semantics.SemanticsActions
 import androidx.compose.ui.semantics.SemanticsProperties
 import androidx.compose.ui.semantics.getOrNull
+import androidx.compose.ui.test.SemanticsMatcher
+import androidx.compose.ui.test.SemanticsNodeInteraction
 import androidx.compose.ui.test.click
+import androidx.compose.ui.test.hasAnyAncestor
 import androidx.compose.ui.test.hasClickAction
 import androidx.compose.ui.test.hasText
 import androidx.compose.ui.test.junit4.createComposeRule
 import androidx.compose.ui.test.onAllNodesWithText
 import androidx.compose.ui.test.onFirst
+import androidx.compose.ui.test.onNodeWithContentDescription
 import androidx.compose.ui.test.onNodeWithText
 import androidx.compose.ui.test.performClick
 import androidx.compose.ui.test.performTouchInput
@@ -120,25 +125,104 @@ class AppTest {
         for (tab in listOf("Library", "Discover", "Words", "Settings")) {
             compose.onAllNodesWithText(tab).onFirst().performClick()
             compose.waitForIdle()
-            val unlabeled =
-                compose
-                    .onAllNodes(hasClickAction())
-                    .fetchSemanticsNodes()
-                    .filter { node ->
-                        val text = node.config.getOrNull(SemanticsProperties.Text)?.joinToString("").orEmpty()
-                        val description = node.config.getOrNull(SemanticsProperties.ContentDescription)?.joinToString("").orEmpty()
-                        text.isBlank() && description.isBlank() && !node.hasLabelledChildren()
-                    }
-            assertTrue("Unlabeled tappable elements on $tab: ${unlabeled.map { it.config }}", unlabeled.isEmpty())
+            assertTappablesAreLabelled(tab)
         }
     }
 
-    private fun androidx.compose.ui.semantics.SemanticsNode.hasLabelledChildren(): Boolean =
-        children.any { child ->
-            !child.config.getOrNull(SemanticsProperties.Text).isNullOrEmpty() ||
-                !child.config.getOrNull(SemanticsProperties.ContentDescription).isNullOrEmpty() ||
-                child.hasLabelledChildren()
-        }
+    @Test
+    fun readerAndWordCardAreLabelled() {
+        compose.onAllNodesWithText("The Red Boat").onFirst().performClick()
+        val paragraph = hasText("All animals are equal", substring = true)
+        compose.waitUntil(5_000) { compose.onAllNodes(paragraph).fetchSemanticsNodes().isNotEmpty() }
+        assertTappablesAreLabelled("Reader")
+
+        compose.onAllNodes(paragraph).onFirst().invokeCustomAction("Look up equal")
+        compose.waitUntil(5_000) { compose.onAllNodesWithText("igual").fetchSemanticsNodes().isNotEmpty() }
+        assertTappablesAreLabelled("Word card")
+    }
+
+    @Test
+    fun reviewIsLabelledAndAnnouncesTheMeaning() {
+        container.library.saveWord("bay", learned = false, translation = "bahía", context = "The edge of the bay.")
+        compose.onAllNodesWithText("Words").onFirst().performClick()
+        compose.onNodeWithText("Review now").performClick()
+        assertTappablesAreLabelled("Review")
+        compose.onNodeWithContentDescription("Listen to bay").assertExists()
+
+        compose.onNodeWithText("Show meaning").performClick()
+        compose.waitForIdle()
+        assertTappablesAreLabelled("Review (meaning shown)")
+        // The answer replaces the button inside a polite live region, so TalkBack reads it.
+        compose
+            .onNode(
+                hasText("bahía") and hasAnyAncestor(SemanticsMatcher.expectValue(SemanticsProperties.LiveRegion, LiveRegionMode.Polite)),
+            )
+            .assertExists()
+    }
+
+    @Test
+    fun paragraphWordsAreLinksAndAccessibilityActions() {
+        container.library.saveWord("animal", learned = false, translation = "animal")
+        compose.onAllNodesWithText("The Red Boat").onFirst().performClick()
+        val paragraph = hasText("All animals are equal", substring = true)
+        compose.waitUntil(5_000) { compose.onAllNodes(paragraph).fetchSemanticsNodes().isNotEmpty() }
+
+        val node = compose.onAllNodes(paragraph).onFirst().fetchSemanticsNode()
+        val text = node.config[SemanticsProperties.Text].first()
+        // One link per word: "All animals are equal, but some are more equal."
+        assertEquals(9, text.getLinkAnnotations(0, text.length).size)
+
+        val labels = node.config[SemanticsActions.CustomActions].map { it.label }
+        // Repeated words get one action; words being learned say so.
+        assertEquals(
+            listOf(
+                "Look up All",
+                "Look up animals, learning",
+                "Look up are",
+                "Look up equal",
+                "Look up but",
+                "Look up some",
+                "Look up more",
+            ),
+            labels,
+        )
+    }
+
+    @Test
+    fun deletingAWordAsksFirst() {
+        container.library.saveWord("bay", learned = false, translation = "bahía")
+        compose.onAllNodesWithText("Words").onFirst().performClick()
+
+        compose.onNodeWithContentDescription("Delete bay").performClick()
+        compose.onNodeWithText("Cancel").performClick()
+        assertTrue(container.library.state.value.word("bay") != null)
+
+        compose.onNodeWithContentDescription("Delete bay").performClick()
+        compose.onNodeWithText("Delete").performClick()
+        compose.waitForIdle()
+        assertTrue(container.library.state.value.word("bay") == null)
+    }
+
+    private fun SemanticsNodeInteraction.invokeCustomAction(label: String) {
+        val action = fetchSemanticsNode().config[SemanticsActions.CustomActions].single { it.label == label }
+        compose.runOnIdle { action.action() }
+    }
+
+    private fun assertTappablesAreLabelled(where: String) {
+        val unlabeled =
+            compose
+                .onAllNodes(hasClickAction())
+                .fetchSemanticsNodes()
+                .filter { node ->
+                    // Word links inside a paragraph are hidden from screen readers on purpose:
+                    // the paragraph exposes them as links and custom actions instead.
+                    if (SemanticsProperties.InvisibleToUser in node.config) return@filter false
+                    val text = node.config.getOrNull(SemanticsProperties.Text)?.joinToString("").orEmpty()
+                    val description = node.config.getOrNull(SemanticsProperties.ContentDescription)?.joinToString("").orEmpty()
+                    text.isBlank() && description.isBlank() && !node.hasLabelledChildren()
+                }
+        assertTrue("Unlabeled tappable elements on $where: ${unlabeled.map { it.config }}", unlabeled.isEmpty())
+    }
 
     @Test
     fun wordsScreenShowsSavedWordsAndReviewWorks() {

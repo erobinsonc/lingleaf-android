@@ -22,7 +22,10 @@ import androidx.compose.runtime.remember
 import androidx.compose.runtime.staticCompositionLocalOf
 import androidx.compose.ui.Modifier
 import androidx.compose.ui.graphics.vector.ImageVector
+import androidx.compose.ui.res.pluralStringResource
 import androidx.compose.ui.res.stringResource
+import androidx.compose.ui.semantics.contentDescription
+import androidx.compose.ui.semantics.semantics
 import androidx.lifecycle.compose.collectAsStateWithLifecycle
 import androidx.navigation.compose.NavHost
 import androidx.navigation.compose.composable
@@ -71,7 +74,14 @@ fun LingleafApp(container: AppContainer) {
                                     },
                                     icon = {
                                         if (tab == Tab.Words && due > 0) {
-                                            BadgedBox(badge = { Badge { Text("$due") } }) { Icon(tab.icon, contentDescription = null) }
+                                            val dueLabel = pluralStringResource(R.plurals.words_due, due, due)
+                                            BadgedBox(
+                                                badge = {
+                                                    Badge {
+                                                        Text("$due", modifier = Modifier.semantics { contentDescription = dueLabel })
+                                                    }
+                                                },
+                                            ) { Icon(tab.icon, contentDescription = null) }
                                         } else {
                                             Icon(tab.icon, contentDescription = null)
                                         }

@@ -14,6 +14,8 @@ import androidx.compose.material.icons.filled.Check
 import androidx.compose.material.icons.filled.Delete
 import androidx.compose.material.icons.filled.Replay
 import androidx.compose.material.icons.filled.Style
+import androidx.compose.material3.AlertDialog
+import androidx.compose.material3.Button
 import androidx.compose.material3.Card
 import androidx.compose.material3.CardDefaults
 import androidx.compose.material3.Icon
@@ -25,6 +27,7 @@ import androidx.compose.material3.SegmentedButton
 import androidx.compose.material3.SegmentedButtonDefaults
 import androidx.compose.material3.SingleChoiceSegmentedButtonRow
 import androidx.compose.material3.Text
+import androidx.compose.material3.TextButton
 import androidx.compose.runtime.Composable
 import androidx.compose.runtime.getValue
 import androidx.compose.runtime.mutableStateOf
@@ -52,6 +55,7 @@ fun WordsScreen(onReview: () -> Unit) {
     var showLearned by rememberSaveable { mutableStateOf(false) }
     val due = remember(state.words) { library.dueWords().size }
     val words = state.words.filter { it.learned == showLearned }
+    var toDelete by remember { mutableStateOf<VocabWord?>(null) }
 
     ScreenScaffold(title = stringResource(R.string.words_title)) { modifier ->
         LazyColumn(modifier) {
@@ -112,13 +116,31 @@ fun WordsScreen(onReview: () -> Unit) {
                     )
                 }
             }
-            items(words, key = { it.word }) { word -> WordRow(word) }
+            items(words, key = { it.word }) { word -> WordRow(word, onDelete = { toDelete = word }) }
         }
+    }
+
+    toDelete?.let { word ->
+        AlertDialog(
+            onDismissRequest = { toDelete = null },
+            title = { Text(stringResource(R.string.delete_word_title, word.word)) },
+            text = { Text(stringResource(R.string.delete_word_message)) },
+            confirmButton = {
+                Button(onClick = {
+                    toDelete = null
+                    library.deleteWord(word.word)
+                }) { Text(stringResource(R.string.delete)) }
+            },
+            dismissButton = { TextButton(onClick = { toDelete = null }) { Text(stringResource(R.string.cancel)) } },
+        )
     }
 }
 
 @Composable
-private fun WordRow(word: VocabWord) {
+private fun WordRow(
+    word: VocabWord,
+    onDelete: () -> Unit,
+) {
     val container = LocalContainer.current
     val library = container.library
     val state by library.state.collectAsStateWithLifecycle()
@@ -149,17 +171,17 @@ private fun WordRow(word: VocabWord) {
         trailingContent = {
             Row {
                 IconButton(onClick = { container.speaker.speak(word.word, state.settings.speechRate) }) {
-                    Icon(Icons.AutoMirrored.Filled.VolumeUp, contentDescription = stringResource(R.string.listen))
+                    Icon(Icons.AutoMirrored.Filled.VolumeUp, contentDescription = stringResource(R.string.listen_word, word.word))
                 }
                 IconButton(onClick = { library.setLearned(word.word, !word.learned) }) {
                     if (word.learned) {
-                        Icon(Icons.Filled.Replay, contentDescription = stringResource(R.string.review_again))
+                        Icon(Icons.Filled.Replay, contentDescription = stringResource(R.string.review_again_word, word.word))
                     } else {
-                        Icon(Icons.Filled.Check, contentDescription = stringResource(R.string.mark_learned))
+                        Icon(Icons.Filled.Check, contentDescription = stringResource(R.string.mark_learned_word, word.word))
                     }
                 }
-                IconButton(onClick = { library.deleteWord(word.word) }) {
-                    Icon(Icons.Filled.Delete, contentDescription = stringResource(R.string.delete_word))
+                IconButton(onClick = onDelete) {
+                    Icon(Icons.Filled.Delete, contentDescription = stringResource(R.string.delete_word, word.word))
                 }
             }
         },

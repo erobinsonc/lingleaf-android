@@ -8,6 +8,7 @@ import androidx.compose.foundation.layout.Row
 import androidx.compose.foundation.layout.Spacer
 import androidx.compose.foundation.layout.fillMaxWidth
 import androidx.compose.foundation.layout.height
+import androidx.compose.foundation.layout.heightIn
 import androidx.compose.foundation.layout.navigationBarsPadding
 import androidx.compose.foundation.layout.padding
 import androidx.compose.foundation.layout.size
@@ -42,6 +43,8 @@ import androidx.compose.ui.Modifier
 import androidx.compose.ui.graphics.Color
 import androidx.compose.ui.graphics.RectangleShape
 import androidx.compose.ui.res.stringResource
+import androidx.compose.ui.semantics.contentDescription
+import androidx.compose.ui.semantics.semantics
 import androidx.compose.ui.text.SpanStyle
 import androidx.compose.ui.text.buildAnnotatedString
 import androidx.compose.ui.text.font.FontStyle
@@ -123,7 +126,7 @@ fun WordSheet(
             ) {
                 Row(verticalAlignment = Alignment.CenterVertically) {
                     FilledTonalIconButton(onClick = { container.speaker.speak(headword, state.settings.speechRate) }) {
-                        Icon(Icons.AutoMirrored.Filled.VolumeUp, contentDescription = stringResource(R.string.listen))
+                        Icon(Icons.AutoMirrored.Filled.VolumeUp, contentDescription = stringResource(R.string.listen_word, headword))
                     }
                     Spacer(Modifier.width(12.dp))
                     Text(headword, style = MaterialTheme.typography.headlineMedium, fontWeight = FontWeight.SemiBold)
@@ -142,7 +145,14 @@ fun WordSheet(
                             color = MaterialTheme.colorScheme.onSurfaceVariant,
                             textAlign = TextAlign.Center,
                         )
-                    else -> CircularProgressIndicator(Modifier.size(32.dp))
+                    else -> {
+                        val translating = stringResource(R.string.translating)
+                        CircularProgressIndicator(
+                            Modifier
+                                .size(32.dp)
+                                .semantics { contentDescription = translating },
+                        )
+                    }
                 }
                 entry?.definition?.let { definition ->
                     Text(
@@ -190,7 +200,7 @@ fun WordSheet(
                     modifier =
                         Modifier
                             .weight(1f)
-                            .height(58.dp),
+                            .heightIn(min = 58.dp),
                 ) { Text(stringResource(R.string.learned), fontWeight = FontWeight.SemiBold) }
                 Button(
                     onClick = { save(learned = false) },
@@ -199,7 +209,7 @@ fun WordSheet(
                     modifier =
                         Modifier
                             .weight(1f)
-                            .height(58.dp),
+                            .heightIn(min = 58.dp),
                 ) { Text(stringResource(R.string.learn), fontWeight = FontWeight.SemiBold) }
             }
         }

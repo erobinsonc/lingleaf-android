@@ -112,15 +112,13 @@ fun DiscoverScreen() {
     val searching = results != null
     val books = results ?: recommended
 
-    val searchHint = stringResource(R.string.search_hint)
-
     ScreenScaffold(title = stringResource(R.string.discover_title), snackbarHostState = snackbar) { modifier ->
         LazyColumn(modifier) {
             item {
                 OutlinedTextField(
                     value = query,
                     onValueChange = { query = it },
-                    placeholder = { Text(stringResource(R.string.search_hint)) },
+                    label = { Text(stringResource(R.string.search_hint)) },
                     leadingIcon = { Icon(Icons.Filled.Search, contentDescription = null) },
                     trailingIcon = {
                         if (query.isNotEmpty()) {
@@ -136,8 +134,7 @@ fun DiscoverScreen() {
                     modifier =
                         Modifier
                             .fillMaxWidth()
-                            .padding(horizontal = 16.dp, vertical = 8.dp)
-                            .semantics { contentDescription = searchHint },
+                            .padding(horizontal = 16.dp, vertical = 8.dp),
                 )
             }
             item { SectionHeader(stringResource(if (searching) R.string.results else R.string.recommended)) }
@@ -182,10 +179,15 @@ fun DiscoverScreen() {
                                             tint = MaterialTheme.colorScheme.primary,
                                         )
                                     book.id in downloading -> CircularProgressIndicator(Modifier.size(24.dp), strokeWidth = 2.dp)
-                                    else ->
-                                        FilledTonalButton(onClick = { download(book) }, enabled = book.textUrl != null) {
-                                            Text(stringResource(R.string.get))
-                                        }
+                                    else -> {
+                                        // Visible text stays short; screen readers hear which book it gets.
+                                        val label = stringResource(R.string.get_book, book.title)
+                                        FilledTonalButton(
+                                            onClick = { download(book) },
+                                            enabled = book.textUrl != null,
+                                            modifier = Modifier.semantics { contentDescription = label },
+                                        ) { Text(stringResource(R.string.get)) }
+                                    }
                                 }
                             },
                         )
