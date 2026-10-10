@@ -82,6 +82,12 @@ data class WordChange(
     val previous: VocabWord?,
 )
 
+/** A translation still on its way, and the [word] it is the translation of. */
+private class PendingTranslation(
+    val word: String,
+    val result: Deferred<String?>,
+)
+
 /**
  * The card shown when a word is tapped: pronunciation, translation (with its
  * language), definition, the sentence in context, and I know it / Save word.
@@ -104,12 +110,15 @@ fun WordSheet(
     var entry by remember(word) { mutableStateOf<DictionaryEntry?>(null) }
     var entryLoaded by remember(word) { mutableStateOf(false) }
     val target = container.targetLanguage(state.settings)
+    // The headword's own translation: the only one saved with the word.
     var translation by remember(word, target) { mutableStateOf<String?>(null) }
+    // The tapped form's ("animals"), shown while the base form's ("animal") is on its way.
+    var tappedTranslation by remember(word, target) { mutableStateOf<String?>(null) }
     var translationFailed by remember(word, target) { mutableStateOf(false) }
     var sentenceTranslation by remember(word, target) { mutableStateOf<String?>(null) }
     var modelStatus by remember(word, target) { mutableStateOf(ModelStatus.READY) }
     // Runs in the app's scope, so a translation that arrives after saving is still recorded.
-    var pendingTranslation by remember(word, target) { mutableStateOf<Deferred<String?>?>(null) }
+    var pendingTranslation by remember(word, target) { mutableStateOf<PendingTranslation?>(null) }
 
     // The dictionary's base form ("animal") when it differs from the tapped word ("animals").
     val headword = entry?.word?.takeIf { it != TextTools.normalize(word) } ?: word
@@ -126,18 +135,21 @@ fun WordSheet(
         launch { sentenceTranslation = container.translateOrNull(sentence, target) }
         // The tapped form starts right away, alongside the dictionary lookup.
         val tapped = container.appScope.async { container.translateOrNull(word, target) }
-        pendingTranslation = tapped
+        pendingTranslation = PendingTranslation(word, tapped)
         snapshotFlow { entryLoaded }.first { it }
         val base = entry?.word?.takeIf { it != TextTools.normalize(word) }
-        val result =
-            if (base == null) {
-                tapped
-            } else {
-                container.appScope.async { container.translateOrNull(base, target) ?: tapped.await() }
-            }
-        pendingTranslation = result
-        translation = result.await()
-        translationFailed = translation == null
+        if (base == null) {
+            translation = tapped.await()
+            translationFailed = translation == null
+            return@LaunchedEffect
+        }
+        // The base form is saved only with its own translation; the tapped form's is shown meanwhile.
+        val baseTranslation = container.appScope.async { container.translateOrNull(base, target) }
+        pendingTranslation = PendingTranslation(base, baseTranslation)
+        val showTapped = launch { tappedTranslation = tapped.await() }
+        translation = baseTranslation.await()
+        if (translation == null) showTapped.join()
+        translationFailed = translation == null && tappedTranslation == null
     }
 
     fun close(change: WordChange) {
@@ -152,7 +164,8 @@ fun WordSheet(
         val key = headword
         val language = target
         val shown = translation
-        val pending = pendingTranslation
+        // Only a translation of the word being saved may be written to it later.
+        val pending = pendingTranslation?.takeIf { it.word == key }?.result
         val phonetic = entry?.phonetic
         scope.launch {
             val previous =
@@ -209,7 +222,7 @@ fun WordSheet(
                 if (target == null) {
                     LanguagePrompt(onPick = ::chooseLanguage)
                 } else {
-                    TranslationText(translation, translationFailed, modelStatus, target)
+                    TranslationText(translation ?: tappedTranslation, translationFailed, modelStatus, target)
                     LanguageButton(target, onPick = ::chooseLanguage)
                 }
                 entry?.definition?.let { definition ->
