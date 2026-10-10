@@ -15,7 +15,10 @@ cd "$work"
 git init -q -b screenshots
 git config user.name "github-actions[bot]"
 git config user.email "41898282+github-actions[bot]@users.noreply.github.com"
-git remote add origin "https://x-access-token:${GH_TOKEN}@github.com/${GITHUB_REPOSITORY}.git"
+git remote add origin "https://github.com/${GITHUB_REPOSITORY}.git"
+# The token goes in a header for this process only, never into .git/config.
+auth="AUTHORIZATION: basic $(printf 'x-access-token:%s' "$GH_TOKEN" | base64 -w0)"
+git() { command git -c "http.extraheader=$auth" "$@"; }
 
 for attempt in 1 2 3 4; do
   if git fetch -q --depth 1 origin screenshots; then git reset -q --hard FETCH_HEAD; fi

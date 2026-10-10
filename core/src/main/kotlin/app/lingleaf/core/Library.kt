@@ -270,6 +270,10 @@ class Library(
 
     private fun saveWords() = storage.write(WORDS, json.encodeToString(ListSerializer(VocabWord.serializer()), _state.value.words))
 
+    /**
+     * A file that exists but can't be read is kept as `<name>.corrupt` before the
+     * next save replaces it, so a damaged library or word list can be recovered.
+     */
     private fun <T> decode(
         name: String,
         serializer: kotlinx.serialization.KSerializer<T>,
@@ -278,6 +282,7 @@ class Library(
             try {
                 json.decodeFromString(serializer, it)
             } catch (e: Exception) {
+                storage.write("$name.corrupt", it)
                 null
             }
         }

@@ -49,6 +49,14 @@ class LibraryTest {
     private fun library() = Library(storage, clock).apply { load() }
 
     @Test
+    fun `keeps a copy of a file that cannot be read`() {
+        storage.files["words.json"] = "not json"
+        val library = library()
+        assertTrue(library.state.value.words.isEmpty())
+        assertEquals("not json", storage.files["words.json.corrupt"])
+    }
+
+    @Test
     fun `seeds bundled stories once`() {
         val library = library()
         library.seedIfNeeded(stories)
