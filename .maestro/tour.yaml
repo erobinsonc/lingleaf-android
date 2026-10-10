@@ -1,0 +1,48 @@
+# Walks every main screen and takes a screenshot of each one.
+# CI runs it on an Android emulator and publishes the images to the
+# `screenshots` branch (see .github/workflows/screenshots.yml).
+appId: app.lingleaf
+---
+- launchApp:
+    clearState: true
+- extendedWaitUntil:
+    visible: "The Red Boat"
+    timeout: 20000
+- takeScreenshot: 01-library
+
+- tapOn: "The Red Boat"
+- extendedWaitUntil:
+    visible: "Tom lives in a small house by the sea.*"
+    timeout: 10000
+- takeScreenshot: 02-reader
+
+# Taps the middle of the first paragraph, which lands on a word.
+- tapOn: "Tom lives in a small house by the sea.*"
+- extendedWaitUntil:
+    visible: "Learned"
+    timeout: 10000
+- waitForAnimationToEnd:
+    timeout: 8000
+- takeScreenshot: 03-word-card
+- tapOn: "Learn"
+- takeScreenshot: 04-reader-with-marked-word
+- back
+
+- tapOn: "Words"
+- takeScreenshot: 05-words
+- tapOn: "Review now"
+- takeScreenshot: 06-review
+- tapOn: "Show meaning"
+- takeScreenshot: 07-review-meaning
+- back
+
+- tapOn: "Discover"
+- extendedWaitUntil:
+    visible: "Recommended for learners"
+    timeout: 10000
+- waitForAnimationToEnd:
+    timeout: 8000
+- takeScreenshot: 08-discover
+
+- tapOn: "Settings"
+- takeScreenshot: 09-settings
