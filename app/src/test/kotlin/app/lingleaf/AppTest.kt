@@ -224,6 +224,13 @@ class AppTest {
         assertTrue("Unlabeled tappable elements on $where: ${unlabeled.map { it.config }}", unlabeled.isEmpty())
     }
 
+    private fun androidx.compose.ui.semantics.SemanticsNode.hasLabelledChildren(): Boolean =
+        children.any { child ->
+            !child.config.getOrNull(SemanticsProperties.Text).isNullOrEmpty() ||
+                !child.config.getOrNull(SemanticsProperties.ContentDescription).isNullOrEmpty() ||
+                child.hasLabelledChildren()
+        }
+
     @Test
     fun wordsScreenShowsSavedWordsAndReviewWorks() {
         container.library.saveWord("bay", learned = false, translation = "bahía", context = "The edge of the bay.")
