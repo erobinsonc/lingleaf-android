@@ -13,10 +13,16 @@ status=0
 for mode in light dark; do
   if [ "$mode" = dark ]; then adb shell cmd uimode night yes; else adb shell cmd uimode night no; fi
   work="$(mktemp -d)"
-  (cd "$work" && maestro test "$GITHUB_WORKSPACE/.maestro" --test-output-dir="$work/output") || status=1
-  # Maestro writes named screenshots to the working directory and a
-  # screenshot of the failing step under the output directory.
+  run=0
+  (cd "$work" && maestro test "$GITHUB_WORKSPACE/.maestro" --test-output-dir="$work/output") || run=1
+  [ "$run" = 0 ] || status=1
+  # Maestro writes named screenshots to the working directory, and step
+  # screenshots (also for skipped optional steps) under the output directory;
+  # step screenshots are kept only when the flow failed.
   find "$work" -name '*.png' | while read -r png; do
+    case "$(basename "$png")" in
+      *step-*) [ "$run" = 1 ] || continue ;;
+    esac
     cp "$png" "screenshots/$mode-$(basename "$png")"
   done
 done
