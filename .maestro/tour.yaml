@@ -5,6 +5,10 @@ appId: app.lingleaf
 ---
 - launchApp:
     clearState: true
+# Dismisses a system "isn't responding" dialog if the emulator shows one.
+- tapOn:
+    text: "Wait"
+    optional: true
 - extendedWaitUntil:
     visible: "The Red Boat"
     timeout: 20000

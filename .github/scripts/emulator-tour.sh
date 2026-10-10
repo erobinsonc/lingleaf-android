@@ -4,6 +4,10 @@
 # Keeps going after a failed step so every screen that can be captured is.
 set -u
 adb install -r app/build/outputs/apk/debug/app-debug.apk
+# A slow CI emulator often shows "Pixel Launcher isn't responding" over the app;
+# hide system error dialogs and give the launcher time to settle.
+adb shell settings put global hide_error_dialogs 1
+sleep 20
 mkdir -p screenshots
 status=0
 for mode in light dark; do
