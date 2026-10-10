@@ -29,6 +29,7 @@ import androidx.compose.ui.Modifier
 import androidx.compose.ui.graphics.Color
 import androidx.compose.ui.platform.LocalUriHandler
 import androidx.compose.ui.res.stringResource
+import androidx.compose.ui.semantics.Role
 import androidx.compose.ui.semantics.contentDescription
 import androidx.compose.ui.semantics.semantics
 import androidx.compose.ui.semantics.stateDescription
@@ -126,7 +127,8 @@ fun SettingsScreen() {
             Box {
                 ListItem(
                     colors = itemColors,
-                    modifier = Modifier.clickable { languageMenu = true },
+                    // Announced as a drop-down list, like the language button on the word card.
+                    modifier = Modifier.clickable(role = Role.DropdownList) { languageMenu = true },
                     headlineContent = { Text(stringResource(R.string.translate_to)) },
                     // Until a language is chosen or found in the system list, the first word card asks (SPEC S11, S14).
                     supportingContent = { Text(target?.let(::languageName) ?: stringResource(R.string.translate_ask)) },

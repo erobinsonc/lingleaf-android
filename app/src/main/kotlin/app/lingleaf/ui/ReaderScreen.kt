@@ -67,8 +67,8 @@ fun ReaderScreen(
     val context = LocalContext.current
     val scope = rememberCoroutineScope()
     val snackbar = remember { SnackbarHostState() }
-    // 4 s, or 8 s while a screen reader is on so there is time to reach Undo (SPEC S4, S5).
-    val undoMillis = if (rememberScreenReaderOn()) 8_000L else 4_000L
+    // 4 s, longer if the system asks for more time to act; with a screen reader it stays (SPEC S4, S5).
+    val undoTimeout = rememberUndoTimeout(baseMillis = 4_000L)
 
     LaunchedEffect(bookId) {
         paragraphs = withContext(container.io) { library.openBook(bookId) }
@@ -157,7 +157,7 @@ fun ReaderScreen(
             source = book?.title.orEmpty(),
             onChanged = { change ->
                 scope.launch {
-                    snackbar.showUndo(context.getString(change.message, change.word), context.getString(R.string.undo), undoMillis) {
+                    snackbar.showUndo(context.getString(change.message, change.word), context.getString(R.string.undo), undoTimeout()) {
                         withContext(container.io) { library.restoreWord(change.word, change.previous) }
                     }
                 }

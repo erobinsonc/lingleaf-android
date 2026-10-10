@@ -21,6 +21,7 @@ import androidx.compose.foundation.rememberScrollState
 import androidx.compose.foundation.verticalScroll
 import androidx.compose.material.icons.Icons
 import androidx.compose.material.icons.automirrored.filled.VolumeUp
+import androidx.compose.material.icons.filled.Check
 import androidx.compose.material.icons.filled.ExpandMore
 import androidx.compose.material.icons.filled.RecordVoiceOver
 import androidx.compose.material3.Button
@@ -50,7 +51,11 @@ import androidx.compose.ui.Alignment
 import androidx.compose.ui.Modifier
 import androidx.compose.ui.graphics.Color
 import androidx.compose.ui.res.stringResource
+import androidx.compose.ui.semantics.Role
+import androidx.compose.ui.semantics.clearAndSetSemantics
 import androidx.compose.ui.semantics.contentDescription
+import androidx.compose.ui.semantics.onClick
+import androidx.compose.ui.semantics.role
 import androidx.compose.ui.semantics.selected
 import androidx.compose.ui.semantics.semantics
 import androidx.compose.ui.text.SpanStyle
@@ -152,11 +157,15 @@ fun WordSheet(
         translationFailed = translation == null && tappedTranslation == null
     }
 
+    // The Undo message comes once the card has gone, so TalkBack announces it (SPEC S4).
     fun close(change: WordChange) {
-        onChanged(change)
         scope.launch {
-            sheetState.hide()
-            onDismiss()
+            try {
+                sheetState.hide()
+            } finally {
+                onChanged(change)
+                onDismiss()
+            }
         }
     }
 
@@ -254,6 +263,7 @@ fun WordSheet(
             }
             val known = saved?.learned == true
             val learning = saved?.learned == false
+            val removeLabel = stringResource(R.string.remove_from_words)
             Row(
                 Modifier
                     .fillMaxWidth()
@@ -266,8 +276,9 @@ fun WordSheet(
                         Modifier
                             .weight(1f)
                             .heightIn(min = 48.dp)
-                            .then(if (known) Modifier.semantics { selected = true } else Modifier),
+                            .then(if (saved != null && known) Modifier.checked(removeLabel) { remove(saved) } else Modifier),
                 ) {
+                    if (known) CheckMark()
                     Text(stringResource(if (known) R.string.card_known else R.string.card_i_know_it), textAlign = TextAlign.Center)
                 }
                 Button(
@@ -277,8 +288,9 @@ fun WordSheet(
                         Modifier
                             .weight(1f)
                             .heightIn(min = 48.dp)
-                            .then(if (learning) Modifier.semantics { selected = true } else Modifier),
+                            .then(if (saved != null && learning) Modifier.checked(removeLabel) { remove(saved) } else Modifier),
                 ) {
+                    if (learning) CheckMark()
                     Text(
                         stringResource(if (learning) R.string.card_saved else R.string.save_word),
                         fontWeight = FontWeight.SemiBold,
@@ -288,6 +300,29 @@ fun WordSheet(
             }
         }
     }
+}
+
+/**
+ * A checked card button: selected, and a screen reader says tapping it will
+ * [removeLabel] ("Remove from Words"), which runs [onRemove] (SPEC S15).
+ */
+private fun Modifier.checked(
+    removeLabel: String,
+    onRemove: () -> Unit,
+): Modifier =
+    semantics {
+        selected = true
+        onClick(label = removeLabel) {
+            onRemove()
+            true
+        }
+    }
+
+/** The check mark that leads a checked card button's label; the button's selected state says it to screen readers. */
+@Composable
+private fun CheckMark() {
+    Icon(Icons.Filled.Check, contentDescription = null, modifier = Modifier.size(ButtonDefaults.IconSize))
+    Spacer(Modifier.width(ButtonDefaults.IconSpacing))
 }
 
 /** The word's translation, or why it isn't there yet. */
@@ -328,12 +363,19 @@ private fun LanguageButton(
     onPick: (String) -> Unit,
 ) {
     var open by remember { mutableStateOf(false) }
+    val label = stringResource(R.string.translation_language_label, languageName(target))
     Box {
         TextButton(
             onClick = { open = true },
+            modifier =
+                Modifier.semantics {
+                    contentDescription = label
+                    role = Role.DropdownList
+                },
             colors = ButtonDefaults.textButtonColors(contentColor = MaterialTheme.colorScheme.onSurfaceVariant),
         ) {
-            Text(languageName(target))
+            // Read as "Translation language: Español" instead of just the name.
+            Text(languageName(target), modifier = Modifier.clearAndSetSemantics {})
             Icon(Icons.Filled.ExpandMore, contentDescription = null, modifier = Modifier.size(18.dp))
         }
         LanguageMenu(expanded = open, onDismiss = { open = false }, onPick = onPick)

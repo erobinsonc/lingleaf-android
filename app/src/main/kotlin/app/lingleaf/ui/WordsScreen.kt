@@ -60,8 +60,8 @@ fun WordsScreen(onReview: () -> Unit) {
     val context = LocalContext.current
     val scope = rememberCoroutineScope()
     val snackbar = remember { SnackbarHostState() }
-    // 5 s, or 10 s while a screen reader is on (SPEC S15).
-    val undoMillis = if (rememberScreenReaderOn()) 10_000L else 5_000L
+    // 5 s, longer if the system asks for more time to act; with a screen reader it stays (SPEC S15).
+    val undoTimeout = rememberUndoTimeout(baseMillis = 5_000L)
     val target = container.targetLanguage(state.settings)
 
     // Fill in missing or other-language translations on the device (SPEC S12, S14).
@@ -70,7 +70,8 @@ fun WordsScreen(onReview: () -> Unit) {
     fun delete(word: VocabWord) {
         library.deleteWord(word.word)
         scope.launch {
-            snackbar.showUndo(context.getString(R.string.word_deleted_message, word.word), context.getString(R.string.undo), undoMillis) {
+            val message = context.getString(R.string.word_deleted_message, word.word)
+            snackbar.showUndo(message, context.getString(R.string.undo), undoTimeout()) {
                 library.restoreWord(word.word, word)
             }
         }

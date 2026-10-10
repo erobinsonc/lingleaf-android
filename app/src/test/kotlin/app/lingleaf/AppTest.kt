@@ -3,11 +3,13 @@ package app.lingleaf
 import android.content.Context
 import androidx.compose.ui.geometry.Offset
 import androidx.compose.ui.semantics.LiveRegionMode
+import androidx.compose.ui.semantics.Role
 import androidx.compose.ui.semantics.SemanticsActions
 import androidx.compose.ui.semantics.SemanticsProperties
 import androidx.compose.ui.semantics.getOrNull
 import androidx.compose.ui.test.SemanticsMatcher
 import androidx.compose.ui.test.SemanticsNodeInteraction
+import androidx.compose.ui.test.assert
 import androidx.compose.ui.test.assertIsDisplayed
 import androidx.compose.ui.test.click
 import androidx.compose.ui.test.hasAnyAncestor
@@ -199,6 +201,10 @@ class AppTest {
         compose.onAllNodes(paragraph).onFirst().invokeCustomAction("Look up equal")
         compose.waitUntil(WAIT_MS) { compose.onAllNodesWithText("igual").fetchSemanticsNodes().isNotEmpty() }
         assertTappablesAreLabelled("Word card")
+        // S15: the language button under the translation says what it is and that it opens a list.
+        compose
+            .onNode(hasContentDescription("Translation language: Español") and hasClickAction())
+            .assert(SemanticsMatcher.expectValue(SemanticsProperties.Role, Role.DropdownList))
     }
 
     @Test
@@ -288,7 +294,7 @@ class AppTest {
         assertTrue(container.library.state.value.words.isEmpty())
     }
 
-    // S4, S15: tapping the checked "✓ Saved" removes the word at once, with Undo.
+    // S4, S15: tapping the checked "Saved" removes the word at once, with Undo.
     @Test
     fun tappingTheCheckedButtonRemovesTheWordWithUndo() {
         val context = ApplicationProvider.getApplicationContext<Context>()
@@ -305,6 +311,11 @@ class AppTest {
         val savedLabel = context.getString(R.string.card_saved)
         compose.onAllNodes(paragraph).onFirst().invokeCustomAction("Look up equal, learning")
         compose.waitUntil(WAIT_MS) { compose.onAllNodesWithText(savedLabel).fetchSemanticsNodes().isNotEmpty() }
+        // The check mark is drawn, not read; the button is selected and its tap is announced as removing the word.
+        assertEquals("Saved", savedLabel)
+        val checked = compose.onNode(hasText(savedLabel) and hasClickAction())
+        checked.assert(SemanticsMatcher.expectValue(SemanticsProperties.Selected, true))
+        assertEquals("Remove from Words", checked.fetchSemanticsNode().config[SemanticsActions.OnClick].label)
 
         compose.onNodeWithText(savedLabel).performClick()
         compose.waitUntil(WAIT_MS) { container.library.state.value.word("equal") == null }

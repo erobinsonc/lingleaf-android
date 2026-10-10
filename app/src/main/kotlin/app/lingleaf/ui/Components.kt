@@ -54,6 +54,7 @@ import androidx.compose.ui.geometry.CornerRadius
 import androidx.compose.ui.geometry.Offset
 import androidx.compose.ui.geometry.Size
 import androidx.compose.ui.graphics.Color
+import androidx.compose.ui.platform.LocalAccessibilityManager
 import androidx.compose.ui.platform.LocalContext
 import androidx.compose.ui.platform.LocalDensity
 import androidx.compose.ui.res.pluralStringResource
@@ -113,27 +114,68 @@ fun ScreenScaffold(
     ) { padding -> content(Modifier.padding(padding)) }
 }
 
-/** True while TalkBack (or another touch-exploration screen reader) is on. */
-@Composable
-fun rememberScreenReaderOn(): Boolean {
-    val context = LocalContext.current
-    return remember(context) { context.getSystemService(AccessibilityManager::class.java)?.isTouchExplorationEnabled == true }
+/**
+ * How long an Undo message stays, in milliseconds, or null to keep it until it
+ * is dismissed or replaced (SPEC S4, S15). [baseMillis] grows to the system's
+ * recommended time to act ([recommendedMillis]); with a screen reader
+ * ([touchExploration]) or a service that asks for no timeout (Long.MAX_VALUE)
+ * the message stays.
+ */
+fun undoTimeoutMillis(
+    baseMillis: Long,
+    touchExploration: Boolean,
+    recommendedMillis: (Long) -> Long,
+): Long? {
+    if (touchExploration) return null
+    val millis = recommendedMillis(baseMillis)
+    return if (millis == Long.MAX_VALUE) null else maxOf(millis, baseMillis)
 }
 
 /**
- * Shows [message] with an Undo action for [millis], then hides it. The snackbar
- * is a polite live region, so TalkBack announces it. Runs [onUndo] if Undo is tapped.
+ * Returns a function that gives the Undo timeout for [baseMillis] (see [undoTimeoutMillis]).
+ * It reads the accessibility settings each time it is called, so a screen reader
+ * turned on while the screen is open is taken into account.
+ */
+@Composable
+fun rememberUndoTimeout(baseMillis: Long): () -> Long? {
+    val context = LocalContext.current
+    val accessibility = LocalAccessibilityManager.current
+    return remember(context, accessibility, baseMillis) {
+        val system = context.getSystemService(AccessibilityManager::class.java)
+        val timeout: () -> Long? = {
+            undoTimeoutMillis(baseMillis, touchExploration = system?.isTouchExplorationEnabled == true) { millis ->
+                accessibility?.calculateRecommendedTimeoutMillis(
+                    millis,
+                    containsIcons = false,
+                    containsText = true,
+                    containsControls = true,
+                ) ?: millis
+            }
+        }
+        timeout
+    }
+}
+
+/**
+ * Shows [message] with an Undo action for [millis], then hides it; with null
+ * [millis] it stays, with a close button, until dismissed or replaced. The
+ * snackbar is a polite live region, so TalkBack announces it. Runs [onUndo] if
+ * Undo is tapped.
  */
 suspend fun SnackbarHostState.showUndo(
     message: String,
     undoLabel: String,
-    millis: Long,
+    millis: Long?,
     onUndo: suspend () -> Unit,
 ) {
     currentSnackbarData?.dismiss()
     val result =
-        withTimeoutOrNull(millis) {
-            showSnackbar(message, actionLabel = undoLabel, duration = SnackbarDuration.Indefinite)
+        if (millis == null) {
+            showSnackbar(message, actionLabel = undoLabel, withDismissAction = true, duration = SnackbarDuration.Indefinite)
+        } else {
+            withTimeoutOrNull(millis) {
+                showSnackbar(message, actionLabel = undoLabel, duration = SnackbarDuration.Indefinite)
+            }
         }
     if (result == SnackbarResult.ActionPerformed) onUndo()
 }

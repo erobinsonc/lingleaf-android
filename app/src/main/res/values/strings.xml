@@ -59,14 +59,18 @@
     <string name="language_needs_wifi">Connect to Wi‑Fi once to download %1$s (about 30 MB).</string>
     <!-- Shown on the first word card when no translation language could be picked; language chips follow. -->
     <string name="translate_into_prompt">Translate into:</string>
+    <!-- Screen-reader label of the language button under the translation. %1$s: language name in that language. -->
+    <string name="translation_language_label">Translation language: %1$s</string>
     <string name="more_languages">More languages</string>
     <string name="no_definition">No definition available.</string>
     <!-- Word card buttons. "Save word" is the primary action. -->
     <string name="card_i_know_it">I know it</string>
     <string name="save_word">Save word</string>
-    <!-- Checked state of the card buttons; tapping it removes the word from Words. -->
-    <string name="card_known">✓ I know it</string>
-    <string name="card_saved">✓ Saved</string>
+    <!-- Checked state of the card buttons, shown with a check mark; tapping it removes the word from Words. -->
+    <string name="card_known">I know it</string>
+    <string name="card_saved">Saved</string>
+    <!-- What a screen reader says tapping a checked card button does. -->
+    <string name="remove_from_words">Remove from Words</string>
     <!-- Messages with Undo after a word card action or deleting a word. %1$s: the word. -->
     <string name="word_saved_message">“%1$s” saved to Words</string>
     <string name="word_known_message">“%1$s” marked as known</string>

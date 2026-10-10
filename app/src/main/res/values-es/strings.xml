@@ -48,12 +48,14 @@
     <string name="downloading_language">Descargando %1$s (unos 30 MB)…</string>
     <string name="language_needs_wifi">Conéctate a Wi‑Fi una vez para descargar %1$s (unos 30 MB).</string>
     <string name="translate_into_prompt">Traducir a:</string>
+    <string name="translation_language_label">Idioma de la traducción: %1$s</string>
     <string name="more_languages">Más idiomas</string>
     <string name="no_definition">Sin definición disponible.</string>
     <string name="card_i_know_it">Ya la sé</string>
     <string name="save_word">Guardar palabra</string>
-    <string name="card_known">✓ Ya la sé</string>
-    <string name="card_saved">✓ Guardada</string>
+    <string name="card_known">Ya la sé</string>
+    <string name="card_saved">Guardada</string>
+    <string name="remove_from_words">Quitar de Palabras</string>
     <string name="word_saved_message">“%1$s” guardada en Palabras</string>
     <string name="word_known_message">“%1$s” marcada como conocida</string>
     <string name="word_removed_message">Se quitó “%1$s” de Palabras</string>
