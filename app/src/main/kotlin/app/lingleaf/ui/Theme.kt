@@ -37,6 +37,9 @@ data class LingleafColors(
     val selectedWordText: Color,
     /** Streak text on the daily goal card. */
     val streakText: Color,
+    /** Keyboard focus on a word link: must stand out (≥3:1) from the page. */
+    val focusedWordBackground: Color,
+    val focusedWordText: Color,
 )
 
 private val LightLingleafColors =
@@ -45,6 +48,9 @@ private val LightLingleafColors =
         selectedWordBackground = Brand.Marker.copy(alpha = 0.55f),
         selectedWordText = Color.Unspecified,
         streakText = Color(0xFFA0430A),
+        // Ink on paper ≈6:1; the 55% marker used for selection was ≈1.2:1, too faint for focus.
+        focusedWordBackground = Brand.Ink,
+        focusedWordText = Color.White,
     )
 
 private val DarkLingleafColors =
@@ -53,6 +59,8 @@ private val DarkLingleafColors =
         selectedWordBackground = Brand.Marker,
         selectedWordText = Color.Black,
         streakText = Color(0xFFFF8A50),
+        focusedWordBackground = Brand.Marker,
+        focusedWordText = Color.Black,
     )
 
 val LocalLingleafColors = staticCompositionLocalOf { LightLingleafColors }

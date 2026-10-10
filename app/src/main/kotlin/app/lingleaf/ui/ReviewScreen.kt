@@ -39,6 +39,7 @@ import androidx.compose.ui.Modifier
 import androidx.compose.ui.res.pluralStringResource
 import androidx.compose.ui.res.stringResource
 import androidx.compose.ui.semantics.LiveRegionMode
+import androidx.compose.ui.semantics.contentDescription
 import androidx.compose.ui.semantics.liveRegion
 import androidx.compose.ui.semantics.semantics
 import androidx.compose.ui.text.font.FontStyle
@@ -123,7 +124,13 @@ private fun ReviewCard(
             .navigationBarsPadding()
             .padding(20.dp),
     ) {
-        LinearProgressIndicator(progress = { progress }, modifier = Modifier.fillMaxWidth())
+        val progressLabel = stringResource(R.string.review_progress)
+        LinearProgressIndicator(
+            progress = { progress },
+            modifier = Modifier.fillMaxWidth().semantics { contentDescription = progressLabel },
+            // The default lavender track is ≈1.2:1 on paper; the outline colour stays visible at 0%.
+            trackColor = MaterialTheme.colorScheme.outline,
+        )
         // The card scrolls (large text, landscape) while the answer buttons stay at the bottom.
         BoxWithConstraints(
             Modifier

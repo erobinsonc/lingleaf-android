@@ -66,6 +66,7 @@ import androidx.compose.ui.text.TextLinkStyles
 import androidx.compose.ui.text.TextStyle
 import androidx.compose.ui.text.buildAnnotatedString
 import androidx.compose.ui.text.font.FontWeight
+import androidx.compose.ui.text.style.TextDecoration
 import androidx.compose.ui.text.style.TextOverflow
 import androidx.compose.ui.unit.dp
 import androidx.compose.ui.unit.sp
@@ -203,7 +204,11 @@ fun DailyGoalCard() {
     ) {
         Row(Modifier.padding(16.dp), verticalAlignment = Alignment.CenterVertically) {
             Box(Modifier.size(64.dp), contentAlignment = Alignment.Center) {
-                CircularProgressIndicator(progress = { fraction }, modifier = Modifier.size(64.dp), strokeWidth = 7.dp)
+                CircularProgressIndicator(
+                    progress = { fraction },
+                    modifier = Modifier.size(64.dp).clearAndSetSemantics {},
+                    strokeWidth = 7.dp,
+                )
                 // The card already reads "x of y min today"; the ring's number would repeat it.
                 Text(
                     "$minutes",
@@ -256,7 +261,15 @@ fun TappableParagraph(
     val currentOnWordTap by rememberUpdatedState(onWordTap)
     val learning = remember(text, words, isLearning) { words.filter { isLearning(text.substring(it.start, it.end)) } }
     val markerHeight = with(LocalDensity.current) { 3.dp.toPx() }
-    val focusedLink = TextLinkStyles(focusedStyle = SpanStyle(background = colors.selectedWordBackground, color = colors.selectedWordText))
+    val focusedLink =
+        TextLinkStyles(
+            focusedStyle =
+                SpanStyle(
+                    background = colors.focusedWordBackground,
+                    color = colors.focusedWordText,
+                    textDecoration = TextDecoration.Underline,
+                ),
+        )
     val annotated =
         remember(text, words, selected, colors) {
             buildAnnotatedString {

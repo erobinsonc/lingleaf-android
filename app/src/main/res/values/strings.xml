@@ -128,4 +128,6 @@
     <string name="source_code">Source code</string>
     <string name="open_source_note">Lingleaf is open source (MIT license).</string>
     <string name="credits">Books: Project Gutenberg (public domain). Definitions: dictionaryapi.dev. Translation: Google ML Kit, on device. No accounts, no ads, no tracking.</string>
+    <string name="reading_progress">Reading progress</string>
+    <string name="review_progress">Review progress</string>
 </resources>
