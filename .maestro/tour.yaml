@@ -33,14 +33,38 @@ appId: app.lingleaf
     optional: true
 - takeScreenshot: 03-word-card
 - tapOn: "Learn"
+# The card closes with an animation; wait until it's gone so `back` leaves the reader.
+- extendedWaitUntil:
+    notVisible: "Learned"
+    timeout: 10000
 - takeScreenshot: 04-reader-with-marked-word
 - back
+# The bottom bar only exists outside the reader. If the first `back` was
+# consumed by something else, press it again.
+- runFlow:
+    when:
+      notVisible: "Discover"
+    commands:
+      - back
+- extendedWaitUntil:
+    visible: "Discover"
+    timeout: 10000
 
 - tapOn: "Words"
+# Screen changes cross-fade; wait for content unique to Words before capturing.
+- extendedWaitUntil:
+    visible: "Review now"
+    timeout: 10000
+- waitForAnimationToEnd
 - takeScreenshot: 05-words
 - tapOn: "Review now"
+- extendedWaitUntil:
+    visible: "Show meaning"
+    timeout: 10000
+- waitForAnimationToEnd
 - takeScreenshot: 06-review
 - tapOn: "Show meaning"
+- waitForAnimationToEnd
 - takeScreenshot: 07-review-meaning
 - back
 

@@ -26,7 +26,9 @@ import kotlinx.coroutines.flow.StateFlow
 import kotlinx.coroutines.flow.asStateFlow
 import kotlinx.coroutines.suspendCancellableCoroutine
 import kotlinx.coroutines.withContext
+import java.io.ByteArrayOutputStream
 import java.io.File
+import java.io.InputStream
 import java.net.HttpURLConnection
 import java.net.URL
 import java.util.Locale
@@ -205,8 +207,13 @@ class AndroidSpeaker(
     }
 }
 
-/** HTTPS-only fetcher. Plain HTTP is refused before any connection is made. */
-class HttpsFetcher : HttpFetcher {
+/**
+ * HTTPS-only fetcher. Plain HTTP is refused before any connection is made, and
+ * responses larger than [maxBytes] are cut off with an error.
+ */
+class HttpsFetcher(
+    private val maxBytes: Int = MAX_BYTES,
+) : HttpFetcher {
     override suspend fun get(url: String): HttpResponse =
         withContext(Dispatchers.IO) {
             if (!url.startsWith("https://")) throw NetworkException("Only HTTPS is allowed")
@@ -216,12 +223,29 @@ class HttpsFetcher : HttpFetcher {
             connection.setRequestProperty("User-Agent", "Lingleaf/0.1 (+https://github.com/erobinsonc/lingleaf-android)")
             try {
                 val status = connection.responseCode
+                if (connection.contentLengthLong > maxBytes) throw NetworkException("Response too large")
                 val stream = if (status in 200..299) connection.inputStream else connection.errorStream
-                HttpResponse(status, stream?.use { it.readBytes() } ?: ByteArray(0))
+                HttpResponse(status, stream?.use { it.readCapped(maxBytes) } ?: ByteArray(0))
             } finally {
                 connection.disconnect()
             }
         }
+}
+
+/** Largest download or imported file accepted. The longest recommended book (Middlemarch) is under 2 MB. */
+const val MAX_BYTES = 10 * 1024 * 1024
+
+/** Reads at most [max] bytes; more than that is an error rather than a huge allocation. */
+fun InputStream.readCapped(max: Int): ByteArray {
+    val out = ByteArrayOutputStream()
+    val buffer = ByteArray(DEFAULT_BUFFER_SIZE)
+    while (true) {
+        val read = read(buffer)
+        if (read < 0) break
+        out.write(buffer, 0, read)
+        if (out.size() > max) throw NetworkException("Too large")
+    }
+    return out.toByteArray()
 }
 
 /** Files in the app's private storage. Writes go through a temp file so a crash never leaves half a file. */
@@ -237,9 +261,10 @@ class FileStorage(
         val target = File(dir, name)
         val temp = File(dir, "$name.tmp")
         temp.writeText(content)
+        // rename(2) replaces the target atomically; if it fails, keep the old file rather than half-write it.
         if (!temp.renameTo(target)) {
-            target.writeText(content)
             temp.delete()
+            Log.w("Lingleaf", "Could not save $name")
         }
     }
 

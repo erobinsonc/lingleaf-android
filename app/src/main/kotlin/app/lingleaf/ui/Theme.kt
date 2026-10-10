@@ -5,6 +5,9 @@ import androidx.compose.material3.MaterialTheme
 import androidx.compose.material3.darkColorScheme
 import androidx.compose.material3.lightColorScheme
 import androidx.compose.runtime.Composable
+import androidx.compose.runtime.CompositionLocalProvider
+import androidx.compose.runtime.Immutable
+import androidx.compose.runtime.staticCompositionLocalOf
 import androidx.compose.ui.graphics.Color
 import androidx.compose.ui.text.font.FontFamily
 
@@ -19,6 +22,48 @@ object Brand {
 }
 
 val ReadingFont = FontFamily.Serif
+
+/**
+ * Brand colours that change between light and dark themes so text and marks
+ * keep enough contrast on both papers (WCAG 1.4.3 / 1.4.11).
+ */
+@Immutable
+data class LingleafColors(
+    /** Underline under words being learned. The bright marker is too faint on light paper. */
+    val learningUnderline: Color,
+    /** Background of the word whose card is open. */
+    val selectedWordBackground: Color,
+    /** Text colour on top of [selectedWordBackground]; [Color.Unspecified] keeps the paragraph colour. */
+    val selectedWordText: Color,
+    /** Streak text on the daily goal card. */
+    val streakText: Color,
+    /** Keyboard focus on a word link: must stand out (≥3:1) from the page. */
+    val focusedWordBackground: Color,
+    val focusedWordText: Color,
+)
+
+private val LightLingleafColors =
+    LingleafColors(
+        learningUnderline = Color(0xFF8A6A00),
+        selectedWordBackground = Brand.Marker.copy(alpha = 0.55f),
+        selectedWordText = Color.Unspecified,
+        streakText = Color(0xFFA0430A),
+        // Ink on paper ≈6:1; the 55% marker used for selection was ≈1.2:1, too faint for focus.
+        focusedWordBackground = Brand.Ink,
+        focusedWordText = Color.White,
+    )
+
+private val DarkLingleafColors =
+    LingleafColors(
+        learningUnderline = Brand.Marker,
+        selectedWordBackground = Brand.Marker,
+        selectedWordText = Color.Black,
+        streakText = Color(0xFFFF8A50),
+        focusedWordBackground = Brand.Marker,
+        focusedWordText = Color.Black,
+    )
+
+val LocalLingleafColors = staticCompositionLocalOf { LightLingleafColors }
 
 private val LightColors =
     lightColorScheme(
@@ -51,5 +96,7 @@ fun LingleafTheme(
     dark: Boolean = isSystemInDarkTheme(),
     content: @Composable () -> Unit,
 ) {
-    MaterialTheme(colorScheme = if (dark) DarkColors else LightColors, content = content)
+    CompositionLocalProvider(LocalLingleafColors provides if (dark) DarkLingleafColors else LightLingleafColors) {
+        MaterialTheme(colorScheme = if (dark) DarkColors else LightColors, content = content)
+    }
 }

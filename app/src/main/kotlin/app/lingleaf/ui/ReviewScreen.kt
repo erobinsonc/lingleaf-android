@@ -3,15 +3,17 @@ package app.lingleaf.ui
 import androidx.compose.animation.AnimatedContent
 import androidx.compose.foundation.layout.Arrangement
 import androidx.compose.foundation.layout.Box
+import androidx.compose.foundation.layout.BoxWithConstraints
 import androidx.compose.foundation.layout.Column
 import androidx.compose.foundation.layout.Row
-import androidx.compose.foundation.layout.Spacer
 import androidx.compose.foundation.layout.fillMaxSize
 import androidx.compose.foundation.layout.fillMaxWidth
-import androidx.compose.foundation.layout.height
+import androidx.compose.foundation.layout.heightIn
 import androidx.compose.foundation.layout.navigationBarsPadding
 import androidx.compose.foundation.layout.padding
 import androidx.compose.foundation.layout.size
+import androidx.compose.foundation.rememberScrollState
+import androidx.compose.foundation.verticalScroll
 import androidx.compose.material.icons.Icons
 import androidx.compose.material.icons.automirrored.filled.VolumeUp
 import androidx.compose.material.icons.filled.Verified
@@ -36,6 +38,10 @@ import androidx.compose.ui.Alignment
 import androidx.compose.ui.Modifier
 import androidx.compose.ui.res.pluralStringResource
 import androidx.compose.ui.res.stringResource
+import androidx.compose.ui.semantics.LiveRegionMode
+import androidx.compose.ui.semantics.contentDescription
+import androidx.compose.ui.semantics.liveRegion
+import androidx.compose.ui.semantics.semantics
 import androidx.compose.ui.text.font.FontStyle
 import androidx.compose.ui.text.font.FontWeight
 import androidx.compose.ui.text.style.TextAlign
@@ -118,59 +124,97 @@ private fun ReviewCard(
             .navigationBarsPadding()
             .padding(20.dp),
     ) {
-        LinearProgressIndicator(progress = { progress }, modifier = Modifier.fillMaxWidth())
-        Spacer(Modifier.weight(1f))
-        Card(
-            colors = CardDefaults.cardColors(containerColor = MaterialTheme.colorScheme.surfaceContainer),
-            modifier = Modifier.fillMaxWidth(),
+        val progressLabel = stringResource(R.string.review_progress)
+        LinearProgressIndicator(
+            progress = { progress },
+            modifier = Modifier.fillMaxWidth().semantics { contentDescription = progressLabel },
+            // The default lavender track is ≈1.2:1 on paper; the outline colour stays visible at 0%.
+            trackColor = MaterialTheme.colorScheme.outline,
+        )
+        // The card scrolls (large text, landscape) while the answer buttons stay at the bottom.
+        BoxWithConstraints(
+            Modifier
+                .weight(1f)
+                .fillMaxWidth(),
         ) {
             Column(
                 Modifier
+                    .verticalScroll(rememberScrollState())
                     .fillMaxWidth()
-                    .padding(24.dp),
-                horizontalAlignment = Alignment.CenterHorizontally,
-                verticalArrangement = Arrangement.spacedBy(12.dp),
+                    .heightIn(min = maxHeight)
+                    .padding(vertical = 16.dp),
+                verticalArrangement = Arrangement.Center,
             ) {
-                Row(verticalAlignment = Alignment.CenterVertically) {
-                    Text(word.word, style = MaterialTheme.typography.headlineMedium, fontWeight = FontWeight.SemiBold)
-                    IconButton(onClick = { container.speaker.speak(word.word, container.library.state.value.settings.speechRate) }) {
-                        Icon(Icons.AutoMirrored.Filled.VolumeUp, contentDescription = stringResource(R.string.listen))
-                    }
-                }
-                if (word.context.isNotEmpty()) {
-                    Text(word.context, fontStyle = FontStyle.Italic, textAlign = TextAlign.Center)
-                }
-                AnimatedContent(targetState = revealed, label = "reveal") { shown ->
-                    if (shown) {
-                        Column(horizontalAlignment = Alignment.CenterHorizontally) {
-                            if (word.phonetic.isNotEmpty()) Text(word.phonetic, color = MaterialTheme.colorScheme.onSurfaceVariant)
-                            Text(
-                                word.translation.ifEmpty { stringResource(R.string.no_translation) },
-                                style = MaterialTheme.typography.headlineSmall,
-                            )
+                Card(
+                    colors = CardDefaults.cardColors(containerColor = MaterialTheme.colorScheme.surfaceContainer),
+                    modifier = Modifier.fillMaxWidth(),
+                ) {
+                    Column(
+                        Modifier
+                            .fillMaxWidth()
+                            .padding(24.dp),
+                        horizontalAlignment = Alignment.CenterHorizontally,
+                        verticalArrangement = Arrangement.spacedBy(12.dp),
+                    ) {
+                        Row(verticalAlignment = Alignment.CenterVertically) {
+                            Text(word.word, style = MaterialTheme.typography.headlineMedium, fontWeight = FontWeight.SemiBold)
+                            IconButton(
+                                onClick = { container.speaker.speak(word.word, container.library.state.value.settings.speechRate) },
+                            ) {
+                                Icon(
+                                    Icons.AutoMirrored.Filled.VolumeUp,
+                                    contentDescription = stringResource(R.string.listen_word, word.word),
+                                )
+                            }
                         }
-                    } else {
-                        FilledTonalButton(onClick = onReveal) { Text(stringResource(R.string.show_meaning)) }
+                        if (word.context.isNotEmpty()) {
+                            Text(word.context, fontStyle = FontStyle.Italic, textAlign = TextAlign.Center)
+                        }
+                        // A polite live region: when "Show meaning" is replaced by the answer,
+                        // TalkBack reads the translation instead of going silent.
+                        AnimatedContent(
+                            targetState = revealed,
+                            label = "reveal",
+                            modifier = Modifier.semantics { liveRegion = LiveRegionMode.Polite },
+                        ) { shown ->
+                            if (shown) {
+                                Column(
+                                    horizontalAlignment = Alignment.CenterHorizontally,
+                                    modifier = Modifier.semantics(mergeDescendants = true) {},
+                                ) {
+                                    if (word.phonetic.isNotEmpty()) Text(word.phonetic, color = MaterialTheme.colorScheme.onSurfaceVariant)
+                                    Text(
+                                        word.translation.ifEmpty { stringResource(R.string.no_translation) },
+                                        style = MaterialTheme.typography.headlineSmall,
+                                        textAlign = TextAlign.Center,
+                                    )
+                                }
+                            } else {
+                                FilledTonalButton(onClick = onReveal) { Text(stringResource(R.string.show_meaning)) }
+                            }
+                        }
                     }
                 }
             }
         }
-        Spacer(Modifier.weight(1f))
-        Row(horizontalArrangement = Arrangement.spacedBy(12.dp)) {
+        Row(
+            horizontalArrangement = Arrangement.spacedBy(12.dp),
+            modifier = Modifier.padding(top = 12.dp),
+        ) {
             OutlinedButton(
                 onClick = { onAnswer(false) },
                 modifier =
                     Modifier
                         .weight(1f)
-                        .height(52.dp),
-            ) { Text(stringResource(R.string.again)) }
+                        .heightIn(min = 52.dp),
+            ) { Text(stringResource(R.string.again), textAlign = TextAlign.Center) }
             Button(
                 onClick = { onAnswer(true) },
                 modifier =
                     Modifier
                         .weight(1f)
-                        .height(52.dp),
-            ) { Text(stringResource(R.string.i_know_it)) }
+                        .heightIn(min = 52.dp),
+            ) { Text(stringResource(R.string.i_know_it), textAlign = TextAlign.Center) }
         }
     }
 }

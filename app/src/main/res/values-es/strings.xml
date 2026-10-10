@@ -18,6 +18,7 @@
     <string name="cancel">Cancelar</string>
     <string name="imported">“%1$s” se agregó a tu biblioteca.</string>
     <string name="import_failed">No se pudo importar. Intenta con un libro en inglés en texto plano (.txt).</string>
+    <string name="import_too_large">Ese archivo es demasiado grande para importarlo (máximo 10 MB).</string>
     <string name="level">Nivel %1$s</string>
     <string name="progress_percent">%1$d%%</string>
 
@@ -36,11 +37,14 @@
     <string name="larger_text">Letra más grande</string>
     <string name="book_empty">Este libro está vacío.</string>
     <string name="book_open_failed">No se pudo abrir el libro.</string>
+    <string name="learning_word">%1$s, aprendiendo</string>
+    <string name="look_up_word">Buscar %1$s</string>
 
-    <string name="listen">Escuchar</string>
+    <string name="listen_word">Escuchar %1$s</string>
     <string name="listen_sentence">Escuchar la frase</string>
     <string name="in_text">En el texto: %1$s</string>
     <string name="translation_unavailable">Traducción no disponible. Conéctate a internet una vez para descargar el idioma.</string>
+    <string name="translating">Traduciendo…</string>
     <string name="no_definition">Sin definición disponible.</string>
     <string name="already_saved">Ya está en tus palabras</string>
     <string name="already_learned">La marcaste como aprendida</string>
@@ -59,6 +63,7 @@
     <string name="catalog_failed">No se pudo cargar el catálogo. Revisa tu conexión.</string>
     <string name="retry">Reintentar</string>
     <string name="get">Obtener</string>
+    <string name="get_book">Obtener %1$s</string>
     <string name="in_library">En tu biblioteca</string>
     <string name="downloaded">“%1$s” está en tu biblioteca.</string>
     <string name="download_failed">No se pudo descargar “%1$s”. Intenta de nuevo.</string>
@@ -78,9 +83,11 @@
     <string name="filter_learned">Aprendidas</string>
     <string name="words_empty">Aún no tienes palabras. Mientras lees, toca una palabra y elige Aprender.</string>
     <string name="learned_empty">Aún no tienes palabras aprendidas.</string>
-    <string name="mark_learned">Marcar como aprendida</string>
-    <string name="review_again">Volver a repasar</string>
-    <string name="delete_word">Eliminar palabra</string>
+    <string name="mark_learned_word">Marcar %1$s como aprendida</string>
+    <string name="review_again_word">Volver a repasar %1$s</string>
+    <string name="delete_word">Eliminar %1$s</string>
+    <string name="delete_word_title">¿Eliminar “%1$s”?</string>
+    <string name="delete_word_message">Se quitará de tus palabras junto con su progreso de repaso.</string>
 
     <string name="review_title">Repaso</string>
     <string name="show_meaning">Mostrar significado</string>
@@ -104,6 +111,7 @@
     <string name="text_size">Tamaño de letra</string>
     <string name="voice">Voz</string>
     <string name="speech_speed">Velocidad de la voz</string>
+    <string name="speech_speed_value">%1$s×</string>
     <string name="test_voice">Probar la voz</string>
     <string name="translation">Traducción</string>
     <string name="translate_to">Traducir al</string>
@@ -112,4 +120,6 @@
     <string name="source_code">Código fuente</string>
     <string name="open_source_note">Lingleaf es open source (licencia MIT).</string>
     <string name="credits">Libros: Project Gutenberg (dominio público). Definiciones: dictionaryapi.dev. Traducción: Google ML Kit, en el teléfono. Sin cuentas, sin anuncios, sin rastreo.</string>
+    <string name="reading_progress">Progreso de lectura</string>
+    <string name="review_progress">Progreso del repaso</string>
 </resources>

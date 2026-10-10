@@ -32,9 +32,11 @@ import androidx.compose.ui.platform.LocalContext
 import androidx.compose.ui.res.stringResource
 import androidx.compose.ui.unit.dp
 import androidx.lifecycle.compose.collectAsStateWithLifecycle
+import app.lingleaf.MAX_BYTES
 import app.lingleaf.R
 import app.lingleaf.core.Book
-import app.lingleaf.core.GutenbergClient
+import app.lingleaf.core.NetworkException
+import app.lingleaf.readCapped
 import kotlinx.coroutines.launch
 import kotlinx.coroutines.withContext
 
@@ -58,13 +60,15 @@ fun LibraryScreen(onOpenBook: (String) -> Unit) {
                             val name =
                                 resolver.query(uri, arrayOf(OpenableColumns.DISPLAY_NAME), null, null, null)?.use { cursor ->
                                     if (cursor.moveToFirst()) cursor.getString(0) else null
-                                } ?: "Book"
-                            val raw = resolver.openInputStream(uri)?.use { it.readBytes().toString(Charsets.UTF_8) }.orEmpty()
-                            val text = GutenbergClient.stripBoilerplate(raw)
-                            require(text.isNotBlank())
-                            val title = name.removeSuffix(".txt").removeSuffix(".TXT")
-                            container.library.addBook(title, "—", text)
-                            context.getString(R.string.imported, title)
+                                } ?: ""
+                            val raw =
+                                try {
+                                    resolver.openInputStream(uri)?.use { it.readCapped(MAX_BYTES).toString(Charsets.UTF_8) }.orEmpty()
+                                } catch (_: NetworkException) {
+                                    return@runCatching context.getString(R.string.import_too_large)
+                                }
+                            val book = container.library.importText(name, raw)
+                            context.getString(R.string.imported, book.title)
                         }.getOrElse { context.getString(R.string.import_failed) }
                     }
                 snackbar.showSnackbar(message)

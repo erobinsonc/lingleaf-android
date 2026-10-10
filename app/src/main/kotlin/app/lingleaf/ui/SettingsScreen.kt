@@ -33,6 +33,7 @@ import androidx.compose.ui.platform.LocalUriHandler
 import androidx.compose.ui.res.stringResource
 import androidx.compose.ui.semantics.contentDescription
 import androidx.compose.ui.semantics.semantics
+import androidx.compose.ui.semantics.stateDescription
 import androidx.compose.ui.unit.dp
 import androidx.compose.ui.unit.sp
 import androidx.lifecycle.compose.collectAsStateWithLifecycle
@@ -40,6 +41,8 @@ import app.lingleaf.R
 import app.lingleaf.TRANSLATION_LANGUAGES
 import app.lingleaf.defaultTargetLanguage
 import app.lingleaf.languageName
+import java.util.Locale
+import kotlin.math.roundToInt
 
 private const val REPOSITORY_URL = "https://github.com/erobinsonc/lingleaf-android"
 
@@ -76,6 +79,8 @@ fun SettingsScreen() {
 
             SectionHeader(stringResource(R.string.reading))
             val textSize = stringResource(R.string.text_size)
+            // Read as "Text size, 20" instead of a percentage of the slider's range.
+            val textSizeValue = "%d".format(Locale.getDefault(), settings.fontSize.roundToInt())
             Slider(
                 value = settings.fontSize,
                 onValueChange = { value -> library.updateSettings { it.copy(fontSize = value) } },
@@ -84,7 +89,10 @@ fun SettingsScreen() {
                 modifier =
                     Modifier
                         .padding(horizontal = 16.dp)
-                        .semantics { contentDescription = textSize },
+                        .semantics {
+                            contentDescription = textSize
+                            stateDescription = textSizeValue
+                        },
             )
             Text(
                 "All animals are equal.",
@@ -95,6 +103,7 @@ fun SettingsScreen() {
 
             SectionHeader(stringResource(R.string.voice))
             val speechSpeed = stringResource(R.string.speech_speed)
+            val speechSpeedValue = stringResource(R.string.speech_speed_value, "%.1f".format(Locale.getDefault(), settings.speechRate))
             Slider(
                 value = settings.speechRate,
                 onValueChange = { value -> library.updateSettings { it.copy(speechRate = value) } },
@@ -102,7 +111,10 @@ fun SettingsScreen() {
                 modifier =
                     Modifier
                         .padding(horizontal = 16.dp)
-                        .semantics { contentDescription = speechSpeed },
+                        .semantics {
+                            contentDescription = speechSpeed
+                            stateDescription = speechSpeedValue
+                        },
             )
             ListItem(
                 colors = itemColors,

@@ -32,6 +32,8 @@ import androidx.compose.runtime.snapshotFlow
 import androidx.compose.ui.Alignment
 import androidx.compose.ui.Modifier
 import androidx.compose.ui.res.stringResource
+import androidx.compose.ui.semantics.contentDescription
+import androidx.compose.ui.semantics.semantics
 import androidx.compose.ui.text.TextStyle
 import androidx.compose.ui.unit.dp
 import androidx.compose.ui.unit.em
@@ -109,7 +111,13 @@ fun ReaderScreen(
         },
     ) { modifier ->
         Column(modifier.fillMaxSize()) {
-            LinearProgressIndicator(progress = { book?.progress ?: 0f }, modifier = Modifier.fillMaxWidth())
+            val progressLabel = stringResource(R.string.reading_progress)
+            LinearProgressIndicator(
+                progress = { book?.progress ?: 0f },
+                modifier = Modifier.fillMaxWidth().semantics { contentDescription = progressLabel },
+                // The default lavender track is ≈1.2:1 on paper; the outline colour stays visible at 0%.
+                trackColor = MaterialTheme.colorScheme.outline,
+            )
             val loaded = paragraphs
             when {
                 loaded == null -> Box(Modifier.fillMaxSize(), contentAlignment = Alignment.Center) { CircularProgressIndicator() }

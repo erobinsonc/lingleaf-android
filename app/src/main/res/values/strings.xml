@@ -22,6 +22,7 @@
     <string name="cancel">Cancel</string>
     <string name="imported">“%1$s” added to your library.</string>
     <string name="import_failed">Couldn\'t import that file. Try a plain-text (.txt) English book.</string>
+    <string name="import_too_large">That file is too large to import (10 MB maximum).</string>
     <string name="level">Level %1$s</string>
     <string name="progress_percent">%1$d%%</string>
 
@@ -41,12 +42,17 @@
     <string name="larger_text">Larger text</string>
     <string name="book_empty">This book is empty.</string>
     <string name="book_open_failed">Couldn\'t open the book.</string>
+    <!-- Screen readers: a word in the text that the user is learning. -->
+    <string name="learning_word">%1$s, learning</string>
+    <!-- Screen reader action on a paragraph that opens the card of one word. -->
+    <string name="look_up_word">Look up %1$s</string>
 
     <!-- Word card -->
-    <string name="listen">Listen</string>
+    <string name="listen_word">Listen to %1$s</string>
     <string name="listen_sentence">Listen to the sentence</string>
     <string name="in_text">In the text: %1$s</string>
     <string name="translation_unavailable">Translation unavailable. Connect to the internet once to download the language.</string>
+    <string name="translating">Translating…</string>
     <string name="no_definition">No definition available.</string>
     <string name="already_saved">Already in your words</string>
     <string name="already_learned">You marked it as learned</string>
@@ -66,6 +72,8 @@
     <string name="catalog_failed">Couldn\'t load the catalog. Check your connection.</string>
     <string name="retry">Retry</string>
     <string name="get">Get</string>
+    <!-- Screen readers: the Get button with the book it downloads. -->
+    <string name="get_book">Get %1$s</string>
     <string name="in_library">In your library</string>
     <string name="downloaded">“%1$s” is in your library.</string>
     <string name="download_failed">Couldn\'t download “%1$s”. Try again.</string>
@@ -85,9 +93,11 @@
     <string name="filter_learned">Learned</string>
     <string name="words_empty">No words yet. While reading, tap a word and choose Learn.</string>
     <string name="learned_empty">No learned words yet.</string>
-    <string name="mark_learned">Mark as learned</string>
-    <string name="review_again">Review again</string>
-    <string name="delete_word">Delete word</string>
+    <string name="mark_learned_word">Mark %1$s as learned</string>
+    <string name="review_again_word">Review %1$s again</string>
+    <string name="delete_word">Delete %1$s</string>
+    <string name="delete_word_title">Delete “%1$s”?</string>
+    <string name="delete_word_message">It will be removed from your words, along with its review progress.</string>
 
     <!-- Review -->
     <string name="review_title">Review</string>
@@ -112,6 +122,8 @@
     <string name="text_size">Text size</string>
     <string name="voice">Voice</string>
     <string name="speech_speed">Speech speed</string>
+    <!-- Speech rate as a multiplier, e.g. "0.9×". -->
+    <string name="speech_speed_value">%1$s×</string>
     <string name="test_voice">Test the voice</string>
     <string name="translation">Translation</string>
     <string name="translate_to">Translate to</string>
@@ -120,4 +132,6 @@
     <string name="source_code">Source code</string>
     <string name="open_source_note">Lingleaf is open source (MIT license).</string>
     <string name="credits">Books: Project Gutenberg (public domain). Definitions: dictionaryapi.dev. Translation: Google ML Kit, on device. No accounts, no ads, no tracking.</string>
+    <string name="reading_progress">Reading progress</string>
+    <string name="review_progress">Review progress</string>
 </resources>
