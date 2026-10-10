@@ -22,8 +22,8 @@ the same intent on both platforms. A change to behaviour updates this file in
 | S1 | First launch | Library shows 3 bundled stories (A1, A2, B1) and the daily goal card. |
 | S2 | Open a book | Reader shows the text; returning later reopens at the same paragraph. |
 | S3 | Tap a word | A card shows the base form ("animals" → "animal"), IPA, translation, definition, the sentence and its translation. Translation starts when the card opens, alongside the definition. The translation is in the learner's language; a small language button under it changes the language in place. |
-| S4 | Save word | "Save word" (primary, right) saves the word for review; it is underlined in yellow in every book, including inflected forms. A message "“word” saved to Words" with Undo shows for 4 s (8 s with a screen reader). |
-| S5 | I know it | "I know it" (secondary, left) saves the word as known; it is not underlined or reviewed. A message "“word” marked as known" with Undo shows for 4 s (8 s with a screen reader). |
+| S4 | Save word | "Save word" (primary, right) saves the word for review; it is underlined in yellow in every book, including inflected forms. A message "“word” saved to Words" with Undo shows for 4 s, longer when the system asks for more time to act; with a screen reader or switch/voice control it stays until dismissed. |
+| S5 | I know it | "I know it" (secondary, left) saves the word as known; it is not underlined or reviewed. A message "“word” marked as known" with Undo shows like S4. |
 | S6 | Listen | Word, sentence and paragraph can be read aloud with an English voice. |
 | S7 | Review | Due words appear as flashcards; "I know it" schedules them 1, 3, 7, 14, 30 days out, then marks them learned; "Again" repeats them. |
 | S8 | Daily goal | Reading time counts while the reader is open; the card shows minutes today and the streak (days meeting the goal). |
@@ -33,7 +33,7 @@ the same intent on both platforms. A change to behaviour updates this file in
 | S12 | Offline | Without internet the reader, saved words and review work; the card says translation/definition are unavailable (a platform may name the reason, e.g. Android needs Wi‑Fi once to download the language). Saving a word never waits for translation; a missing translation is filled in on the device as soon as it is available, and Review shows "No translation yet. Connect to the internet once to get it." until then. |
 | S13 | Level filter | Discover shows chips "All" plus each level in the recommended list (A2–C2); "All" is selected by default, a level shows only its recommended books, in order; an empty level says "No recommended books at this level."; the chips hide while search results show. |
 | S14 | Translation language | The default is the first language in the device's preferred-language list that is supported and not English (Chinese → Simplified). If there is none, the first word card asks once "Translate into:" with up to 5 languages (the region's language first, then Español, Português, Français, 中文, العربية, without repeats) and "More languages"; the choice is saved. Each saved word records its translation language; words in another language are translated again when shown. |
-| S15 | Saved state on the card | A saved word's card shows "✓ Saved" or "✓ I know it"; tapping the checked button removes that state, with Undo (4 s, 8 s with a screen reader). Deleting a word in Words happens at once and offers Undo for 5 s (10 s with a screen reader; no confirmation dialog). |
+| S15 | Saved state on the card | A saved word's card shows "✓ Saved" or "✓ I know it"; tapping the checked button removes that state, with Undo (timing as in S4). Deleting a word in Words happens at once and offers Undo for 5 s with the same rules (no confirmation dialog). The language button under the translation is announced as "Translation language: <language>". |
 
 ## Shared logic (same rules, same tests on both platforms)
 
