@@ -1,0 +1,80 @@
+# Walks every main screen and takes a screenshot of each one.
+# CI runs it on an Android emulator and publishes the images to the
+# `screenshots` branch (see .github/workflows/screenshots.yml).
+appId: app.lingleaf
+---
+- launchApp:
+    clearState: true
+# Dismisses a system "isn't responding" dialog if the emulator shows one.
+- tapOn:
+    text: "Wait"
+    optional: true
+- extendedWaitUntil:
+    visible: "The Red Boat"
+    timeout: 20000
+- takeScreenshot: 01-library
+
+- tapOn: "The Red Boat"
+- extendedWaitUntil:
+    visible: "Tom lives in a small house by the sea.*"
+    timeout: 10000
+- takeScreenshot: 02-reader
+
+# Taps the middle of the first paragraph, which lands on a word.
+- tapOn: "Tom lives in a small house by the sea.*"
+- extendedWaitUntil:
+    visible: "Learned"
+    timeout: 10000
+# The first translation downloads the ML Kit language model (~30 MB) and the
+# definition comes from the network; give both time before the screenshot.
+- extendedWaitUntil:
+    visible: "Definition not expected on screen"
+    timeout: 25000
+    optional: true
+- takeScreenshot: 03-word-card
+- tapOn: "Learn"
+# The card closes with an animation; wait until it's gone so `back` leaves the reader.
+- extendedWaitUntil:
+    notVisible: "Learned"
+    timeout: 10000
+- takeScreenshot: 04-reader-with-marked-word
+- back
+# The bottom bar only exists outside the reader. If the first `back` was
+# consumed by something else, press it again.
+- runFlow:
+    when:
+      notVisible: "Discover"
+    commands:
+      - back
+- extendedWaitUntil:
+    visible: "Discover"
+    timeout: 10000
+
+- tapOn: "Words"
+# Screen changes cross-fade; wait for content unique to Words before capturing.
+- extendedWaitUntil:
+    visible: "Review now"
+    timeout: 10000
+- waitForAnimationToEnd
+- takeScreenshot: 05-words
+- tapOn: "Review now"
+- extendedWaitUntil:
+    visible: "Show meaning"
+    timeout: 10000
+- waitForAnimationToEnd
+- takeScreenshot: 06-review
+- tapOn: "Show meaning"
+- waitForAnimationToEnd
+- takeScreenshot: 07-review-meaning
+- back
+
+- tapOn: "Discover"
+# The catalog comes from gutendex.com, which can take a while to answer.
+- extendedWaitUntil:
+    visible: "Get"
+    timeout: 60000
+    optional: true
+- takeScreenshot: 08-discover
+
+- tapOn: "Settings"
+- takeScreenshot: 09-settings
