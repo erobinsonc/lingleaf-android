@@ -3,6 +3,7 @@ package app.lingleaf
 import android.content.Context
 import android.speech.tts.TextToSpeech
 import android.speech.tts.UtteranceProgressListener
+import android.util.Log
 import app.lingleaf.core.BundledStory
 import app.lingleaf.core.DictionaryClient
 import app.lingleaf.core.GutenbergClient
@@ -16,6 +17,7 @@ import com.google.mlkit.nl.translate.TranslateLanguage
 import com.google.mlkit.nl.translate.Translation
 import com.google.mlkit.nl.translate.TranslatorOptions
 import kotlinx.coroutines.CoroutineDispatcher
+import kotlinx.coroutines.CoroutineExceptionHandler
 import kotlinx.coroutines.CoroutineScope
 import kotlinx.coroutines.Dispatchers
 import kotlinx.coroutines.SupervisorJob
@@ -60,8 +62,14 @@ class AppContainer(
     val bundledStories: () -> List<BundledStory>,
     val io: CoroutineDispatcher = Dispatchers.IO,
 ) {
-    /** Outlives screens, for work that must finish after one closes (saving progress). */
-    val appScope = CoroutineScope(SupervisorJob() + io)
+    /**
+     * Outlives screens, for work that must finish after one closes (saving progress).
+     * A failed background save is logged instead of crashing the app.
+     */
+    val appScope =
+        CoroutineScope(
+            SupervisorJob() + io + CoroutineExceptionHandler { _, error -> Log.w("Lingleaf", "Background work failed", error) },
+        )
 
     companion object {
         private val STORIES =

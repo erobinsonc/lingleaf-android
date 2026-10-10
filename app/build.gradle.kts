@@ -35,6 +35,13 @@ android {
     testOptions {
         unitTests {
             isIncludeAndroidResources = true
+            all { test ->
+                // Full stack traces in the CI log, so failures can be read without the report.
+                test.testLogging {
+                    events("failed")
+                    exceptionFormat = org.gradle.api.tasks.testing.logging.TestExceptionFormat.FULL
+                }
+            }
         }
     }
 
