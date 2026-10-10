@@ -61,7 +61,7 @@ talks only to `gutendex.com` / `gutenberg.org` (books) and `api.dictionaryapi.de
 (definitions), always over HTTPS.
 
 Translation runs on the device with Google ML Kit. ML Kit downloads each language
-model (about 30 MB) from Google the first time, over Wi‑Fi only, and, as Google documents for ML Kit,
+model (about 30 MB) from Google in the background as soon as the translation language is known, over Wi‑Fi only, and, as Google documents for ML Kit,
 sends Google anonymous usage and diagnostics data
 ([ML Kit terms](https://developers.google.com/ml-kit/terms)). The words you look up
 are translated on the device and are not sent.
