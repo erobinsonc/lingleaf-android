@@ -38,6 +38,7 @@ import app.lingleaf.ui.LingleafApp
 import kotlinx.coroutines.flow.MutableStateFlow
 import kotlinx.coroutines.flow.StateFlow
 import org.junit.Assert.assertEquals
+import org.junit.Assert.assertNull
 import org.junit.Assert.assertTrue
 import org.junit.Before
 import org.junit.Rule
@@ -468,5 +469,30 @@ class AppTest {
         compose.onNodeWithText(noDefinition).assertExists()
         compose.onNodeWithText("igual").assertDoesNotExist()
         compose.onAllNodes(paragraph).onFirst().assertExists()
+
+        // Saving never waits for the translation: the card closes and the word is saved without one.
+        compose.onNodeWithText("Save word").performClick()
+        compose.waitUntil(WAIT_MS) { container.library.state.value.word("equal") != null }
+        compose.waitUntil(WAIT_MS) { compose.onAllNodesWithText(unavailable).fetchSemanticsNodes().isEmpty() }
+        compose.onNodeWithText("Save word").assertDoesNotExist()
+        val saved = container.library.state.value.word("equal")!!
+        assertEquals("", saved.translation)
+        assertNull(saved.translationLanguage)
+        assertTrue(container.library.state.value.isLearning("equal"))
+    }
+
+    // S12: a word saved without a translation says so in Review until one can be made.
+    @Test
+    fun reviewSaysWhenAWordHasNoTranslationYet() {
+        offline = true
+        val context = ApplicationProvider.getApplicationContext<Context>()
+        container.library.saveWord("bay", learned = false, context = "The edge of the bay.")
+        compose.onAllNodesWithText("Words").onFirst().performClick()
+        compose.onNodeWithText("Review now").performClick()
+        compose.onNodeWithText("Show meaning").performClick()
+
+        val noTranslation = context.getString(R.string.no_translation)
+        compose.waitUntil(WAIT_MS) { compose.onAllNodesWithText(noTranslation).fetchSemanticsNodes().isNotEmpty() }
+        assertEquals("", container.library.state.value.word("bay")!!.translation)
     }
 }
