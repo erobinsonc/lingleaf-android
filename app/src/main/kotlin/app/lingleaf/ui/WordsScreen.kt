@@ -14,8 +14,6 @@ import androidx.compose.material.icons.filled.Check
 import androidx.compose.material.icons.filled.Delete
 import androidx.compose.material.icons.filled.Replay
 import androidx.compose.material.icons.filled.Style
-import androidx.compose.material3.AlertDialog
-import androidx.compose.material3.Button
 import androidx.compose.material3.Card
 import androidx.compose.material3.CardDefaults
 import androidx.compose.material3.Icon
@@ -26,16 +24,19 @@ import androidx.compose.material3.MaterialTheme
 import androidx.compose.material3.SegmentedButton
 import androidx.compose.material3.SegmentedButtonDefaults
 import androidx.compose.material3.SingleChoiceSegmentedButtonRow
+import androidx.compose.material3.SnackbarHostState
 import androidx.compose.material3.Text
-import androidx.compose.material3.TextButton
 import androidx.compose.runtime.Composable
+import androidx.compose.runtime.LaunchedEffect
 import androidx.compose.runtime.getValue
 import androidx.compose.runtime.mutableStateOf
 import androidx.compose.runtime.remember
+import androidx.compose.runtime.rememberCoroutineScope
 import androidx.compose.runtime.saveable.rememberSaveable
 import androidx.compose.runtime.setValue
 import androidx.compose.ui.Modifier
 import androidx.compose.ui.graphics.Color
+import androidx.compose.ui.platform.LocalContext
 import androidx.compose.ui.res.pluralStringResource
 import androidx.compose.ui.res.stringResource
 import androidx.compose.ui.text.font.FontStyle
@@ -46,6 +47,7 @@ import androidx.compose.ui.unit.dp
 import androidx.lifecycle.compose.collectAsStateWithLifecycle
 import app.lingleaf.R
 import app.lingleaf.core.VocabWord
+import kotlinx.coroutines.launch
 
 @Composable
 fun WordsScreen(onReview: () -> Unit) {
@@ -55,9 +57,26 @@ fun WordsScreen(onReview: () -> Unit) {
     var showLearned by rememberSaveable { mutableStateOf(false) }
     val due = remember(state.words) { library.dueWords().size }
     val words = state.words.filter { it.learned == showLearned }
-    var toDelete by remember { mutableStateOf<VocabWord?>(null) }
+    val context = LocalContext.current
+    val scope = rememberCoroutineScope()
+    val snackbar = remember { SnackbarHostState() }
+    // 5 s, or 10 s while a screen reader is on (SPEC S15).
+    val undoMillis = if (rememberScreenReaderOn()) 10_000L else 5_000L
+    val target = container.targetLanguage(state.settings)
 
-    ScreenScaffold(title = stringResource(R.string.words_title)) { modifier ->
+    // Fill in missing or other-language translations on the device (SPEC S12, S14).
+    LaunchedEffect(target) { target?.let(container::fillMissingTranslations) }
+
+    fun delete(word: VocabWord) {
+        library.deleteWord(word.word)
+        scope.launch {
+            snackbar.showUndo(context.getString(R.string.word_deleted_message, word.word), context.getString(R.string.undo), undoMillis) {
+                library.restoreWord(word.word, word)
+            }
+        }
+    }
+
+    ScreenScaffold(title = stringResource(R.string.words_title), snackbarHostState = snackbar) { modifier ->
         LazyColumn(modifier) {
             item {
                 Card(
@@ -95,7 +114,7 @@ fun WordsScreen(onReview: () -> Unit) {
                         .fillMaxWidth()
                         .padding(horizontal = 16.dp, vertical = 8.dp),
                 ) {
-                    listOf(false to R.string.filter_learning, true to R.string.filter_learned).forEachIndexed { index, (learned, label) ->
+                    listOf(false to R.string.filter_learning, true to R.string.filter_known).forEachIndexed { index, (learned, label) ->
                         SegmentedButton(
                             selected = showLearned == learned,
                             onClick = { showLearned = learned },
@@ -107,7 +126,7 @@ fun WordsScreen(onReview: () -> Unit) {
             if (words.isEmpty()) {
                 item {
                     Text(
-                        stringResource(if (showLearned) R.string.learned_empty else R.string.words_empty),
+                        stringResource(if (showLearned) R.string.known_empty else R.string.words_empty),
                         textAlign = TextAlign.Center,
                         modifier =
                             Modifier
@@ -116,23 +135,8 @@ fun WordsScreen(onReview: () -> Unit) {
                     )
                 }
             }
-            items(words, key = { it.word }) { word -> WordRow(word, onDelete = { toDelete = word }) }
+            items(words, key = { it.word }) { word -> WordRow(word, onDelete = { delete(word) }) }
         }
-    }
-
-    toDelete?.let { word ->
-        AlertDialog(
-            onDismissRequest = { toDelete = null },
-            title = { Text(stringResource(R.string.delete_word_title, word.word)) },
-            text = { Text(stringResource(R.string.delete_word_message)) },
-            confirmButton = {
-                Button(onClick = {
-                    toDelete = null
-                    library.deleteWord(word.word)
-                }) { Text(stringResource(R.string.delete)) }
-            },
-            dismissButton = { TextButton(onClick = { toDelete = null }) { Text(stringResource(R.string.cancel)) } },
-        )
     }
 }
 
@@ -177,7 +181,7 @@ private fun WordRow(
                     if (word.learned) {
                         Icon(Icons.Filled.Replay, contentDescription = stringResource(R.string.review_again_word, word.word))
                     } else {
-                        Icon(Icons.Filled.Check, contentDescription = stringResource(R.string.mark_learned_word, word.word))
+                        Icon(Icons.Filled.Check, contentDescription = stringResource(R.string.mark_known_word, word.word))
                     }
                 }
                 IconButton(onClick = onDelete) {

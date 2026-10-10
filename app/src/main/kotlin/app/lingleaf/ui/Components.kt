@@ -2,6 +2,7 @@
 
 package app.lingleaf.ui
 
+import android.view.accessibility.AccessibilityManager
 import androidx.compose.foundation.background
 import androidx.compose.foundation.layout.Arrangement
 import androidx.compose.foundation.layout.Box
@@ -22,6 +23,8 @@ import androidx.compose.material.icons.filled.Whatshot
 import androidx.compose.material3.Card
 import androidx.compose.material3.CardDefaults
 import androidx.compose.material3.CircularProgressIndicator
+import androidx.compose.material3.DropdownMenu
+import androidx.compose.material3.DropdownMenuItem
 import androidx.compose.material3.ExperimentalMaterial3Api
 import androidx.compose.material3.Icon
 import androidx.compose.material3.IconButton
@@ -30,8 +33,10 @@ import androidx.compose.material3.ListItem
 import androidx.compose.material3.ListItemDefaults
 import androidx.compose.material3.MaterialTheme
 import androidx.compose.material3.Scaffold
+import androidx.compose.material3.SnackbarDuration
 import androidx.compose.material3.SnackbarHost
 import androidx.compose.material3.SnackbarHostState
+import androidx.compose.material3.SnackbarResult
 import androidx.compose.material3.Text
 import androidx.compose.material3.TopAppBar
 import androidx.compose.material3.TopAppBarDefaults
@@ -49,6 +54,7 @@ import androidx.compose.ui.geometry.CornerRadius
 import androidx.compose.ui.geometry.Offset
 import androidx.compose.ui.geometry.Size
 import androidx.compose.ui.graphics.Color
+import androidx.compose.ui.platform.LocalContext
 import androidx.compose.ui.platform.LocalDensity
 import androidx.compose.ui.res.pluralStringResource
 import androidx.compose.ui.res.stringResource
@@ -72,8 +78,11 @@ import androidx.compose.ui.unit.dp
 import androidx.compose.ui.unit.sp
 import androidx.lifecycle.compose.collectAsStateWithLifecycle
 import app.lingleaf.R
+import app.lingleaf.TRANSLATION_LANGUAGES
 import app.lingleaf.core.Book
 import app.lingleaf.core.WordRange
+import app.lingleaf.languageName
+import kotlinx.coroutines.withTimeoutOrNull
 
 /** Screen frame: top bar plus content; the bottom bar lives in [LingleafApp]. */
 @Composable
@@ -102,6 +111,51 @@ fun ScreenScaffold(
         },
         snackbarHost = { snackbarHostState?.let { SnackbarHost(it) } },
     ) { padding -> content(Modifier.padding(padding)) }
+}
+
+/** True while TalkBack (or another touch-exploration screen reader) is on. */
+@Composable
+fun rememberScreenReaderOn(): Boolean {
+    val context = LocalContext.current
+    return remember(context) { context.getSystemService(AccessibilityManager::class.java)?.isTouchExplorationEnabled == true }
+}
+
+/**
+ * Shows [message] with an Undo action for [millis], then hides it. The snackbar
+ * is a polite live region, so TalkBack announces it. Runs [onUndo] if Undo is tapped.
+ */
+suspend fun SnackbarHostState.showUndo(
+    message: String,
+    undoLabel: String,
+    millis: Long,
+    onUndo: suspend () -> Unit,
+) {
+    currentSnackbarData?.dismiss()
+    val result =
+        withTimeoutOrNull(millis) {
+            showSnackbar(message, actionLabel = undoLabel, duration = SnackbarDuration.Indefinite)
+        }
+    if (result == SnackbarResult.ActionPerformed) onUndo()
+}
+
+/** Every translation language, each named in its own language. */
+@Composable
+fun LanguageMenu(
+    expanded: Boolean,
+    onDismiss: () -> Unit,
+    onPick: (String) -> Unit,
+) {
+    DropdownMenu(expanded = expanded, onDismissRequest = onDismiss) {
+        TRANSLATION_LANGUAGES.forEach { code ->
+            DropdownMenuItem(
+                text = { Text(languageName(code)) },
+                onClick = {
+                    onDismiss()
+                    onPick(code)
+                },
+            )
+        }
+    }
 }
 
 @Composable

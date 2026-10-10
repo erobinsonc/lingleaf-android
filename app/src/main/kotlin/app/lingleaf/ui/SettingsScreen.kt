@@ -11,9 +11,8 @@ import androidx.compose.material.icons.Icons
 import androidx.compose.material.icons.automirrored.filled.VolumeUp
 import androidx.compose.material.icons.filled.Add
 import androidx.compose.material.icons.filled.Code
+import androidx.compose.material.icons.filled.ExpandMore
 import androidx.compose.material.icons.filled.Remove
-import androidx.compose.material3.DropdownMenu
-import androidx.compose.material3.DropdownMenuItem
 import androidx.compose.material3.Icon
 import androidx.compose.material3.IconButton
 import androidx.compose.material3.ListItem
@@ -21,7 +20,6 @@ import androidx.compose.material3.ListItemDefaults
 import androidx.compose.material3.MaterialTheme
 import androidx.compose.material3.Slider
 import androidx.compose.material3.Text
-import androidx.compose.material3.TextButton
 import androidx.compose.runtime.Composable
 import androidx.compose.runtime.getValue
 import androidx.compose.runtime.mutableStateOf
@@ -38,8 +36,6 @@ import androidx.compose.ui.unit.dp
 import androidx.compose.ui.unit.sp
 import androidx.lifecycle.compose.collectAsStateWithLifecycle
 import app.lingleaf.R
-import app.lingleaf.TRANSLATION_LANGUAGES
-import app.lingleaf.defaultTargetLanguage
 import app.lingleaf.languageName
 import java.util.Locale
 import kotlin.math.roundToInt
@@ -54,7 +50,7 @@ fun SettingsScreen() {
     val settings = state.settings
     val uriHandler = LocalUriHandler.current
     var languageMenu by remember { mutableStateOf(false) }
-    val target = settings.targetLanguage ?: defaultTargetLanguage()
+    val target = container.targetLanguage(settings)
     val itemColors = ListItemDefaults.colors(containerColor = Color.Transparent)
 
     ScreenScaffold(title = stringResource(R.string.settings_title)) { modifier ->
@@ -127,26 +123,21 @@ fun SettingsScreen() {
             )
 
             SectionHeader(stringResource(R.string.translation))
-            ListItem(
-                colors = itemColors,
-                headlineContent = { Text(stringResource(R.string.translate_to)) },
-                trailingContent = {
-                    Box {
-                        TextButton(onClick = { languageMenu = true }) { Text(languageName(target)) }
-                        DropdownMenu(expanded = languageMenu, onDismissRequest = { languageMenu = false }) {
-                            TRANSLATION_LANGUAGES.forEach { code ->
-                                DropdownMenuItem(
-                                    text = { Text(languageName(code)) },
-                                    onClick = {
-                                        languageMenu = false
-                                        library.updateSettings { it.copy(targetLanguage = code) }
-                                    },
-                                )
-                            }
-                        }
-                    }
-                },
-            )
+            Box {
+                ListItem(
+                    colors = itemColors,
+                    modifier = Modifier.clickable { languageMenu = true },
+                    headlineContent = { Text(stringResource(R.string.translate_to)) },
+                    // Until a language is chosen or found in the system list, the first word card asks (SPEC S11, S14).
+                    supportingContent = { Text(target?.let(::languageName) ?: stringResource(R.string.translate_ask)) },
+                    trailingContent = { Icon(Icons.Filled.ExpandMore, contentDescription = null) },
+                )
+                LanguageMenu(
+                    expanded = languageMenu,
+                    onDismiss = { languageMenu = false },
+                    onPick = { code -> library.updateSettings { it.copy(targetLanguage = code) } },
+                )
+            }
             Text(
                 stringResource(R.string.translation_note),
                 style = MaterialTheme.typography.bodySmall,

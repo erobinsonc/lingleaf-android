@@ -21,16 +21,19 @@ import androidx.compose.material3.Icon
 import androidx.compose.material3.IconButton
 import androidx.compose.material3.LinearProgressIndicator
 import androidx.compose.material3.MaterialTheme
+import androidx.compose.material3.SnackbarHostState
 import androidx.compose.material3.Text
 import androidx.compose.runtime.Composable
 import androidx.compose.runtime.LaunchedEffect
 import androidx.compose.runtime.getValue
 import androidx.compose.runtime.mutableStateOf
 import androidx.compose.runtime.remember
+import androidx.compose.runtime.rememberCoroutineScope
 import androidx.compose.runtime.setValue
 import androidx.compose.runtime.snapshotFlow
 import androidx.compose.ui.Alignment
 import androidx.compose.ui.Modifier
+import androidx.compose.ui.platform.LocalContext
 import androidx.compose.ui.res.stringResource
 import androidx.compose.ui.semantics.contentDescription
 import androidx.compose.ui.semantics.semantics
@@ -61,6 +64,11 @@ fun ReaderScreen(
     var paragraphs by remember { mutableStateOf<List<String>?>(null) }
     var selection by remember { mutableStateOf<Selection?>(null) }
     val fontSize = state.settings.fontSize
+    val context = LocalContext.current
+    val scope = rememberCoroutineScope()
+    val snackbar = remember { SnackbarHostState() }
+    // 4 s, or 8 s while a screen reader is on so there is time to reach Undo (SPEC S4, S5).
+    val undoMillis = if (rememberScreenReaderOn()) 8_000L else 4_000L
 
     LaunchedEffect(bookId) {
         paragraphs = withContext(container.io) { library.openBook(bookId) }
@@ -82,6 +90,7 @@ fun ReaderScreen(
     ScreenScaffold(
         title = book?.title.orEmpty(),
         onBack = onBack,
+        snackbarHostState = snackbar,
         actions = {
             IconButton(onClick = {
                 if (speaking) {
@@ -146,6 +155,13 @@ fun ReaderScreen(
             word = paragraph.substring(current.word.start, current.word.end),
             sentence = TextTools.sentenceAt(paragraph, current.word.start),
             source = book?.title.orEmpty(),
+            onChanged = { change ->
+                scope.launch {
+                    snackbar.showUndo(context.getString(change.message, change.word), context.getString(R.string.undo), undoMillis) {
+                        withContext(container.io) { library.restoreWord(change.word, change.previous) }
+                    }
+                }
+            },
             onDismiss = { selection = null },
         )
     }
