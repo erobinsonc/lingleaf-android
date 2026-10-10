@@ -4,14 +4,20 @@ import androidx.compose.ui.geometry.Offset
 import androidx.compose.ui.semantics.SemanticsActions
 import androidx.compose.ui.semantics.SemanticsProperties
 import androidx.compose.ui.semantics.getOrNull
+import androidx.compose.ui.test.assertIsDisplayed
 import androidx.compose.ui.test.click
 import androidx.compose.ui.test.hasClickAction
+import androidx.compose.ui.test.hasScrollToIndexAction
+import androidx.compose.ui.test.hasTestTag
 import androidx.compose.ui.test.hasText
 import androidx.compose.ui.test.junit4.createComposeRule
 import androidx.compose.ui.test.onAllNodesWithText
 import androidx.compose.ui.test.onFirst
+import androidx.compose.ui.test.onNodeWithTag
 import androidx.compose.ui.test.onNodeWithText
 import androidx.compose.ui.test.performClick
+import androidx.compose.ui.test.performScrollToIndex
+import androidx.compose.ui.test.performScrollToNode
 import androidx.compose.ui.test.performTouchInput
 import androidx.compose.ui.text.TextLayoutResult
 import app.lingleaf.core.BundledStory
@@ -50,6 +56,21 @@ private val dictionaryJson =
     """[{"word": "equal", "phonetic": "/ˈiːkwəl/",
          "meanings": [{"partOfSpeech": "adjective", "definitions": [{"definition": "The same in quantity."}]}]}]"""
 
+private fun catalogBook(
+    id: Int,
+    title: String,
+    author: String,
+) = """{"id": $id, "title": "$title", "authors": [{"name": "$author"}],
+       "formats": {"text/plain; charset=us-ascii": "https://www.gutenberg.org/ebooks/$id.txt.utf-8"}}"""
+
+private val catalogJson =
+    listOf(
+        catalogBook(21, "Aesop's Fables", "Aesop"),
+        catalogBook(55, "The Wonderful Wizard of Oz", "Baum, L. Frank"),
+        catalogBook(16, "Peter Pan", "Barrie, J. M."),
+        catalogBook(2701, "Moby-Dick; Or, The Whale", "Melville, Herman"),
+    ).joinToString(prefix = """{"results": [""", postfix = "]}")
+
 private const val STORY = "All animals are equal, but some are more equal.\n\nThe end."
 
 @RunWith(RobolectricTestRunner::class)
@@ -68,7 +89,7 @@ class AppTest {
             app.lingleaf.core.HttpFetcher { url ->
                 when {
                     url.endsWith("/equal") -> HttpResponse(200, dictionaryJson.toByteArray())
-                    "gutendex" in url -> HttpResponse(200, """{"results": []}""".toByteArray())
+                    "gutendex" in url -> HttpResponse(200, catalogJson.toByteArray())
                     else -> HttpResponse(404, ByteArray(0))
                 }
             }
@@ -139,6 +160,22 @@ class AppTest {
                 !child.config.getOrNull(SemanticsProperties.ContentDescription).isNullOrEmpty() ||
                 child.hasLabelledChildren()
         }
+
+    @Test
+    fun filterRecommendedBooksByLevel() {
+        compose.onAllNodesWithText("Discover").onFirst().performClick()
+        compose.waitUntil(5_000) { compose.onAllNodes(hasTestTag("level-filter-B1")).fetchSemanticsNodes().isNotEmpty() }
+
+        compose.onNodeWithTag("level-filter-B1").performClick()
+        val list = compose.onNode(hasScrollToIndexAction())
+        list.performScrollToNode(hasText("Peter Pan"))
+        compose.onNodeWithText("Peter Pan").assertIsDisplayed()
+        compose.onNodeWithText("Aesop's Fables").assertDoesNotExist()
+
+        list.performScrollToIndex(0)
+        compose.onNodeWithTag("level-filter-all").performClick()
+        compose.onNodeWithText("Aesop's Fables").assertExists()
+    }
 
     @Test
     fun wordsScreenShowsSavedWordsAndReviewWorks() {

@@ -5,6 +5,7 @@ import kotlin.test.Test
 import kotlin.test.assertEquals
 import kotlin.test.assertFailsWith
 import kotlin.test.assertNull
+import kotlin.test.assertTrue
 
 private fun ok(body: String) = HttpResponse(200, body.toByteArray())
 
@@ -46,6 +47,36 @@ class GutenbergTest {
             assertEquals("https://example.com/11.jpg", books[1].coverUrl)
             assertEquals("B2", GutenbergClient.levelFor(11))
         }
+
+    @Test
+    fun `recommended request asks for every curated id`() =
+        runTest {
+            var requested = ""
+            GutenbergClient { url ->
+                requested = url
+                ok("""{"results": []}""")
+            }.fetchRecommended()
+            val ids = requested.substringAfter("ids=").split(",").map { it.toInt() }
+            assertEquals(GutenbergClient.RECOMMENDED.keys.toList(), ids)
+            assertEquals(16, ids.size)
+        }
+
+    @Test
+    fun `filter by level keeps order and null keeps everything`() {
+        val books = GutenbergClient.RECOMMENDED.keys.map { GutenbergBook(id = it, title = "Book $it") }
+        assertEquals(books, GutenbergClient.filter(books, null))
+        assertEquals(listOf(55, 16, 236), GutenbergClient.filter(books, "B1").map { it.id })
+        assertEquals(listOf(2701, 219, 145), GutenbergClient.filter(books, "C2").map { it.id })
+        assertEquals(emptyList(), GutenbergClient.filter(books, "A1"))
+        assertEquals(emptyList(), GutenbergClient.filter(listOf(GutenbergBook(id = 999_999, title = "Unlisted")), "B1"))
+    }
+
+    @Test
+    fun `every recommended level is a known CEFR level`() {
+        assertEquals(listOf("A1", "A2", "B1", "B2", "C1", "C2"), GutenbergClient.LEVELS)
+        assertTrue(GutenbergClient.RECOMMENDED.values.all { it in GutenbergClient.LEVELS })
+        assertEquals(listOf("A2", "B1", "B2", "C1", "C2"), GutenbergClient.RECOMMENDED.values.distinct())
+    }
 
     @Test
     fun `search encodes the query and errors on bad status`() =

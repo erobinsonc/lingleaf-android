@@ -60,6 +60,9 @@
     <string name="recommended">Recommended for learners</string>
     <string name="results">Results</string>
     <string name="no_results">No books found. Try another title or author.</string>
+    <string name="level_all">All</string>
+    <string name="level_all_description">All levels</string>
+    <string name="no_books_at_level">No recommended books at this level.</string>
     <string name="catalog_failed">Couldn\'t load the catalog. Check your connection.</string>
     <string name="retry">Retry</string>
     <string name="get">Get</string>

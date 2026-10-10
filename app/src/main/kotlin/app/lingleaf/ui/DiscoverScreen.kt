@@ -1,5 +1,6 @@
 package app.lingleaf.ui
 
+import androidx.compose.foundation.horizontalScroll
 import androidx.compose.foundation.layout.Arrangement
 import androidx.compose.foundation.layout.Box
 import androidx.compose.foundation.layout.Column
@@ -11,6 +12,7 @@ import androidx.compose.foundation.layout.size
 import androidx.compose.foundation.layout.width
 import androidx.compose.foundation.lazy.LazyColumn
 import androidx.compose.foundation.lazy.items
+import androidx.compose.foundation.rememberScrollState
 import androidx.compose.foundation.text.KeyboardActions
 import androidx.compose.foundation.text.KeyboardOptions
 import androidx.compose.material.icons.Icons
@@ -19,6 +21,7 @@ import androidx.compose.material.icons.filled.Close
 import androidx.compose.material.icons.filled.Search
 import androidx.compose.material3.CircularProgressIndicator
 import androidx.compose.material3.FilledTonalButton
+import androidx.compose.material3.FilterChip
 import androidx.compose.material3.Icon
 import androidx.compose.material3.IconButton
 import androidx.compose.material3.ListItem
@@ -40,6 +43,7 @@ import androidx.compose.ui.Alignment
 import androidx.compose.ui.Modifier
 import androidx.compose.ui.graphics.Color
 import androidx.compose.ui.platform.LocalContext
+import androidx.compose.ui.platform.testTag
 import androidx.compose.ui.res.stringResource
 import androidx.compose.ui.semantics.contentDescription
 import androidx.compose.ui.semantics.semantics
@@ -62,6 +66,7 @@ fun DiscoverScreen() {
     val scope = rememberCoroutineScope()
     val snackbar = remember { SnackbarHostState() }
     var query by rememberSaveable { mutableStateOf("") }
+    var levelFilter by rememberSaveable { mutableStateOf<String?>(null) }
     var recommended by remember { mutableStateOf<List<GutenbergBook>>(emptyList()) }
     var results by remember { mutableStateOf<List<GutenbergBook>?>(null) }
     var loading by remember { mutableStateOf(false) }
@@ -110,7 +115,9 @@ fun DiscoverScreen() {
     LaunchedEffect(Unit) { if (recommended.isEmpty()) load(null) }
 
     val searching = results != null
-    val books = results ?: recommended
+    val levels = remember(recommended) { recommended.mapNotNull { GutenbergClient.levelFor(it.id) }.distinct() }
+    val selectedLevel = levelFilter?.takeIf { it in levels }
+    val books = results ?: GutenbergClient.filter(recommended, selectedLevel)
 
     val searchHint = stringResource(R.string.search_hint)
 
@@ -141,6 +148,9 @@ fun DiscoverScreen() {
                 )
             }
             item { SectionHeader(stringResource(if (searching) R.string.results else R.string.recommended)) }
+            if (!searching && !loading && !failed && levels.isNotEmpty()) {
+                item { LevelFilter(levels, selectedLevel) { levelFilter = it } }
+            }
             when {
                 loading -> item { Box(Modifier.fillMaxWidth().padding(32.dp), Alignment.Center) { CircularProgressIndicator() } }
                 failed ->
@@ -154,6 +164,8 @@ fun DiscoverScreen() {
                         }
                     }
                 searching && books.isEmpty() -> item { Text(stringResource(R.string.no_results), Modifier.padding(24.dp)) }
+                selectedLevel != null && books.isEmpty() ->
+                    item { Text(stringResource(R.string.no_books_at_level), Modifier.padding(24.dp)) }
                 else ->
                     items(books, key = { it.id }) { book ->
                         ListItem(
@@ -199,6 +211,35 @@ fun DiscoverScreen() {
                     modifier = Modifier.padding(16.dp),
                 )
             }
+        }
+    }
+}
+
+/** Single-choice CEFR level chips: "All" plus the [levels] present in the recommended list. */
+@Composable
+private fun LevelFilter(
+    levels: List<String>,
+    selected: String?,
+    onSelect: (String?) -> Unit,
+) {
+    Row(
+        Modifier
+            .fillMaxWidth()
+            .horizontalScroll(rememberScrollState())
+            .padding(horizontal = 16.dp),
+        horizontalArrangement = Arrangement.spacedBy(8.dp),
+    ) {
+        (listOf<String?>(null) + levels).forEach { level ->
+            val description = if (level == null) stringResource(R.string.level_all_description) else stringResource(R.string.level, level)
+            FilterChip(
+                selected = selected == level,
+                onClick = { onSelect(level) },
+                label = { Text(level ?: stringResource(R.string.level_all)) },
+                modifier =
+                    Modifier
+                        .semantics { contentDescription = description }
+                        .testTag("level-filter-${level ?: "all"}"),
+            )
         }
     }
 }

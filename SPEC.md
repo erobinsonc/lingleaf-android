@@ -31,6 +31,7 @@ the same intent on both platforms. A change to behaviour updates this file in
 | S10 | Import | A plain-text `.txt` file can be imported; Gutenberg license headers are removed. |
 | S11 | Settings | Daily goal, text size, speech speed and translation language persist. |
 | S12 | Offline | Without internet the reader, saved words and review work; the card says translation/definition are unavailable. |
+| S13 | Level filter | Recommended books go from A2 to C2. Chips "All" plus each level present in the list filter it (one at a time, "All" by default); hidden while search results show; "No recommended books at this level." if none match. |
 
 ## Shared logic (same rules, same tests on both platforms)
 
@@ -39,3 +40,5 @@ the same intent on both platforms. A change to behaviour updates this file in
 - Base forms: irregular table, then plural/past/-ing rules (see `TextTools`).
 - Spaced repetition: boxes with 1, 3, 7, 14, 30 day intervals.
 - Streak: consecutive days meeting the goal; an unfinished today doesn't break it.
+- Recommended books (Gutenberg id, level), easiest first: A2 21; B1 55, 16, 236; B2 11, 74, 120, 1661;
+  C1 1342, 84, 174, 1400, 345; C2 2701, 219, 145. Levels: A1, A2, B1, B2, C1, C2. The level filter keeps order.

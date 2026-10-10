@@ -17,6 +17,7 @@ iOS version: [lingleaf-ios](https://github.com/erobinsonc/lingleaf-ios) · Produ
 - **Review** with spaced repetition (1, 3, 7, 14, 30 days).
 - **Read aloud** a word, a sentence or a paragraph.
 - **Thousands of free books** from Project Gutenberg, plus 3 original graded stories (A1–B1). Import your own `.txt`.
+- **Recommended classics from A2 to C2**, filterable by level in Discover.
 - **Daily goal and streak.**
 - No accounts, no ads, no tracking.
 

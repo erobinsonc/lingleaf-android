@@ -60,7 +60,7 @@ class GutenbergClient(private val http: HttpFetcher) {
         private const val BASE = "https://gutendex.com/books"
         private val json = Json { ignoreUnknownKeys = true }
 
-        /** Hand-picked classics with a CEFR level hint, roughly easiest first. */
+        /** Hand-picked classics with a CEFR level hint, easiest first (A2 to C2). */
         val RECOMMENDED: Map<Int, String> =
             linkedMapOf(
                 // Aesop's Fables
@@ -81,9 +81,32 @@ class GutenbergClient(private val http: HttpFetcher) {
                 1661 to "B2",
                 // Pride and Prejudice
                 1342 to "C1",
+                // Frankenstein
+                84 to "C1",
+                // The Picture of Dorian Gray
+                174 to "C1",
+                // Great Expectations
+                1400 to "C1",
+                // Dracula
+                345 to "C1",
+                // Moby-Dick
+                2701 to "C2",
+                // Heart of Darkness
+                219 to "C2",
+                // Middlemarch
+                145 to "C2",
             )
 
+        /** CEFR levels, easiest first. */
+        val LEVELS = listOf("A1", "A2", "B1", "B2", "C1", "C2")
+
         fun levelFor(id: Int): String? = RECOMMENDED[id]
+
+        /** Books at [level], in their original order; a null level keeps every book. */
+        fun filter(
+            books: List<GutenbergBook>,
+            level: String?,
+        ): List<GutenbergBook> = if (level == null) books else books.filter { levelFor(it.id) == level }
 
         /** Removes the Project Gutenberg license header and footer. */
         fun stripBoilerplate(text: String): String {

@@ -20,9 +20,12 @@ import androidx.compose.runtime.CompositionLocalProvider
 import androidx.compose.runtime.getValue
 import androidx.compose.runtime.remember
 import androidx.compose.runtime.staticCompositionLocalOf
+import androidx.compose.ui.ExperimentalComposeUiApi
 import androidx.compose.ui.Modifier
 import androidx.compose.ui.graphics.vector.ImageVector
 import androidx.compose.ui.res.stringResource
+import androidx.compose.ui.semantics.semantics
+import androidx.compose.ui.semantics.testTagsAsResourceId
 import androidx.lifecycle.compose.collectAsStateWithLifecycle
 import androidx.navigation.compose.NavHost
 import androidx.navigation.compose.composable
@@ -44,6 +47,7 @@ private enum class Tab(
     Settings("settings", R.string.tab_settings, Icons.Filled.Tune),
 }
 
+@OptIn(ExperimentalComposeUiApi::class)
 @Composable
 fun LingleafApp(container: AppContainer) {
     CompositionLocalProvider(LocalContainer provides container) {
@@ -55,6 +59,8 @@ fun LingleafApp(container: AppContainer) {
             val due = remember(state.words) { container.library.dueWords().size }
 
             Scaffold(
+                // Exposes Compose test tags as resource ids so UI automation (Maestro) can find them.
+                modifier = Modifier.semantics { testTagsAsResourceId = true },
                 contentWindowInsets = WindowInsets(0),
                 bottomBar = {
                     if (Tab.entries.any { it.route == route }) {

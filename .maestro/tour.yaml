@@ -43,6 +43,9 @@ appId: app.lingleaf
 - waitForAnimationToEnd:
     timeout: 8000
 - takeScreenshot: 08-discover
+- tapOn:
+    id: "level-filter-B1"
+- takeScreenshot: 09-discover-level-b1
 
 - tapOn: "Settings"
-- takeScreenshot: 09-settings
+- takeScreenshot: 10-settings
