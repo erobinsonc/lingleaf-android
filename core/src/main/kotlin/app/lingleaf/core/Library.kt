@@ -41,8 +41,12 @@ data class VocabWord(
     val box: Int = 0,
     val createdAt: String,
     val nextReview: String,
+    /** Language code of [translation]; null for words saved before it was recorded. */
+    val translationLanguage: String? = null,
 ) {
     fun isDue(now: LocalDateTime) = !learned && !LocalDateTime.parse(nextReview).isAfter(now)
+
+    fun needsTranslation(language: String) = translation.isEmpty() || translationLanguage != language
 }
 
 @Serializable
@@ -199,6 +203,11 @@ class Library(
         return _state.value.words.filter { it.isDue(now) }.sortedBy { it.nextReview }
     }
 
+    /**
+     * Saves [word] for review, or as known when [learned]. A word that was known
+     * goes back to the first box. Blank values keep what was saved before.
+     * Returns the previous record (null if the word was new), for Undo with [restoreWord].
+     */
     @Synchronized
     fun saveWord(
         word: String,
@@ -207,22 +216,55 @@ class Library(
         phonetic: String? = null,
         context: String = "",
         source: String = "",
-    ) {
+        translationLanguage: String? = null,
+    ): VocabWord? {
         val key = TextTools.normalize(word)
         val now = now().toString()
         val existing = _state.value.words.firstOrNull { it.word == key }
         var entry = existing ?: VocabWord(word = key, createdAt = now, nextReview = now)
         if (!learned && (existing == null || existing.learned)) entry = entry.copy(box = 0, nextReview = now)
+        val newTranslation = translation?.takeIf { it.isNotBlank() }
         entry =
             entry.copy(
                 learned = learned,
-                translation = translation?.takeIf { it.isNotBlank() } ?: entry.translation,
+                translation = newTranslation ?: entry.translation,
+                translationLanguage = if (newTranslation != null) translationLanguage else entry.translationLanguage,
                 phonetic = phonetic?.takeIf { it.isNotBlank() } ?: entry.phonetic,
                 context = context.ifBlank { entry.context },
                 source = source.ifBlank { entry.source },
             )
         replaceWord(key, entry)
+        return existing
     }
+
+    /** Undo: puts back exactly [previous] for [word], or removes the word when [previous] is null. */
+    @Synchronized
+    fun restoreWord(
+        word: String,
+        previous: VocabWord?,
+    ) {
+        val key = TextTools.normalize(word)
+        if (previous == null) deleteWord(key) else replaceWord(key, previous)
+    }
+
+    /**
+     * Records a translation that arrived after the word was saved. Does nothing
+     * if the word no longer exists or already has a translation in [language].
+     */
+    @Synchronized
+    fun setTranslation(
+        word: String,
+        translation: String,
+        language: String,
+    ) {
+        val key = TextTools.normalize(word)
+        val entry = _state.value.words.firstOrNull { it.word == key } ?: return
+        if (translation.isBlank() || !entry.needsTranslation(language)) return
+        replaceWord(key, entry.copy(translation = translation, translationLanguage = language))
+    }
+
+    /** Words with no translation, or one in a language other than [language]. */
+    fun wordsNeedingTranslation(language: String): List<VocabWord> = _state.value.words.filter { it.needsTranslation(language) }
 
     @Synchronized
     fun answerReview(
