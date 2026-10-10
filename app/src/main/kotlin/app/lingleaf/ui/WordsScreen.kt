@@ -1,0 +1,167 @@
+package app.lingleaf.ui
+
+import androidx.compose.foundation.clickable
+import androidx.compose.foundation.layout.Column
+import androidx.compose.foundation.layout.Row
+import androidx.compose.foundation.layout.fillMaxWidth
+import androidx.compose.foundation.layout.padding
+import androidx.compose.foundation.lazy.LazyColumn
+import androidx.compose.foundation.lazy.items
+import androidx.compose.material.icons.Icons
+import androidx.compose.material.icons.automirrored.filled.KeyboardArrowRight
+import androidx.compose.material.icons.automirrored.filled.VolumeUp
+import androidx.compose.material.icons.filled.Check
+import androidx.compose.material.icons.filled.Delete
+import androidx.compose.material.icons.filled.Replay
+import androidx.compose.material.icons.filled.Style
+import androidx.compose.material3.Card
+import androidx.compose.material3.CardDefaults
+import androidx.compose.material3.Icon
+import androidx.compose.material3.IconButton
+import androidx.compose.material3.ListItem
+import androidx.compose.material3.ListItemDefaults
+import androidx.compose.material3.MaterialTheme
+import androidx.compose.material3.SegmentedButton
+import androidx.compose.material3.SegmentedButtonDefaults
+import androidx.compose.material3.SingleChoiceSegmentedButtonRow
+import androidx.compose.material3.Text
+import androidx.compose.runtime.Composable
+import androidx.compose.runtime.getValue
+import androidx.compose.runtime.mutableStateOf
+import androidx.compose.runtime.remember
+import androidx.compose.runtime.saveable.rememberSaveable
+import androidx.compose.runtime.setValue
+import androidx.compose.ui.Modifier
+import androidx.compose.ui.graphics.Color
+import androidx.compose.ui.res.pluralStringResource
+import androidx.compose.ui.res.stringResource
+import androidx.compose.ui.text.font.FontStyle
+import androidx.compose.ui.text.font.FontWeight
+import androidx.compose.ui.text.style.TextAlign
+import androidx.compose.ui.text.style.TextOverflow
+import androidx.compose.ui.unit.dp
+import androidx.lifecycle.compose.collectAsStateWithLifecycle
+import app.lingleaf.R
+import app.lingleaf.core.VocabWord
+
+@Composable
+fun WordsScreen(onReview: () -> Unit) {
+    val container = LocalContainer.current
+    val library = container.library
+    val state by library.state.collectAsStateWithLifecycle()
+    var showLearned by rememberSaveable { mutableStateOf(false) }
+    val due = remember(state.words) { library.dueWords().size }
+    val words = state.words.filter { it.learned == showLearned }
+
+    ScreenScaffold(title = stringResource(R.string.words_title)) { modifier ->
+        LazyColumn(modifier) {
+            item {
+                Card(
+                    colors =
+                        CardDefaults.cardColors(
+                            containerColor = MaterialTheme.colorScheme.primaryContainer,
+                            contentColor = MaterialTheme.colorScheme.onPrimaryContainer,
+                        ),
+                    modifier =
+                        Modifier
+                            .fillMaxWidth()
+                            .padding(horizontal = 16.dp, vertical = 8.dp),
+                ) {
+                    ListItem(
+                        colors = ListItemDefaults.colors(containerColor = Color.Transparent),
+                        modifier = Modifier.clickable(enabled = due > 0, onClick = onReview),
+                        leadingContent = { Icon(Icons.Filled.Style, contentDescription = null) },
+                        headlineContent = { Text(stringResource(R.string.review_now)) },
+                        supportingContent = {
+                            Text(
+                                when {
+                                    due > 0 -> pluralStringResource(R.plurals.words_due, due, due)
+                                    state.words.isEmpty() -> stringResource(R.string.save_words_hint)
+                                    else -> stringResource(R.string.nothing_due)
+                                },
+                            )
+                        },
+                        trailingContent = { Icon(Icons.AutoMirrored.Filled.KeyboardArrowRight, contentDescription = null) },
+                    )
+                }
+            }
+            item {
+                SingleChoiceSegmentedButtonRow(
+                    Modifier
+                        .fillMaxWidth()
+                        .padding(horizontal = 16.dp, vertical = 8.dp),
+                ) {
+                    listOf(false to R.string.filter_learning, true to R.string.filter_learned).forEachIndexed { index, (learned, label) ->
+                        SegmentedButton(
+                            selected = showLearned == learned,
+                            onClick = { showLearned = learned },
+                            shape = SegmentedButtonDefaults.itemShape(index, 2),
+                        ) { Text(stringResource(label)) }
+                    }
+                }
+            }
+            if (words.isEmpty()) {
+                item {
+                    Text(
+                        stringResource(if (showLearned) R.string.learned_empty else R.string.words_empty),
+                        textAlign = TextAlign.Center,
+                        modifier =
+                            Modifier
+                                .fillMaxWidth()
+                                .padding(32.dp),
+                    )
+                }
+            }
+            items(words, key = { it.word }) { word -> WordRow(word) }
+        }
+    }
+}
+
+@Composable
+private fun WordRow(word: VocabWord) {
+    val container = LocalContainer.current
+    val library = container.library
+    val state by library.state.collectAsStateWithLifecycle()
+    ListItem(
+        colors = ListItemDefaults.colors(containerColor = Color.Transparent),
+        headlineContent = {
+            Row {
+                Text(word.word, fontWeight = FontWeight.SemiBold)
+                if (word.phonetic.isNotEmpty()) {
+                    Text("  ${word.phonetic}", color = MaterialTheme.colorScheme.onSurfaceVariant)
+                }
+            }
+        },
+        supportingContent = {
+            Column {
+                if (word.translation.isNotEmpty()) Text(word.translation)
+                if (word.context.isNotEmpty()) {
+                    Text(
+                        word.context,
+                        maxLines = 2,
+                        overflow = TextOverflow.Ellipsis,
+                        fontStyle = FontStyle.Italic,
+                        style = MaterialTheme.typography.bodySmall,
+                    )
+                }
+            }
+        },
+        trailingContent = {
+            Row {
+                IconButton(onClick = { container.speaker.speak(word.word, state.settings.speechRate) }) {
+                    Icon(Icons.AutoMirrored.Filled.VolumeUp, contentDescription = stringResource(R.string.listen))
+                }
+                IconButton(onClick = { library.setLearned(word.word, !word.learned) }) {
+                    if (word.learned) {
+                        Icon(Icons.Filled.Replay, contentDescription = stringResource(R.string.review_again))
+                    } else {
+                        Icon(Icons.Filled.Check, contentDescription = stringResource(R.string.mark_learned))
+                    }
+                }
+                IconButton(onClick = { library.deleteWord(word.word) }) {
+                    Icon(Icons.Filled.Delete, contentDescription = stringResource(R.string.delete_word))
+                }
+            }
+        },
+    )
+}

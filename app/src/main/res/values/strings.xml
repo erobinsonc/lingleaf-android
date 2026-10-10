@@ -1,0 +1,120 @@
+<?xml version="1.0" encoding="utf-8"?>
+<resources>
+    <string name="app_name" translatable="false">Lingleaf</string>
+
+    <!-- Tabs -->
+    <string name="tab_library">Library</string>
+    <string name="tab_discover">Discover</string>
+    <string name="tab_words">Words</string>
+    <string name="tab_settings">Settings</string>
+    <string name="back">Back</string>
+
+    <!-- Library -->
+    <string name="library_title">Library</string>
+    <string name="import_txt">Import a .txt file</string>
+    <string name="continue_reading">Continue reading</string>
+    <string name="your_books">Your books</string>
+    <string name="library_empty">Your library is empty. Get a book in Discover or import a .txt file.</string>
+    <string name="long_press_hint">Long-press a book to delete it.</string>
+    <string name="delete_book_title">Delete book?</string>
+    <string name="delete_book_message">“%1$s” will be removed from your library. Your saved words stay.</string>
+    <string name="delete">Delete</string>
+    <string name="cancel">Cancel</string>
+    <string name="imported">“%1$s” added to your library.</string>
+    <string name="import_failed">Couldn\'t import that file. Try a plain-text (.txt) English book.</string>
+    <string name="level">Level %1$s</string>
+    <string name="progress_percent">%1$d%%</string>
+
+    <!-- Daily goal -->
+    <string name="goal_read_daily">Read %1$d minutes a day</string>
+    <string name="goal_done">Today\'s goal done!</string>
+    <string name="goal_minutes_today">%1$d of %2$d min today</string>
+    <plurals name="streak_days">
+        <item quantity="one">%d day in a row</item>
+        <item quantity="other">%d days in a row</item>
+    </plurals>
+
+    <!-- Reader -->
+    <string name="read_aloud">Read aloud</string>
+    <string name="stop_reading">Stop reading</string>
+    <string name="smaller_text">Smaller text</string>
+    <string name="larger_text">Larger text</string>
+    <string name="book_empty">This book is empty.</string>
+    <string name="book_open_failed">Couldn\'t open the book.</string>
+
+    <!-- Word card -->
+    <string name="listen">Listen</string>
+    <string name="listen_sentence">Listen to the sentence</string>
+    <string name="in_text">In the text: %1$s</string>
+    <string name="translation_unavailable">Translation unavailable. Connect to the internet once to download the language.</string>
+    <string name="no_definition">No definition available.</string>
+    <string name="already_saved">Already in your words</string>
+    <string name="already_learned">You marked it as learned</string>
+    <string name="learned">Learned</string>
+    <string name="learn">Learn</string>
+
+    <!-- Discover -->
+    <string name="discover_title">Discover</string>
+    <string name="search_hint">Title or author</string>
+    <string name="clear_search">Clear search</string>
+    <string name="recommended">Recommended for learners</string>
+    <string name="results">Results</string>
+    <string name="no_results">No books found. Try another title or author.</string>
+    <string name="catalog_failed">Couldn\'t load the catalog. Check your connection.</string>
+    <string name="retry">Retry</string>
+    <string name="get">Get</string>
+    <string name="in_library">In your library</string>
+    <string name="downloaded">“%1$s” is in your library.</string>
+    <string name="download_failed">Couldn\'t download “%1$s”. Try again.</string>
+    <string name="gutenberg_credit">Free public-domain classics from Project Gutenberg.</string>
+    <string name="unknown_author">Unknown author</string>
+
+    <!-- Words -->
+    <string name="words_title">Words</string>
+    <string name="review_now">Review now</string>
+    <plurals name="words_due">
+        <item quantity="one">%d word to review</item>
+        <item quantity="other">%d words to review</item>
+    </plurals>
+    <string name="nothing_due">Nothing to review. Come back tomorrow!</string>
+    <string name="save_words_hint">Save words while you read.</string>
+    <string name="filter_learning">Learning</string>
+    <string name="filter_learned">Learned</string>
+    <string name="words_empty">No words yet. While reading, tap a word and choose Learn.</string>
+    <string name="learned_empty">No learned words yet.</string>
+    <string name="mark_learned">Mark as learned</string>
+    <string name="review_again">Review again</string>
+    <string name="delete_word">Delete word</string>
+
+    <!-- Review -->
+    <string name="review_title">Review</string>
+    <string name="show_meaning">Show meaning</string>
+    <string name="again">Again</string>
+    <string name="i_know_it">I know it</string>
+    <string name="no_translation">No saved translation</string>
+    <string name="review_done">All done!</string>
+    <plurals name="reviewed_count">
+        <item quantity="one">You reviewed %d word.</item>
+        <item quantity="other">You reviewed %d words.</item>
+    </plurals>
+    <string name="done">Done</string>
+
+    <!-- Settings -->
+    <string name="settings_title">Settings</string>
+    <string name="daily_goal">Daily goal</string>
+    <string name="minutes_a_day">%1$d minutes a day</string>
+    <string name="fewer_minutes">Fewer minutes</string>
+    <string name="more_minutes">More minutes</string>
+    <string name="reading">Reading</string>
+    <string name="text_size">Text size</string>
+    <string name="voice">Voice</string>
+    <string name="speech_speed">Speech speed</string>
+    <string name="test_voice">Test the voice</string>
+    <string name="translation">Translation</string>
+    <string name="translate_to">Translate to</string>
+    <string name="translation_note">Translation happens on your phone. The first time, the language is downloaded (about 30 MB); after that it works offline.</string>
+    <string name="about">About</string>
+    <string name="source_code">Source code</string>
+    <string name="open_source_note">Lingleaf is open source (MIT license).</string>
+    <string name="credits">Books: Project Gutenberg (public domain). Definitions: dictionaryapi.dev. Translation: Google ML Kit, on device. No accounts, no ads, no tracking.</string>
+</resources>

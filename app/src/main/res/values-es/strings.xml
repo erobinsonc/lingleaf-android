@@ -1,0 +1,112 @@
+<?xml version="1.0" encoding="utf-8"?>
+<resources>
+    <string name="tab_library">Biblioteca</string>
+    <string name="tab_discover">Descubrir</string>
+    <string name="tab_words">Palabras</string>
+    <string name="tab_settings">Ajustes</string>
+    <string name="back">Atrás</string>
+
+    <string name="library_title">Biblioteca</string>
+    <string name="import_txt">Importar un archivo .txt</string>
+    <string name="continue_reading">Continuar leyendo</string>
+    <string name="your_books">Tus libros</string>
+    <string name="library_empty">Tu biblioteca está vacía. Consigue un libro en Descubrir o importa un archivo .txt.</string>
+    <string name="long_press_hint">Mantén presionado un libro para eliminarlo.</string>
+    <string name="delete_book_title">¿Eliminar libro?</string>
+    <string name="delete_book_message">“%1$s” se quitará de tu biblioteca. Tus palabras guardadas se conservan.</string>
+    <string name="delete">Eliminar</string>
+    <string name="cancel">Cancelar</string>
+    <string name="imported">“%1$s” se agregó a tu biblioteca.</string>
+    <string name="import_failed">No se pudo importar. Intenta con un libro en inglés en texto plano (.txt).</string>
+    <string name="level">Nivel %1$s</string>
+    <string name="progress_percent">%1$d%%</string>
+
+    <string name="goal_read_daily">Lee %1$d minutos al día</string>
+    <string name="goal_done">¡Meta de hoy cumplida!</string>
+    <string name="goal_minutes_today">%1$d de %2$d min hoy</string>
+    <plurals name="streak_days">
+        <item quantity="one">%d día seguido</item>
+        <item quantity="many">%d días seguidos</item>
+        <item quantity="other">%d días seguidos</item>
+    </plurals>
+
+    <string name="read_aloud">Leer en voz alta</string>
+    <string name="stop_reading">Detener lectura</string>
+    <string name="smaller_text">Letra más pequeña</string>
+    <string name="larger_text">Letra más grande</string>
+    <string name="book_empty">Este libro está vacío.</string>
+    <string name="book_open_failed">No se pudo abrir el libro.</string>
+
+    <string name="listen">Escuchar</string>
+    <string name="listen_sentence">Escuchar la frase</string>
+    <string name="in_text">En el texto: %1$s</string>
+    <string name="translation_unavailable">Traducción no disponible. Conéctate a internet una vez para descargar el idioma.</string>
+    <string name="no_definition">Sin definición disponible.</string>
+    <string name="already_saved">Ya está en tus palabras</string>
+    <string name="already_learned">La marcaste como aprendida</string>
+    <string name="learned">Aprendido</string>
+    <string name="learn">Aprender</string>
+
+    <string name="discover_title">Descubrir</string>
+    <string name="search_hint">Título o autor</string>
+    <string name="clear_search">Borrar búsqueda</string>
+    <string name="recommended">Recomendados para aprender</string>
+    <string name="results">Resultados</string>
+    <string name="no_results">No encontramos libros. Prueba con otro título o autor.</string>
+    <string name="catalog_failed">No se pudo cargar el catálogo. Revisa tu conexión.</string>
+    <string name="retry">Reintentar</string>
+    <string name="get">Obtener</string>
+    <string name="in_library">En tu biblioteca</string>
+    <string name="downloaded">“%1$s” está en tu biblioteca.</string>
+    <string name="download_failed">No se pudo descargar “%1$s”. Intenta de nuevo.</string>
+    <string name="gutenberg_credit">Clásicos gratuitos de dominio público de Project Gutenberg.</string>
+    <string name="unknown_author">Autor desconocido</string>
+
+    <string name="words_title">Palabras</string>
+    <string name="review_now">Repasar ahora</string>
+    <plurals name="words_due">
+        <item quantity="one">%d palabra por repasar</item>
+        <item quantity="many">%d palabras por repasar</item>
+        <item quantity="other">%d palabras por repasar</item>
+    </plurals>
+    <string name="nothing_due">Nada pendiente. ¡Vuelve mañana!</string>
+    <string name="save_words_hint">Guarda palabras mientras lees.</string>
+    <string name="filter_learning">Aprendiendo</string>
+    <string name="filter_learned">Aprendidas</string>
+    <string name="words_empty">Aún no tienes palabras. Mientras lees, toca una palabra y elige Aprender.</string>
+    <string name="learned_empty">Aún no tienes palabras aprendidas.</string>
+    <string name="mark_learned">Marcar como aprendida</string>
+    <string name="review_again">Volver a repasar</string>
+    <string name="delete_word">Eliminar palabra</string>
+
+    <string name="review_title">Repaso</string>
+    <string name="show_meaning">Mostrar significado</string>
+    <string name="again">Otra vez</string>
+    <string name="i_know_it">La sé</string>
+    <string name="no_translation">Sin traducción guardada</string>
+    <string name="review_done">¡Listo!</string>
+    <plurals name="reviewed_count">
+        <item quantity="one">Repasaste %d palabra.</item>
+        <item quantity="many">Repasaste %d palabras.</item>
+        <item quantity="other">Repasaste %d palabras.</item>
+    </plurals>
+    <string name="done">Listo</string>
+
+    <string name="settings_title">Ajustes</string>
+    <string name="daily_goal">Meta diaria</string>
+    <string name="minutes_a_day">%1$d minutos al día</string>
+    <string name="fewer_minutes">Menos minutos</string>
+    <string name="more_minutes">Más minutos</string>
+    <string name="reading">Lectura</string>
+    <string name="text_size">Tamaño de letra</string>
+    <string name="voice">Voz</string>
+    <string name="speech_speed">Velocidad de la voz</string>
+    <string name="test_voice">Probar la voz</string>
+    <string name="translation">Traducción</string>
+    <string name="translate_to">Traducir al</string>
+    <string name="translation_note">La traducción ocurre en tu teléfono. La primera vez se descarga el idioma (unos 30 MB); después funciona sin internet.</string>
+    <string name="about">Acerca de</string>
+    <string name="source_code">Código fuente</string>
+    <string name="open_source_note">Lingleaf es open source (licencia MIT).</string>
+    <string name="credits">Libros: Project Gutenberg (dominio público). Definiciones: dictionaryapi.dev. Traducción: Google ML Kit, en el teléfono. Sin cuentas, sin anuncios, sin rastreo.</string>
+</resources>

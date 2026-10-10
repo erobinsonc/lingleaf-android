@@ -1,0 +1,47 @@
+[versions]
+agp = "8.7.3"
+kotlin = "2.1.0"
+coroutines = "1.9.0"
+serialization = "1.7.3"
+compose-bom = "2024.12.01"
+activity-compose = "1.9.3"
+navigation-compose = "2.8.5"
+lifecycle = "2.8.7"
+core-ktx = "1.15.0"
+mlkit-translate = "17.0.3"
+junit = "4.13.2"
+robolectric = "4.14.1"
+androidx-test-core = "1.6.1"
+ktlint-plugin = "12.1.2"
+kover = "0.9.0"
+
+[libraries]
+kotlinx-coroutines-core = { module = "org.jetbrains.kotlinx:kotlinx-coroutines-core", version.ref = "coroutines" }
+kotlinx-coroutines-android = { module = "org.jetbrains.kotlinx:kotlinx-coroutines-android", version.ref = "coroutines" }
+kotlinx-coroutines-test = { module = "org.jetbrains.kotlinx:kotlinx-coroutines-test", version.ref = "coroutines" }
+kotlinx-serialization-json = { module = "org.jetbrains.kotlinx:kotlinx-serialization-json", version.ref = "serialization" }
+compose-bom = { module = "androidx.compose:compose-bom", version.ref = "compose-bom" }
+compose-ui = { module = "androidx.compose.ui:ui" }
+compose-ui-tooling-preview = { module = "androidx.compose.ui:ui-tooling-preview" }
+compose-ui-tooling = { module = "androidx.compose.ui:ui-tooling" }
+compose-material3 = { module = "androidx.compose.material3:material3" }
+compose-material-icons = { module = "androidx.compose.material:material-icons-extended" }
+compose-ui-test-junit4 = { module = "androidx.compose.ui:ui-test-junit4" }
+compose-ui-test-manifest = { module = "androidx.compose.ui:ui-test-manifest" }
+activity-compose = { module = "androidx.activity:activity-compose", version.ref = "activity-compose" }
+navigation-compose = { module = "androidx.navigation:navigation-compose", version.ref = "navigation-compose" }
+lifecycle-runtime-compose = { module = "androidx.lifecycle:lifecycle-runtime-compose", version.ref = "lifecycle" }
+androidx-core-ktx = { module = "androidx.core:core-ktx", version.ref = "core-ktx" }
+mlkit-translate = { module = "com.google.mlkit:translate", version.ref = "mlkit-translate" }
+junit = { module = "junit:junit", version.ref = "junit" }
+robolectric = { module = "org.robolectric:robolectric", version.ref = "robolectric" }
+androidx-test-core = { module = "androidx.test:core", version.ref = "androidx-test-core" }
+
+[plugins]
+android-application = { id = "com.android.application", version.ref = "agp" }
+kotlin-jvm = { id = "org.jetbrains.kotlin.jvm", version.ref = "kotlin" }
+kotlin-android = { id = "org.jetbrains.kotlin.android", version.ref = "kotlin" }
+kotlin-compose = { id = "org.jetbrains.kotlin.plugin.compose", version.ref = "kotlin" }
+kotlin-serialization = { id = "org.jetbrains.kotlin.plugin.serialization", version.ref = "kotlin" }
+ktlint = { id = "org.jlleitschuh.gradle.ktlint", version.ref = "ktlint-plugin" }
+kover = { id = "org.jetbrains.kotlinx.kover", version.ref = "kover" }
