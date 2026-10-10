@@ -1,0 +1,11 @@
+#!/bin/sh
+# Git Flow guard: main and develop only change through pull requests.
+# Enable once per clone: git config core.hooksPath .githooks
+while read local_ref local_sha remote_ref remote_sha; do
+  case "$remote_ref" in
+    refs/heads/main|refs/heads/develop)
+      echo "GIT FLOW: no direct pushes to ${remote_ref#refs/heads/}. Push a feat/*, fix/* or hotfix/* branch and open a pull request." >&2
+      exit 1 ;;
+  esac
+done
+exit 0
