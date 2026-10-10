@@ -22,6 +22,7 @@
     <string name="cancel">Cancel</string>
     <string name="imported">“%1$s” added to your library.</string>
     <string name="import_failed">Couldn\'t import that file. Try a plain-text (.txt) English book.</string>
+    <string name="import_too_large">That file is too large to import (10 MB maximum).</string>
     <string name="level">Level %1$s</string>
     <string name="progress_percent">%1$d%%</string>
 

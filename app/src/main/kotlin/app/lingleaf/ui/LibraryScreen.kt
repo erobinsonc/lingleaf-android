@@ -35,6 +35,7 @@ import androidx.lifecycle.compose.collectAsStateWithLifecycle
 import app.lingleaf.MAX_BYTES
 import app.lingleaf.R
 import app.lingleaf.core.Book
+import app.lingleaf.core.NetworkException
 import app.lingleaf.readCapped
 import kotlinx.coroutines.launch
 import kotlinx.coroutines.withContext
@@ -61,7 +62,11 @@ fun LibraryScreen(onOpenBook: (String) -> Unit) {
                                     if (cursor.moveToFirst()) cursor.getString(0) else null
                                 } ?: ""
                             val raw =
-                                resolver.openInputStream(uri)?.use { it.readCapped(MAX_BYTES).toString(Charsets.UTF_8) }.orEmpty()
+                                try {
+                                    resolver.openInputStream(uri)?.use { it.readCapped(MAX_BYTES).toString(Charsets.UTF_8) }.orEmpty()
+                                } catch (_: NetworkException) {
+                                    return@runCatching context.getString(R.string.import_too_large)
+                                }
                             val book = container.library.importText(name, raw)
                             context.getString(R.string.imported, book.title)
                         }.getOrElse { context.getString(R.string.import_failed) }

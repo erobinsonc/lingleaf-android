@@ -18,6 +18,7 @@
     <string name="cancel">Cancelar</string>
     <string name="imported">“%1$s” se agregó a tu biblioteca.</string>
     <string name="import_failed">No se pudo importar. Intenta con un libro en inglés en texto plano (.txt).</string>
+    <string name="import_too_large">Ese archivo es demasiado grande para importarlo (máximo 10 MB).</string>
     <string name="level">Nivel %1$s</string>
     <string name="progress_percent">%1$d%%</string>
 
