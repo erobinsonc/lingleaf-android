@@ -73,14 +73,14 @@ object TranslationLanguages {
                 "UY", "PR", "GQ",
             )
             add("pt", "BR", "PT", "AO", "MZ", "CV", "GW", "ST", "TL")
-            add("fr", "FR", "BE", "LU", "MC", "SN", "CI", "CM", "ML", "BF", "NE", "TG", "BJ", "GN", "CD", "CG", "GA", "MG", "HT")
+            add("fr", "FR", "LU", "MC", "SN", "CI", "CM", "ML", "BF", "NE", "TD", "TG", "BJ", "GN", "CD", "CG", "GA", "MG", "HT")
             add(
                 "ar", "EG", "SA", "AE", "MA", "DZ", "TN", "LY", "SD", "IQ", "JO", "LB", "SY", "KW", "QA", "BH", "OM", "YE", "PS",
                 "MR",
             )
             add("it", "IT", "SM", "VA")
             add("de", "DE", "AT", "CH", "LI")
-            add("nl", "NL", "SR")
+            add("nl", "NL", "BE", "SR")
             add("pl", "PL")
             add("uk", "UA")
             add("ru", "RU", "BY", "KZ", "KG")
@@ -88,7 +88,7 @@ object TranslationLanguages {
             add("hi", "IN")
             add("id", "ID")
             add("vi", "VN")
-            add("zh", "CN", "TW", "HK", "MO")
+            add("zh", "CN", "TW", "HK", "MO", "SG")
             add("ja", "JP")
             add("ko", "KR")
             add("th", "TH")

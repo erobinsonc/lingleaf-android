@@ -66,5 +66,9 @@ class TranslationLanguagesTest {
     fun `suggestions keep only supported languages`() {
         assertEquals(listOf("zh-Hans", "es"), TranslationLanguages.suggestions("CN", listOf("es", "zh-Hans")))
         assertEquals(listOf("es", "fr"), TranslationLanguages.suggestions("KR", listOf("es", "fr")))
+        // Same region table as iOS: Belgium → Dutch, Chad → French, Singapore → Chinese.
+        assertEquals(listOf("nl", "es", "fr"), TranslationLanguages.suggestions("BE", listOf("nl", "es", "fr")))
+        assertEquals(listOf("fr", "es", "ar"), TranslationLanguages.suggestions("TD", listOf("fr", "es", "ar")))
+        assertEquals(listOf("zh", "es"), TranslationLanguages.suggestions("SG", listOf("es", "zh")))
     }
 }
