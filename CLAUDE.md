@@ -27,7 +27,8 @@ feat/*, fix/*  ──PR──▶  develop  ──release PR──▶  main
 | Change touches | Run |
 |---|---|
 | Networking, storage, manifests, dependencies, CI | `security-reviewer` |
-| Any screen or component | `accessibility-reviewer`, `usability-reviewer`, `platform-guidelines-reviewer` |
+| Any screen or component | `accessibility-reviewer`, `usability-reviewer`, `platform-guidelines-reviewer`, `ux-experience-reviewer` |
+| Any flow or user-facing text, and every release PR (develop → main) | `ux-experience-reviewer` (both apps, simplicity first) |
 | Any user-facing text (app/src/main/res/values*/strings.xml) | `ux-writing-reviewer` |
 | Behaviour, shared logic or SPEC.md | `parity-reviewer` |
 | Stories, levels, learning features | `learning-content-reviewer` |
