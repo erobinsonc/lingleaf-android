@@ -287,6 +287,35 @@ class AppTest {
         assertTrue(container.library.state.value.words.isEmpty())
     }
 
+    // S4, S15: tapping the checked "✓ Saved" removes the word at once, with Undo.
+    @Test
+    fun tappingTheCheckedButtonRemovesTheWordWithUndo() {
+        val context = ApplicationProvider.getApplicationContext<Context>()
+        compose.onAllNodesWithText("The Red Boat").onFirst().performClick()
+        val paragraph = hasText("All animals are equal", substring = true)
+        compose.waitUntil(WAIT_MS) { compose.onAllNodes(paragraph).fetchSemanticsNodes().isNotEmpty() }
+        compose.onAllNodes(paragraph).onFirst().invokeCustomAction("Look up equal")
+        compose.waitUntil(WAIT_MS) { compose.onAllNodesWithText("igual").fetchSemanticsNodes().isNotEmpty() }
+        compose.onNodeWithText("Save word").performClick()
+        compose.waitUntil(WAIT_MS) { container.library.state.value.word("equal") != null }
+
+        // Once the card has closed, the word is being learned and its card shows the checked button.
+        compose.waitUntil(WAIT_MS) { compose.onAllNodesWithText("igual").fetchSemanticsNodes().isEmpty() }
+        val savedLabel = context.getString(R.string.card_saved)
+        compose.onAllNodes(paragraph).onFirst().invokeCustomAction("Look up equal, learning")
+        compose.waitUntil(WAIT_MS) { compose.onAllNodesWithText(savedLabel).fetchSemanticsNodes().isNotEmpty() }
+
+        compose.onNodeWithText(savedLabel).performClick()
+        compose.waitUntil(WAIT_MS) { container.library.state.value.word("equal") == null }
+        val removed = context.getString(R.string.word_removed_message, "equal")
+        compose.waitUntil(WAIT_MS) { compose.onAllNodesWithText(removed).fetchSemanticsNodes().isNotEmpty() }
+
+        compose.onNodeWithText("Undo").performClick()
+        compose.waitUntil(WAIT_MS) { container.library.state.value.word("equal") != null }
+        assertTrue(container.library.state.value.isLearning("equal"))
+        assertEquals("igual", container.library.state.value.word("equal")!!.translation)
+    }
+
     // S14: with no saved language and only English in the system list, the card asks.
     @Test
     fun withNoLanguageTheCardAsksForOne() {
