@@ -8,17 +8,23 @@ import androidx.compose.ui.semantics.SemanticsProperties
 import androidx.compose.ui.semantics.getOrNull
 import androidx.compose.ui.test.SemanticsMatcher
 import androidx.compose.ui.test.SemanticsNodeInteraction
+import androidx.compose.ui.test.assertIsDisplayed
 import androidx.compose.ui.test.click
 import androidx.compose.ui.test.hasAnyAncestor
 import androidx.compose.ui.test.hasClickAction
 import androidx.compose.ui.test.hasContentDescription
+import androidx.compose.ui.test.hasScrollToIndexAction
+import androidx.compose.ui.test.hasTestTag
 import androidx.compose.ui.test.hasText
 import androidx.compose.ui.test.junit4.createComposeRule
 import androidx.compose.ui.test.onAllNodesWithText
 import androidx.compose.ui.test.onFirst
 import androidx.compose.ui.test.onNodeWithContentDescription
+import androidx.compose.ui.test.onNodeWithTag
 import androidx.compose.ui.test.onNodeWithText
 import androidx.compose.ui.test.performClick
+import androidx.compose.ui.test.performScrollToIndex
+import androidx.compose.ui.test.performScrollToNode
 import androidx.compose.ui.test.performTouchInput
 import androidx.compose.ui.text.TextLayoutResult
 import androidx.test.core.app.ApplicationProvider
@@ -58,6 +64,21 @@ class FakeSpeaker : Speaker {
 private val dictionaryJson =
     """[{"word": "equal", "phonetic": "/ˈiːkwəl/",
          "meanings": [{"partOfSpeech": "adjective", "definitions": [{"definition": "The same in quantity."}]}]}]"""
+
+private fun catalogBook(
+    id: Int,
+    title: String,
+    author: String,
+) = """{"id": $id, "title": "$title", "authors": [{"name": "$author"}],
+       "formats": {"text/plain; charset=us-ascii": "https://www.gutenberg.org/ebooks/$id.txt.utf-8"}}"""
+
+private val recommendedCatalog =
+    listOf(
+        catalogBook(21, "Aesop's Fables", "Aesop"),
+        catalogBook(55, "The Wonderful Wizard of Oz", "Baum, L. Frank"),
+        catalogBook(16, "Peter Pan", "Barrie, J. M."),
+        catalogBook(2701, "Moby-Dick; Or, The Whale", "Melville, Herman"),
+    ).joinToString(prefix = """{"results": [""", postfix = "]}")
 
 /** Generous: CI runners are slow on the first test, and lookups run on real background threads. */
 private const val WAIT_MS = 15_000L
@@ -260,6 +281,23 @@ class AppTest {
                 !child.config.getOrNull(SemanticsProperties.ContentDescription).isNullOrEmpty() ||
                 child.hasLabelledChildren()
         }
+
+    @Test
+    fun filterRecommendedBooksByLevel() {
+        catalogJson = recommendedCatalog
+        compose.onAllNodesWithText("Discover").onFirst().performClick()
+        compose.waitUntil(WAIT_MS) { compose.onAllNodes(hasTestTag("level-filter-B1")).fetchSemanticsNodes().isNotEmpty() }
+
+        compose.onNodeWithTag("level-filter-B1").performClick()
+        val list = compose.onNode(hasScrollToIndexAction())
+        list.performScrollToNode(hasText("Peter Pan"))
+        compose.onNodeWithText("Peter Pan").assertIsDisplayed()
+        compose.onNodeWithText("Aesop's Fables").assertDoesNotExist()
+
+        list.performScrollToIndex(0)
+        compose.onNodeWithTag("level-filter-all").performClick()
+        compose.onNodeWithText("Aesop's Fables").assertExists()
+    }
 
     @Test
     fun wordsScreenShowsSavedWordsAndReviewWorks() {
