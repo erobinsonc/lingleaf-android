@@ -80,6 +80,9 @@ private val recommendedCatalog =
         catalogBook(2701, "Moby-Dick; Or, The Whale", "Melville, Herman"),
     ).joinToString(prefix = """{"results": [""", postfix = "]}")
 
+/** Generous: CI runners are slow on the first test, and lookups run on real background threads. */
+private const val WAIT_MS = 15_000L
+
 private const val STORY = "All animals are equal, but some are more equal.\n\nThe end."
 
 private const val ALICE_TITLE = "Alice's Adventures in Wonderland"
@@ -144,7 +147,7 @@ class AppTest {
         compose.onAllNodesWithText("The Red Boat").onFirst().performClick()
 
         val paragraph = hasText("All animals are equal", substring = true)
-        compose.waitUntil(5_000) { compose.onAllNodes(paragraph).fetchSemanticsNodes().isNotEmpty() }
+        compose.waitUntil(WAIT_MS) { compose.onAllNodes(paragraph).fetchSemanticsNodes().isNotEmpty() }
 
         // Tap the middle of the word "equal" using the paragraph's real text layout.
         val node = compose.onAllNodes(paragraph).onFirst()
@@ -155,12 +158,12 @@ class AppTest {
         val box = layouts.first().getBoundingBox(start + 2)
         node.performTouchInput { click(Offset(box.center.x, box.center.y)) }
 
-        compose.waitUntil(5_000) { compose.onAllNodesWithText("igual").fetchSemanticsNodes().isNotEmpty() }
+        compose.waitUntil(WAIT_MS) { compose.onAllNodesWithText("igual").fetchSemanticsNodes().isNotEmpty() }
         compose.onNodeWithText("/ˈiːkwəl/").assertExists()
         compose.onNodeWithText("[es] All animals are equal, but some are more equal.").assertExists()
 
         compose.onNodeWithText("Learn").performClick()
-        compose.waitUntil(5_000) { container.library.state.value.word("equal") != null }
+        compose.waitUntil(WAIT_MS) { container.library.state.value.word("equal") != null }
 
         val saved = container.library.state.value.word("equal")!!
         assertEquals("igual", saved.translation)
@@ -181,11 +184,11 @@ class AppTest {
     fun readerAndWordCardAreLabelled() {
         compose.onAllNodesWithText("The Red Boat").onFirst().performClick()
         val paragraph = hasText("All animals are equal", substring = true)
-        compose.waitUntil(5_000) { compose.onAllNodes(paragraph).fetchSemanticsNodes().isNotEmpty() }
+        compose.waitUntil(WAIT_MS) { compose.onAllNodes(paragraph).fetchSemanticsNodes().isNotEmpty() }
         assertTappablesAreLabelled("Reader")
 
         compose.onAllNodes(paragraph).onFirst().invokeCustomAction("Look up equal")
-        compose.waitUntil(5_000) { compose.onAllNodesWithText("igual").fetchSemanticsNodes().isNotEmpty() }
+        compose.waitUntil(WAIT_MS) { compose.onAllNodesWithText("igual").fetchSemanticsNodes().isNotEmpty() }
         assertTappablesAreLabelled("Word card")
     }
 
@@ -213,7 +216,7 @@ class AppTest {
         container.library.saveWord("animal", learned = false, translation = "animal")
         compose.onAllNodesWithText("The Red Boat").onFirst().performClick()
         val paragraph = hasText("All animals are equal", substring = true)
-        compose.waitUntil(5_000) { compose.onAllNodes(paragraph).fetchSemanticsNodes().isNotEmpty() }
+        compose.waitUntil(WAIT_MS) { compose.onAllNodes(paragraph).fetchSemanticsNodes().isNotEmpty() }
 
         val node = compose.onAllNodes(paragraph).onFirst().fetchSemanticsNode()
         val text = node.config[SemanticsProperties.Text].first()
@@ -283,7 +286,7 @@ class AppTest {
     fun filterRecommendedBooksByLevel() {
         catalogJson = recommendedCatalog
         compose.onAllNodesWithText("Discover").onFirst().performClick()
-        compose.waitUntil(5_000) { compose.onAllNodes(hasTestTag("level-filter-B1")).fetchSemanticsNodes().isNotEmpty() }
+        compose.waitUntil(WAIT_MS) { compose.onAllNodes(hasTestTag("level-filter-B1")).fetchSemanticsNodes().isNotEmpty() }
 
         compose.onNodeWithTag("level-filter-B1").performClick()
         val list = compose.onNode(hasScrollToIndexAction())
@@ -314,13 +317,13 @@ class AppTest {
         container.library.addBook("Listening Practice", "Lingleaf", "The sun is up. All animals are equal.\n\nThe end.")
         compose.onAllNodesWithText("Listening Practice").onFirst().performClick()
         val paragraph = hasText("The sun is up.", substring = true)
-        compose.waitUntil(5_000) { compose.onAllNodes(paragraph).fetchSemanticsNodes().isNotEmpty() }
+        compose.waitUntil(WAIT_MS) { compose.onAllNodes(paragraph).fetchSemanticsNodes().isNotEmpty() }
 
         compose.onNodeWithContentDescription("Read aloud").performClick()
         assertEquals(listOf("The sun is up. All animals are equal."), speaker.spoken)
 
         compose.onAllNodes(paragraph).onFirst().invokeCustomAction("Look up equal")
-        compose.waitUntil(5_000) { compose.onAllNodesWithText("igual").fetchSemanticsNodes().isNotEmpty() }
+        compose.waitUntil(WAIT_MS) { compose.onAllNodesWithText("igual").fetchSemanticsNodes().isNotEmpty() }
         compose.onNodeWithContentDescription("Listen to equal").performClick()
         compose.onNodeWithContentDescription("Listen to the sentence").performClick()
 
@@ -333,10 +336,10 @@ class AppTest {
         catalogJson = aliceCatalog
         compose.onAllNodesWithText("Discover").onFirst().performClick()
         val getButton = hasContentDescription("Get $ALICE_TITLE")
-        compose.waitUntil(5_000) { compose.onAllNodes(getButton).fetchSemanticsNodes().isNotEmpty() }
+        compose.waitUntil(WAIT_MS) { compose.onAllNodes(getButton).fetchSemanticsNodes().isNotEmpty() }
 
         compose.onNode(getButton).performClick()
-        compose.waitUntil(5_000) { container.library.state.value.books.any { it.gutenbergId == 11 } }
+        compose.waitUntil(WAIT_MS) { container.library.state.value.books.any { it.gutenbergId == 11 } }
 
         val book = container.library.state.value.books.single { it.gutenbergId == 11 }
         assertEquals(ALICE_TITLE, book.title)
@@ -361,12 +364,12 @@ class AppTest {
         val context = ApplicationProvider.getApplicationContext<Context>()
         compose.onAllNodesWithText("The Red Boat").onFirst().performClick()
         val paragraph = hasText("All animals are equal", substring = true)
-        compose.waitUntil(5_000) { compose.onAllNodes(paragraph).fetchSemanticsNodes().isNotEmpty() }
+        compose.waitUntil(WAIT_MS) { compose.onAllNodes(paragraph).fetchSemanticsNodes().isNotEmpty() }
 
         compose.onAllNodes(paragraph).onFirst().invokeCustomAction("Look up equal")
         val unavailable = context.getString(R.string.translation_unavailable)
         val noDefinition = context.getString(R.string.no_definition)
-        compose.waitUntil(5_000) {
+        compose.waitUntil(WAIT_MS) {
             compose.onAllNodesWithText(unavailable).fetchSemanticsNodes().isNotEmpty() &&
                 compose.onAllNodesWithText(noDefinition).fetchSemanticsNodes().isNotEmpty()
         }
