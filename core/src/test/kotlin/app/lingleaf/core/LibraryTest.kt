@@ -6,6 +6,7 @@ import java.time.ZoneId
 import java.time.ZoneOffset
 import kotlin.test.Test
 import kotlin.test.assertEquals
+import kotlin.test.assertFailsWith
 import kotlin.test.assertFalse
 import kotlin.test.assertNotNull
 import kotlin.test.assertNull
@@ -160,5 +161,45 @@ class LibraryTest {
     fun `progress of single-paragraph books is zero`() {
         val book = Book(id = "1", title = "T", author = "A", fileName = "f", paragraphCount = 1, addedAt = "x")
         assertEquals(0f, book.progress)
+    }
+
+    // S10 Import. The system document picker can't be driven in UI tests, so the
+    // import rules are covered here; LibraryScreen passes the picked file to importText.
+
+    @Test
+    fun `import title is the file name without its extension`() {
+        assertEquals("Alice", Library.importTitle("Alice.txt"))
+        assertEquals("my.story", Library.importTitle("my.story.TXT"))
+        assertEquals("Book", Library.importTitle(".txt"))
+        assertEquals("Book", Library.importTitle(""))
+        assertEquals("Notes", Library.importTitle("  Notes .txt"))
+    }
+
+    @Test
+    fun `importing text strips the Gutenberg boilerplate and adds the book`() {
+        val library = library()
+        val raw =
+            "The Project Gutenberg eBook\r\nLicense\r\n*** START OF THE PROJECT GUTENBERG EBOOK X ***\r\n\r\n" +
+                "Chapter 1\r\n\r\nOnce upon a time.\r\n*** END OF THE PROJECT GUTENBERG EBOOK X ***\r\nMore license"
+
+        val book = library.importText("Alice.txt", raw)
+
+        assertEquals("Alice", book.title)
+        assertEquals("—", book.author)
+        assertEquals(listOf(book), library.state.value.books)
+        assertEquals("Chapter 1\n\nOnce upon a time.", storage.files[book.fileName])
+        assertEquals(listOf("Chapter 1", "Once upon a time."), library.openBook(book.id))
+    }
+
+    @Test
+    fun `importing empty or boilerplate-only text fails and adds nothing`() {
+        val library = library()
+        assertFailsWith<IllegalArgumentException> { library.importText("Empty.txt", "") }
+        assertFailsWith<IllegalArgumentException> { library.importText("Blank.txt", "  \n\n ") }
+        val licenseOnly =
+            "Header\n*** START OF THE PROJECT GUTENBERG EBOOK X ***\n\n*** END OF THE PROJECT GUTENBERG EBOOK X ***\nFooter"
+        assertFailsWith<IllegalArgumentException> { library.importText("License.txt", licenseOnly) }
+        assertTrue(library.state.value.books.isEmpty())
+        assertTrue(storage.files.keys.none { it.startsWith("book-") })
     }
 }

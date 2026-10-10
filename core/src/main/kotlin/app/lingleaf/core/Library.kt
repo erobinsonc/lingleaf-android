@@ -145,6 +145,21 @@ class Library(
         return book
     }
 
+    /**
+     * Adds an imported plain-text file: the Gutenberg license header and footer
+     * are removed and the title comes from [fileName]. Text that is empty after
+     * that is refused with [IllegalArgumentException] and nothing is added.
+     */
+    @Synchronized
+    fun importText(
+        fileName: String,
+        text: String,
+    ): Book {
+        val body = GutenbergClient.stripBoilerplate(text)
+        require(body.isNotBlank()) { "No text to import" }
+        return addBook(importTitle(fileName), IMPORTED_AUTHOR, body)
+    }
+
     @Synchronized
     fun deleteBook(id: String) {
         val book = _state.value.books.firstOrNull { it.id == id } ?: return
@@ -294,5 +309,14 @@ class Library(
         private const val SETTINGS = "settings.json"
         private const val SEEDED = "seeded"
         private const val MAX_SESSION_SECONDS = 3600L
+        private const val IMPORTED_AUTHOR = "—"
+        private const val DEFAULT_TITLE = "Book"
+
+        /** "Alice.txt" → "Alice", "my.story.TXT" → "my.story"; an empty name becomes "Book". */
+        fun importTitle(fileName: String): String {
+            val dot = fileName.lastIndexOf('.')
+            val stem = if (dot >= 0) fileName.substring(0, dot) else fileName
+            return stem.trim().ifEmpty { DEFAULT_TITLE }
+        }
     }
 }

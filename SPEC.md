@@ -39,3 +39,4 @@ the same intent on both platforms. A change to behaviour updates this file in
 - Base forms: irregular table, then plural/past/-ing rules (see `TextTools`).
 - Spaced repetition: boxes with 1, 3, 7, 14, 30 day intervals.
 - Streak: consecutive days meeting the goal; an unfinished today doesn't break it.
+- Imported .txt: title is the file name without its extension (empty → "Book"); Gutenberg header/footer removed; files over 10 MB or with no text are refused.
