@@ -2,6 +2,7 @@
 
 package app.lingleaf.ui
 
+import android.accessibilityservice.AccessibilityServiceInfo
 import android.view.accessibility.AccessibilityManager
 import androidx.compose.foundation.background
 import androidx.compose.foundation.layout.Arrangement
@@ -118,15 +119,16 @@ fun ScreenScaffold(
  * How long an Undo message stays, in milliseconds, or null to keep it until it
  * is dismissed or replaced (SPEC S4, S15). [baseMillis] grows to the system's
  * recommended time to act ([recommendedMillis]); with a screen reader
- * ([touchExploration]) or a service that asks for no timeout (Long.MAX_VALUE)
- * the message stays.
+ * ([touchExploration]), switch control ([switchControl]) or a service that asks
+ * for no timeout (Long.MAX_VALUE) the message stays.
  */
 fun undoTimeoutMillis(
     baseMillis: Long,
     touchExploration: Boolean,
+    switchControl: Boolean,
     recommendedMillis: (Long) -> Long,
 ): Long? {
-    if (touchExploration) return null
+    if (touchExploration || switchControl) return null
     val millis = recommendedMillis(baseMillis)
     return if (millis == Long.MAX_VALUE) null else maxOf(millis, baseMillis)
 }
@@ -134,7 +136,7 @@ fun undoTimeoutMillis(
 /**
  * Returns a function that gives the Undo timeout for [baseMillis] (see [undoTimeoutMillis]).
  * It reads the accessibility settings each time it is called, so a screen reader
- * turned on while the screen is open is taken into account.
+ * or switch control turned on while the screen is open is taken into account.
  */
 @Composable
 fun rememberUndoTimeout(baseMillis: Long): () -> Long? {
@@ -143,7 +145,11 @@ fun rememberUndoTimeout(baseMillis: Long): () -> Long? {
     return remember(context, accessibility, baseMillis) {
         val system = context.getSystemService(AccessibilityManager::class.java)
         val timeout: () -> Long? = {
-            undoTimeoutMillis(baseMillis, touchExploration = system?.isTouchExplorationEnabled == true) { millis ->
+            undoTimeoutMillis(
+                baseMillis,
+                touchExploration = system?.isTouchExplorationEnabled == true,
+                switchControl = system?.isSwitchControlEnabled() == true,
+            ) { millis ->
                 accessibility?.calculateRecommendedTimeoutMillis(
                     millis,
                     containsIcons = false,
@@ -155,6 +161,12 @@ fun rememberUndoTimeout(baseMillis: Long): () -> Long? {
         timeout
     }
 }
+
+/** True when an enabled accessibility service is switch control, such as Google's Switch Access. */
+private fun AccessibilityManager.isSwitchControlEnabled(): Boolean =
+    getEnabledAccessibilityServiceList(AccessibilityServiceInfo.FEEDBACK_ALL_MASK)
+        .orEmpty()
+        .any { it.id?.contains("switchaccess", ignoreCase = true) == true }
 
 /**
  * Shows [message] with an Undo action for [millis], then hides it; with null

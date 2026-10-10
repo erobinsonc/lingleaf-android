@@ -294,6 +294,53 @@ class AppTest {
         assertTrue(container.library.state.value.words.isEmpty())
     }
 
+    // S4: Undo after changing a saved word puts back the previous record.
+    @Test
+    fun undoAfterChangingAKnownWordRestoresItAsKnown() {
+        val context = ApplicationProvider.getApplicationContext<Context>()
+        val knownLabel = context.getString(R.string.card_known)
+        val knowIt = hasText(context.getString(R.string.card_i_know_it)) and hasClickAction()
+        compose.onAllNodesWithText("The Red Boat").onFirst().performClick()
+        val paragraph = hasText("All animals are equal", substring = true)
+        compose.waitUntil(WAIT_MS) { compose.onAllNodes(paragraph).fetchSemanticsNodes().isNotEmpty() }
+        compose.onAllNodes(paragraph).onFirst().invokeCustomAction("Look up equal")
+        compose.waitUntil(WAIT_MS) { compose.onAllNodesWithText("igual").fetchSemanticsNodes().isNotEmpty() }
+
+        // "I know it" saves the word as known and says so.
+        compose.onNode(knowIt).performClick()
+        compose.waitUntil(WAIT_MS) { container.library.state.value.word("equal")?.learned == true }
+        val knownMessage = context.getString(R.string.word_known_message, "equal")
+        compose.waitUntil(WAIT_MS) { compose.onAllNodesWithText(knownMessage).fetchSemanticsNodes().isNotEmpty() }
+
+        // Reopened once the card has closed, the card shows the word is known.
+        compose.waitUntil(WAIT_MS) { compose.onAllNodesWithText("igual").fetchSemanticsNodes().isEmpty() }
+        compose.onAllNodes(paragraph).onFirst().invokeCustomAction("Look up equal")
+        compose.waitUntil(WAIT_MS) { compose.onAllNodesWithText("igual").fetchSemanticsNodes().isNotEmpty() }
+        compose
+            .onNode(hasText(knownLabel) and hasClickAction())
+            .assert(SemanticsMatcher.expectValue(SemanticsProperties.Selected, true))
+
+        // "Save word" moves it to learning; Undo puts it back as known.
+        compose.onNodeWithText("Save word").performClick()
+        compose.waitUntil(WAIT_MS) { container.library.state.value.isLearning("equal") }
+        val savedMessage = context.getString(R.string.word_saved_message, "equal")
+        compose.waitUntil(WAIT_MS) { compose.onAllNodesWithText(savedMessage).fetchSemanticsNodes().isNotEmpty() }
+
+        compose.onNodeWithText("Undo").performClick()
+        compose.waitUntil(WAIT_MS) { container.library.state.value.word("equal")?.learned == true }
+        assertEquals(1, container.library.state.value.words.size)
+        assertEquals("igual", container.library.state.value.word("equal")!!.translation)
+
+        // Reopened, the card still shows the word as known, not saved.
+        compose.waitUntil(WAIT_MS) { compose.onAllNodesWithText("igual").fetchSemanticsNodes().isEmpty() }
+        compose.onAllNodes(paragraph).onFirst().invokeCustomAction("Look up equal")
+        compose.waitUntil(WAIT_MS) { compose.onAllNodesWithText("igual").fetchSemanticsNodes().isNotEmpty() }
+        compose
+            .onNode(hasText(knownLabel) and hasClickAction())
+            .assert(SemanticsMatcher.expectValue(SemanticsProperties.Selected, true))
+        compose.onNodeWithText(context.getString(R.string.card_saved)).assertDoesNotExist()
+    }
+
     // S4, S15: tapping the checked "Saved" removes the word at once, with Undo.
     @Test
     fun tappingTheCheckedButtonRemovesTheWordWithUndo() {
