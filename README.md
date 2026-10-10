@@ -13,7 +13,7 @@ iOS version: [lingleaf-ios](https://github.com/erobinsonc/lingleaf-ios) · Produ
 ## Features
 
 - **Tap a word**: base form, IPA, on-device translation, definition, and the sentence translated.
-- **Learn / Learned**: words you're learning get a yellow underline in every book, inflected forms too.
+- **Save word / I know it**: saved words get a yellow underline in every book, inflected forms too. Every change can be undone.
 - **Review** with spaced repetition (1, 3, 7, 14, 30 days).
 - **Read aloud** a word, a sentence or a paragraph.
 - **Thousands of free books** from Project Gutenberg, plus 3 original graded stories (A1–B1). Import your own `.txt`.
@@ -60,7 +60,7 @@ talks only to `gutendex.com` / `gutenberg.org` (books) and `api.dictionaryapi.de
 (definitions), always over HTTPS.
 
 Translation runs on the device with Google ML Kit. ML Kit downloads each language
-model (about 30 MB) from Google the first time, and, as Google documents for ML Kit,
+model (about 30 MB) from Google the first time, over Wi‑Fi only, and, as Google documents for ML Kit,
 sends Google anonymous usage and diagnostics data
 ([ML Kit terms](https://developers.google.com/ml-kit/terms)). The words you look up
 are translated on the device and are not sent.
