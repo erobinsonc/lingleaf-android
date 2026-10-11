@@ -53,11 +53,30 @@
     <string name="in_text">In the text: %1$s</string>
     <string name="translation_unavailable">Translation unavailable. Connect to the internet once to download the language.</string>
     <string name="translating">Translating…</string>
+    <!-- %1$s: language name in that language, e.g. "Português". -->
+    <string name="downloading_language">Downloading %1$s (about 30 MB)…</string>
+    <!-- %1$s: language name in that language. Models are only downloaded over Wi-Fi. -->
+    <string name="language_needs_wifi">Connect to Wi‑Fi once to download %1$s (about 30 MB).</string>
+    <!-- Shown on the first word card when no translation language could be picked; language chips follow. -->
+    <string name="translate_into_prompt">Translate into:</string>
+    <!-- Screen-reader label of the language button under the translation. %1$s: language name in that language. -->
+    <string name="translation_language_label">Translation language: %1$s</string>
+    <string name="more_languages">More languages</string>
     <string name="no_definition">No definition available.</string>
-    <string name="already_saved">Already in your words</string>
-    <string name="already_learned">You marked it as learned</string>
-    <string name="learned">Learned</string>
-    <string name="learn">Learn</string>
+    <!-- Word card buttons. "Save word" is the primary action. -->
+    <string name="card_i_know_it">I know it</string>
+    <string name="save_word">Save word</string>
+    <!-- Checked state of the card buttons, shown with a check mark; tapping it removes the word from Words. -->
+    <string name="card_known">I know it</string>
+    <string name="card_saved">Saved</string>
+    <!-- What a screen reader says tapping a checked card button does. -->
+    <string name="remove_from_words">Remove from Words</string>
+    <!-- Messages with Undo after a word card action or deleting a word. %1$s: the word. -->
+    <string name="word_saved_message">“%1$s” saved to Words</string>
+    <string name="word_known_message">“%1$s” marked as known</string>
+    <string name="word_removed_message">“%1$s” removed from Words</string>
+    <string name="word_deleted_message">“%1$s” deleted</string>
+    <string name="undo">Undo</string>
 
     <!-- Discover -->
     <string name="discover_title">Discover</string>
@@ -90,21 +109,19 @@
     <string name="nothing_due">Nothing to review. Come back tomorrow!</string>
     <string name="save_words_hint">Save words while you read.</string>
     <string name="filter_learning">Learning</string>
-    <string name="filter_learned">Learned</string>
-    <string name="words_empty">No words yet. While reading, tap a word and choose Learn.</string>
-    <string name="learned_empty">No learned words yet.</string>
-    <string name="mark_learned_word">Mark %1$s as learned</string>
+    <string name="filter_known">Known</string>
+    <string name="words_empty">No words yet. While reading, tap a word and choose Save word.</string>
+    <string name="known_empty">No known words yet.</string>
+    <string name="mark_known_word">Mark %1$s as known</string>
     <string name="review_again_word">Review %1$s again</string>
     <string name="delete_word">Delete %1$s</string>
-    <string name="delete_word_title">Delete “%1$s”?</string>
-    <string name="delete_word_message">It will be removed from your words, along with its review progress.</string>
 
     <!-- Review -->
     <string name="review_title">Review</string>
     <string name="show_meaning">Show meaning</string>
     <string name="again">Again</string>
     <string name="i_know_it">I know it</string>
-    <string name="no_translation">No saved translation</string>
+    <string name="no_translation">No translation yet. Connect to the internet once to get it.</string>
     <string name="review_done">All done!</string>
     <plurals name="reviewed_count">
         <item quantity="one">You reviewed %d word.</item>
@@ -126,7 +143,9 @@
     <string name="speech_speed_value">%1$s×</string>
     <string name="test_voice">Test the voice</string>
     <string name="translation">Translation</string>
-    <string name="translate_to">Translate to</string>
+    <string name="translate_to">Translate into</string>
+    <!-- Value of "Translate into" before a language has been chosen. -->
+    <string name="translate_ask">Ask me when I tap a word</string>
     <string name="translation_note">Translation happens on your phone. The first time, the language is downloaded (about 30 MB); after that it works offline.</string>
     <string name="about">About</string>
     <string name="source_code">Source code</string>

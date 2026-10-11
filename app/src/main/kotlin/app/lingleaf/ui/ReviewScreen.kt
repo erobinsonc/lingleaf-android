@@ -28,6 +28,7 @@ import androidx.compose.material3.MaterialTheme
 import androidx.compose.material3.OutlinedButton
 import androidx.compose.material3.Text
 import androidx.compose.runtime.Composable
+import androidx.compose.runtime.LaunchedEffect
 import androidx.compose.runtime.getValue
 import androidx.compose.runtime.mutableIntStateOf
 import androidx.compose.runtime.mutableStateOf
@@ -46,17 +47,24 @@ import androidx.compose.ui.text.font.FontStyle
 import androidx.compose.ui.text.font.FontWeight
 import androidx.compose.ui.text.style.TextAlign
 import androidx.compose.ui.unit.dp
+import androidx.lifecycle.compose.collectAsStateWithLifecycle
 import app.lingleaf.R
 import app.lingleaf.core.VocabWord
 
 /** Flashcard review of due words with spaced repetition. */
 @Composable
 fun ReviewScreen(onBack: () -> Unit) {
-    val library = LocalContainer.current.library
+    val container = LocalContainer.current
+    val library = container.library
+    val state by library.state.collectAsStateWithLifecycle()
     val queue = remember { library.dueWords().toMutableStateList() }
     val total = remember { queue.size }
     var reviewed by remember { mutableIntStateOf(0) }
     var revealed by remember { mutableStateOf(false) }
+    val target = container.targetLanguage(state.settings)
+
+    // Fill in missing or other-language translations on the device (SPEC S12, S14).
+    LaunchedEffect(target) { target?.let(container::fillMissingTranslations) }
 
     fun answer(correct: Boolean) {
         val word = queue.removeAt(0)
@@ -71,7 +79,8 @@ fun ReviewScreen(onBack: () -> Unit) {
             ReviewDone(reviewed = reviewed, onBack = onBack, modifier = modifier)
         } else {
             ReviewCard(
-                word = current,
+                // The saved word, so a translation filled in meanwhile shows up.
+                word = state.word(current.word) ?: current,
                 progress = if (total == 0) 0f else reviewed / total.toFloat(),
                 revealed = revealed,
                 onReveal = { revealed = true },

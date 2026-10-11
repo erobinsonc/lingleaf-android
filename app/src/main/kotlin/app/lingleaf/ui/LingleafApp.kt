@@ -17,6 +17,7 @@ import androidx.compose.material3.Scaffold
 import androidx.compose.material3.Text
 import androidx.compose.runtime.Composable
 import androidx.compose.runtime.CompositionLocalProvider
+import androidx.compose.runtime.LaunchedEffect
 import androidx.compose.runtime.getValue
 import androidx.compose.runtime.remember
 import androidx.compose.runtime.staticCompositionLocalOf
@@ -59,6 +60,10 @@ fun LingleafApp(container: AppContainer) {
             val route = backStack?.destination?.route
             val state by container.library.state.collectAsStateWithLifecycle()
             val due = remember(state.words) { container.library.dueWords().size }
+            val target = container.targetLanguage(state.settings)
+
+            // Once the language is known, download its model in the background (over Wi‑Fi only).
+            LaunchedEffect(target) { target?.let(container.translator::prepare) }
 
             Scaffold(
                 // Exposes Compose test tags as resource ids so UI automation (Maestro) can find them.

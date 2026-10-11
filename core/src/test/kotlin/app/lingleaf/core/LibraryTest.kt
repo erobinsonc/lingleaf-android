@@ -134,6 +134,133 @@ class LibraryTest {
         assertTrue(library.state.value.words.isEmpty())
     }
 
+    // S4, S5, S15: saving returns the previous record so Undo can put it back.
+
+    @Test
+    fun `saveWord returns the previous record`() {
+        val library = library()
+        assertNull(library.saveWord("bay", learned = false, translation = "bahía", translationLanguage = "es"))
+        val first = library.state.value.word("bay")
+        assertNotNull(first)
+        assertEquals("es", first.translationLanguage)
+
+        val previous = library.saveWord("Bay", learned = true)
+        assertEquals(first, previous)
+        assertTrue(library.state.value.word("bay")!!.learned)
+        assertEquals("es", library.state.value.word("bay")!!.translationLanguage, "no new translation keeps the language")
+    }
+
+    @Test
+    fun `saving a known word puts it back to review`() {
+        val library = library()
+        library.saveWord("bay", learned = false)
+        library.answerReview("bay", correct = true)
+        library.saveWord("bay", learned = true)
+        clock.instant = clock.instant.plusSeconds(60)
+        library.saveWord("bay", learned = false)
+        val saved = library.state.value.word("bay")!!
+        assertFalse(saved.learned)
+        assertEquals(0, saved.box)
+        assertEquals("bay", library.dueWords().single().word)
+    }
+
+    @Test
+    fun `restoreWord with no previous record removes the word`() {
+        val library = library()
+        val previous = library.saveWord("bay", learned = false, translation = "bahía")
+        library.restoreWord("bay", previous)
+        assertNull(library.state.value.word("bay"))
+        assertNull(library().state.value.word("bay"), "the removal is saved")
+    }
+
+    @Test
+    fun `restoreWord puts back exactly the previous record`() {
+        val library = library()
+        library.saveWord("bay", learned = false, translation = "bahía", context = "The bay.", source = "The Red Boat")
+        library.answerReview("bay", correct = true)
+        clock.instant = clock.instant.plusSeconds(60)
+        library.saveWord("other", learned = false)
+        val before = library.state.value.words
+
+        clock.instant = clock.instant.plusSeconds(3_600)
+        val previous = library.saveWord("bay", learned = true, translation = "baía", translationLanguage = "pt")
+        library.restoreWord("Bay", previous)
+        assertEquals(before, library.state.value.words)
+        assertEquals(before, library().state.value.words, "the restored record is saved")
+    }
+
+    @Test
+    fun `restoreWord brings back a deleted word`() {
+        val library = library()
+        library.saveWord("bay", learned = true, translation = "bahía")
+        val deleted = library.state.value.word("bay")
+        library.deleteWord("bay")
+        library.restoreWord("bay", deleted)
+        assertEquals(deleted, library.state.value.word("bay"))
+    }
+
+    // S12, S14: translations that arrive after saving.
+
+    @Test
+    fun `setTranslation fills in a missing translation`() {
+        val library = library()
+        library.saveWord("bay", learned = false)
+        library.setTranslation("Bay", "bahía", "es")
+        val saved = library().state.value.word("bay")!!
+        assertEquals("bahía", saved.translation)
+        assertEquals("es", saved.translationLanguage)
+    }
+
+    @Test
+    fun `setTranslation keeps a translation already in that language`() {
+        val library = library()
+        library.saveWord("bay", learned = false, translation = "bahía", translationLanguage = "es")
+        library.setTranslation("bay", "golfo", "es")
+        assertEquals("bahía", library.state.value.word("bay")!!.translation)
+    }
+
+    @Test
+    fun `setTranslation replaces a translation in another language`() {
+        val library = library()
+        library.saveWord("bay", learned = false, translation = "bahía", translationLanguage = "es")
+        library.setTranslation("bay", "baía", "pt")
+        val saved = library.state.value.word("bay")!!
+        assertEquals("baía", saved.translation)
+        assertEquals("pt", saved.translationLanguage)
+    }
+
+    @Test
+    fun `setTranslation does nothing for a removed word or a blank text`() {
+        val library = library()
+        library.setTranslation("bay", "bahía", "es")
+        assertNull(library.state.value.word("bay"))
+
+        library.saveWord("bay", learned = false)
+        library.setTranslation("bay", " ", "es")
+        assertEquals("", library.state.value.word("bay")!!.translation)
+    }
+
+    @Test
+    fun `wordsNeedingTranslation lists missing and other-language translations`() {
+        val library = library()
+        library.saveWord("bay", learned = false, translation = "bahía", translationLanguage = "es")
+        library.saveWord("boat", learned = false)
+        library.saveWord("sea", learned = true, translation = "mer", translationLanguage = "fr")
+        library.saveWord("sun", learned = false, translation = "sol")
+
+        assertEquals(setOf("boat", "sea", "sun"), library.wordsNeedingTranslation("es").map { it.word }.toSet())
+        assertEquals(setOf("bay", "boat", "sun"), library.wordsNeedingTranslation("fr").map { it.word }.toSet())
+    }
+
+    @Test
+    fun `words saved before translation languages were recorded still load`() {
+        storage.files["words.json"] =
+            """[{"word": "bay", "translation": "bahía", "createdAt": "2026-10-01T09:00", "nextReview": "2026-10-02T09:00"}]"""
+        val saved = library().state.value.word("bay")!!
+        assertNull(saved.translationLanguage)
+        assertEquals("bahía", saved.translation)
+    }
+
     @Test
     fun `reading time feeds today and the streak`() {
         val library = library()

@@ -2,6 +2,8 @@
 
 package app.lingleaf.ui
 
+import android.accessibilityservice.AccessibilityServiceInfo
+import android.view.accessibility.AccessibilityManager
 import androidx.compose.foundation.background
 import androidx.compose.foundation.layout.Arrangement
 import androidx.compose.foundation.layout.Box
@@ -22,6 +24,8 @@ import androidx.compose.material.icons.filled.Whatshot
 import androidx.compose.material3.Card
 import androidx.compose.material3.CardDefaults
 import androidx.compose.material3.CircularProgressIndicator
+import androidx.compose.material3.DropdownMenu
+import androidx.compose.material3.DropdownMenuItem
 import androidx.compose.material3.ExperimentalMaterial3Api
 import androidx.compose.material3.Icon
 import androidx.compose.material3.IconButton
@@ -30,8 +34,10 @@ import androidx.compose.material3.ListItem
 import androidx.compose.material3.ListItemDefaults
 import androidx.compose.material3.MaterialTheme
 import androidx.compose.material3.Scaffold
+import androidx.compose.material3.SnackbarDuration
 import androidx.compose.material3.SnackbarHost
 import androidx.compose.material3.SnackbarHostState
+import androidx.compose.material3.SnackbarResult
 import androidx.compose.material3.Text
 import androidx.compose.material3.TopAppBar
 import androidx.compose.material3.TopAppBarDefaults
@@ -49,6 +55,8 @@ import androidx.compose.ui.geometry.CornerRadius
 import androidx.compose.ui.geometry.Offset
 import androidx.compose.ui.geometry.Size
 import androidx.compose.ui.graphics.Color
+import androidx.compose.ui.platform.LocalAccessibilityManager
+import androidx.compose.ui.platform.LocalContext
 import androidx.compose.ui.platform.LocalDensity
 import androidx.compose.ui.res.pluralStringResource
 import androidx.compose.ui.res.stringResource
@@ -72,8 +80,11 @@ import androidx.compose.ui.unit.dp
 import androidx.compose.ui.unit.sp
 import androidx.lifecycle.compose.collectAsStateWithLifecycle
 import app.lingleaf.R
+import app.lingleaf.TRANSLATION_LANGUAGES
 import app.lingleaf.core.Book
 import app.lingleaf.core.WordRange
+import app.lingleaf.languageName
+import kotlinx.coroutines.withTimeoutOrNull
 
 /** Screen frame: top bar plus content; the bottom bar lives in [LingleafApp]. */
 @Composable
@@ -102,6 +113,103 @@ fun ScreenScaffold(
         },
         snackbarHost = { snackbarHostState?.let { SnackbarHost(it) } },
     ) { padding -> content(Modifier.padding(padding)) }
+}
+
+/**
+ * How long an Undo message stays, in milliseconds, or null to keep it until it
+ * is dismissed or replaced (SPEC S4, S15). [baseMillis] grows to the system's
+ * recommended time to act ([recommendedMillis]); with a screen reader
+ * ([touchExploration]), switch control ([switchControl]) or a service that asks
+ * for no timeout (Long.MAX_VALUE) the message stays.
+ */
+fun undoTimeoutMillis(
+    baseMillis: Long,
+    touchExploration: Boolean,
+    switchControl: Boolean,
+    recommendedMillis: (Long) -> Long,
+): Long? {
+    if (touchExploration || switchControl) return null
+    val millis = recommendedMillis(baseMillis)
+    return if (millis == Long.MAX_VALUE) null else maxOf(millis, baseMillis)
+}
+
+/**
+ * Returns a function that gives the Undo timeout for [baseMillis] (see [undoTimeoutMillis]).
+ * It reads the accessibility settings each time it is called, so a screen reader
+ * or switch control turned on while the screen is open is taken into account.
+ */
+@Composable
+fun rememberUndoTimeout(baseMillis: Long): () -> Long? {
+    val context = LocalContext.current
+    val accessibility = LocalAccessibilityManager.current
+    return remember(context, accessibility, baseMillis) {
+        val system = context.getSystemService(AccessibilityManager::class.java)
+        val timeout: () -> Long? = {
+            undoTimeoutMillis(
+                baseMillis,
+                touchExploration = system?.isTouchExplorationEnabled == true,
+                switchControl = system?.isSwitchControlEnabled() == true,
+            ) { millis ->
+                accessibility?.calculateRecommendedTimeoutMillis(
+                    millis,
+                    containsIcons = false,
+                    containsText = true,
+                    containsControls = true,
+                ) ?: millis
+            }
+        }
+        timeout
+    }
+}
+
+/** True when an enabled accessibility service is switch control, such as Google's Switch Access. */
+private fun AccessibilityManager.isSwitchControlEnabled(): Boolean =
+    getEnabledAccessibilityServiceList(AccessibilityServiceInfo.FEEDBACK_ALL_MASK)
+        .orEmpty()
+        .any { it.id?.contains("switchaccess", ignoreCase = true) == true }
+
+/**
+ * Shows [message] with an Undo action for [millis], then hides it; with null
+ * [millis] it stays, with a close button, until dismissed or replaced. The
+ * snackbar is a polite live region, so TalkBack announces it. Runs [onUndo] if
+ * Undo is tapped.
+ */
+suspend fun SnackbarHostState.showUndo(
+    message: String,
+    undoLabel: String,
+    millis: Long?,
+    onUndo: suspend () -> Unit,
+) {
+    currentSnackbarData?.dismiss()
+    val result =
+        if (millis == null) {
+            showSnackbar(message, actionLabel = undoLabel, withDismissAction = true, duration = SnackbarDuration.Indefinite)
+        } else {
+            withTimeoutOrNull(millis) {
+                showSnackbar(message, actionLabel = undoLabel, duration = SnackbarDuration.Indefinite)
+            }
+        }
+    if (result == SnackbarResult.ActionPerformed) onUndo()
+}
+
+/** Every translation language, each named in its own language. */
+@Composable
+fun LanguageMenu(
+    expanded: Boolean,
+    onDismiss: () -> Unit,
+    onPick: (String) -> Unit,
+) {
+    DropdownMenu(expanded = expanded, onDismissRequest = onDismiss) {
+        TRANSLATION_LANGUAGES.forEach { code ->
+            DropdownMenuItem(
+                text = { Text(languageName(code)) },
+                onClick = {
+                    onDismiss()
+                    onPick(code)
+                },
+            )
+        }
+    }
 }
 
 @Composable

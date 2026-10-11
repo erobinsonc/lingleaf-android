@@ -3,11 +3,13 @@ package app.lingleaf
 import android.content.Context
 import androidx.compose.ui.geometry.Offset
 import androidx.compose.ui.semantics.LiveRegionMode
+import androidx.compose.ui.semantics.Role
 import androidx.compose.ui.semantics.SemanticsActions
 import androidx.compose.ui.semantics.SemanticsProperties
 import androidx.compose.ui.semantics.getOrNull
 import androidx.compose.ui.test.SemanticsMatcher
 import androidx.compose.ui.test.SemanticsNodeInteraction
+import androidx.compose.ui.test.assert
 import androidx.compose.ui.test.assertIsDisplayed
 import androidx.compose.ui.test.click
 import androidx.compose.ui.test.hasAnyAncestor
@@ -38,6 +40,7 @@ import app.lingleaf.ui.LingleafApp
 import kotlinx.coroutines.flow.MutableStateFlow
 import kotlinx.coroutines.flow.StateFlow
 import org.junit.Assert.assertEquals
+import org.junit.Assert.assertNull
 import org.junit.Assert.assertTrue
 import org.junit.Before
 import org.junit.Rule
@@ -113,6 +116,9 @@ class AppTest {
     /** When true every request fails and translation throws, like a phone with no internet and no language model. */
     private var offline = false
 
+    /** The system's preferred-language list. Only English: no translation language can be picked from it. */
+    private var preferred = listOf("en-US")
+
     @Before
     fun setUp() {
         val http =
@@ -136,9 +142,13 @@ class AppTest {
                 },
                 speaker = speaker,
                 bundledStories = { listOf(BundledStory("The Red Boat", "A1", STORY)) },
+                preferredLanguages = { preferred },
+                region = { "US" },
             )
         container.library.load()
         container.library.seedIfNeeded(container.bundledStories())
+        // Most tests translate into Spanish, as if it had been chosen before.
+        container.library.updateSettings { it.copy(targetLanguage = "es") }
         compose.setContent { LingleafApp(container) }
     }
 
@@ -162,11 +172,12 @@ class AppTest {
         compose.onNodeWithText("/ˈiːkwəl/").assertExists()
         compose.onNodeWithText("[es] All animals are equal, but some are more equal.").assertExists()
 
-        compose.onNodeWithText("Learn").performClick()
+        compose.onNodeWithText("Save word").performClick()
         compose.waitUntil(WAIT_MS) { container.library.state.value.word("equal") != null }
 
         val saved = container.library.state.value.word("equal")!!
         assertEquals("igual", saved.translation)
+        assertEquals("es", saved.translationLanguage)
         assertEquals("/ˈiːkwəl/", saved.phonetic)
         assertTrue(container.library.state.value.isLearning("equal"))
     }
@@ -190,11 +201,21 @@ class AppTest {
         compose.onAllNodes(paragraph).onFirst().invokeCustomAction("Look up equal")
         compose.waitUntil(WAIT_MS) { compose.onAllNodesWithText("igual").fetchSemanticsNodes().isNotEmpty() }
         assertTappablesAreLabelled("Word card")
+        // S15: the language button under the translation says what it is and that it opens a list.
+        compose
+            .onNode(hasContentDescription("Translation language: Español") and hasClickAction())
+            .assert(SemanticsMatcher.expectValue(SemanticsProperties.Role, Role.DropdownList))
     }
 
     @Test
     fun reviewIsLabelledAndAnnouncesTheMeaning() {
-        container.library.saveWord("bay", learned = false, translation = "bahía", context = "The edge of the bay.")
+        container.library.saveWord(
+            "bay",
+            learned = false,
+            translation = "bahía",
+            context = "The edge of the bay.",
+            translationLanguage = "es",
+        )
         compose.onAllNodesWithText("Words").onFirst().performClick()
         compose.onNodeWithText("Review now").performClick()
         assertTappablesAreLabelled("Review")
@@ -213,7 +234,7 @@ class AppTest {
 
     @Test
     fun paragraphWordsAreLinksAndAccessibilityActions() {
-        container.library.saveWord("animal", learned = false, translation = "animal")
+        container.library.saveWord("animal", learned = false, translation = "animal", translationLanguage = "es")
         compose.onAllNodesWithText("The Red Boat").onFirst().performClick()
         val paragraph = hasText("All animals are equal", substring = true)
         compose.waitUntil(WAIT_MS) { compose.onAllNodes(paragraph).fetchSemanticsNodes().isNotEmpty() }
@@ -239,19 +260,141 @@ class AppTest {
         )
     }
 
+    // S15: deleting happens at once, with Undo instead of a confirmation dialog.
     @Test
-    fun deletingAWordAsksFirst() {
-        container.library.saveWord("bay", learned = false, translation = "bahía")
+    fun deletingAWordOffersUndo() {
+        container.library.saveWord("bay", learned = false, translation = "bahía", translationLanguage = "es")
         compose.onAllNodesWithText("Words").onFirst().performClick()
 
         compose.onNodeWithContentDescription("Delete bay").performClick()
-        compose.onNodeWithText("Cancel").performClick()
-        assertTrue(container.library.state.value.word("bay") != null)
-
-        compose.onNodeWithContentDescription("Delete bay").performClick()
-        compose.onNodeWithText("Delete").performClick()
         compose.waitForIdle()
         assertTrue(container.library.state.value.word("bay") == null)
+        compose.waitUntil(WAIT_MS) { compose.onAllNodesWithText("“bay” deleted").fetchSemanticsNodes().isNotEmpty() }
+
+        compose.onNodeWithText("Undo").performClick()
+        compose.waitUntil(WAIT_MS) { container.library.state.value.word("bay") != null }
+        assertEquals("bahía", container.library.state.value.word("bay")!!.translation)
+    }
+
+    // S4: Undo after "Save word" puts things back as they were.
+    @Test
+    fun undoAfterSaveWordRestoresTheWord() {
+        compose.onAllNodesWithText("The Red Boat").onFirst().performClick()
+        val paragraph = hasText("All animals are equal", substring = true)
+        compose.waitUntil(WAIT_MS) { compose.onAllNodes(paragraph).fetchSemanticsNodes().isNotEmpty() }
+        compose.onAllNodes(paragraph).onFirst().invokeCustomAction("Look up equal")
+        compose.waitUntil(WAIT_MS) { compose.onAllNodesWithText("igual").fetchSemanticsNodes().isNotEmpty() }
+
+        compose.onNodeWithText("Save word").performClick()
+        compose.waitUntil(WAIT_MS) { container.library.state.value.word("equal") != null }
+        compose.waitUntil(WAIT_MS) { compose.onAllNodesWithText("“equal” saved to Words").fetchSemanticsNodes().isNotEmpty() }
+
+        compose.onNodeWithText("Undo").performClick()
+        compose.waitUntil(WAIT_MS) { container.library.state.value.word("equal") == null }
+        assertTrue(container.library.state.value.words.isEmpty())
+    }
+
+    // S4: Undo after changing a saved word puts back the previous record.
+    @Test
+    fun undoAfterChangingAKnownWordRestoresItAsKnown() {
+        val context = ApplicationProvider.getApplicationContext<Context>()
+        val knownLabel = context.getString(R.string.card_known)
+        val knowIt = hasText(context.getString(R.string.card_i_know_it)) and hasClickAction()
+        compose.onAllNodesWithText("The Red Boat").onFirst().performClick()
+        val paragraph = hasText("All animals are equal", substring = true)
+        compose.waitUntil(WAIT_MS) { compose.onAllNodes(paragraph).fetchSemanticsNodes().isNotEmpty() }
+        compose.onAllNodes(paragraph).onFirst().invokeCustomAction("Look up equal")
+        compose.waitUntil(WAIT_MS) { compose.onAllNodesWithText("igual").fetchSemanticsNodes().isNotEmpty() }
+
+        // "I know it" saves the word as known and says so.
+        compose.onNode(knowIt).performClick()
+        compose.waitUntil(WAIT_MS) { container.library.state.value.word("equal")?.learned == true }
+        val knownMessage = context.getString(R.string.word_known_message, "equal")
+        compose.waitUntil(WAIT_MS) { compose.onAllNodesWithText(knownMessage).fetchSemanticsNodes().isNotEmpty() }
+
+        // Reopened once the card has closed, the card shows the word is known.
+        compose.waitUntil(WAIT_MS) { compose.onAllNodesWithText("igual").fetchSemanticsNodes().isEmpty() }
+        compose.onAllNodes(paragraph).onFirst().invokeCustomAction("Look up equal")
+        compose.waitUntil(WAIT_MS) { compose.onAllNodesWithText("igual").fetchSemanticsNodes().isNotEmpty() }
+        compose
+            .onNode(hasText(knownLabel) and hasClickAction())
+            .assert(SemanticsMatcher.expectValue(SemanticsProperties.Selected, true))
+
+        // "Save word" moves it to learning; Undo puts it back as known.
+        compose.onNodeWithText("Save word").performClick()
+        compose.waitUntil(WAIT_MS) { container.library.state.value.isLearning("equal") }
+        val savedMessage = context.getString(R.string.word_saved_message, "equal")
+        compose.waitUntil(WAIT_MS) { compose.onAllNodesWithText(savedMessage).fetchSemanticsNodes().isNotEmpty() }
+
+        compose.onNodeWithText("Undo").performClick()
+        compose.waitUntil(WAIT_MS) { container.library.state.value.word("equal")?.learned == true }
+        assertEquals(1, container.library.state.value.words.size)
+        assertEquals("igual", container.library.state.value.word("equal")!!.translation)
+
+        // Reopened, the card still shows the word as known, not saved.
+        compose.waitUntil(WAIT_MS) { compose.onAllNodesWithText("igual").fetchSemanticsNodes().isEmpty() }
+        compose.onAllNodes(paragraph).onFirst().invokeCustomAction("Look up equal")
+        compose.waitUntil(WAIT_MS) { compose.onAllNodesWithText("igual").fetchSemanticsNodes().isNotEmpty() }
+        compose
+            .onNode(hasText(knownLabel) and hasClickAction())
+            .assert(SemanticsMatcher.expectValue(SemanticsProperties.Selected, true))
+        compose.onNodeWithText(context.getString(R.string.card_saved)).assertDoesNotExist()
+    }
+
+    // S4, S15: tapping the checked "Saved" removes the word at once, with Undo.
+    @Test
+    fun tappingTheCheckedButtonRemovesTheWordWithUndo() {
+        val context = ApplicationProvider.getApplicationContext<Context>()
+        compose.onAllNodesWithText("The Red Boat").onFirst().performClick()
+        val paragraph = hasText("All animals are equal", substring = true)
+        compose.waitUntil(WAIT_MS) { compose.onAllNodes(paragraph).fetchSemanticsNodes().isNotEmpty() }
+        compose.onAllNodes(paragraph).onFirst().invokeCustomAction("Look up equal")
+        compose.waitUntil(WAIT_MS) { compose.onAllNodesWithText("igual").fetchSemanticsNodes().isNotEmpty() }
+        compose.onNodeWithText("Save word").performClick()
+        compose.waitUntil(WAIT_MS) { container.library.state.value.word("equal") != null }
+
+        // Once the card has closed, the word is being learned and its card shows the checked button.
+        compose.waitUntil(WAIT_MS) { compose.onAllNodesWithText("igual").fetchSemanticsNodes().isEmpty() }
+        val savedLabel = context.getString(R.string.card_saved)
+        compose.onAllNodes(paragraph).onFirst().invokeCustomAction("Look up equal, learning")
+        compose.waitUntil(WAIT_MS) { compose.onAllNodesWithText(savedLabel).fetchSemanticsNodes().isNotEmpty() }
+        // The check mark is drawn, not read; the button is selected and its tap is announced as removing the word.
+        assertEquals("Saved", savedLabel)
+        val checked = compose.onNode(hasText(savedLabel) and hasClickAction())
+        checked.assert(SemanticsMatcher.expectValue(SemanticsProperties.Selected, true))
+        assertEquals("Remove from Words", checked.fetchSemanticsNode().config[SemanticsActions.OnClick].label)
+
+        compose.onNodeWithText(savedLabel).performClick()
+        compose.waitUntil(WAIT_MS) { container.library.state.value.word("equal") == null }
+        val removed = context.getString(R.string.word_removed_message, "equal")
+        compose.waitUntil(WAIT_MS) { compose.onAllNodesWithText(removed).fetchSemanticsNodes().isNotEmpty() }
+
+        compose.onNodeWithText("Undo").performClick()
+        compose.waitUntil(WAIT_MS) { container.library.state.value.word("equal") != null }
+        assertTrue(container.library.state.value.isLearning("equal"))
+        assertEquals("igual", container.library.state.value.word("equal")!!.translation)
+    }
+
+    // S14: with no saved language and only English in the system list, the card asks.
+    @Test
+    fun withNoLanguageTheCardAsksForOne() {
+        container.library.updateSettings { it.copy(targetLanguage = null) }
+        compose.onAllNodesWithText("The Red Boat").onFirst().performClick()
+        val paragraph = hasText("All animals are equal", substring = true)
+        compose.waitUntil(WAIT_MS) { compose.onAllNodes(paragraph).fetchSemanticsNodes().isNotEmpty() }
+        compose.onAllNodes(paragraph).onFirst().invokeCustomAction("Look up equal")
+
+        compose.waitUntil(WAIT_MS) { compose.onAllNodesWithText("Translate into:").fetchSemanticsNodes().isNotEmpty() }
+        compose.onNodeWithText("Português").assertExists()
+        compose.onNodeWithText("More languages").assertExists()
+        compose.onNodeWithText("igual").assertDoesNotExist()
+        // The rest of the card works meanwhile.
+        compose.onNodeWithText("Save word").assertExists()
+
+        compose.onNodeWithText("Español").performClick()
+        compose.waitUntil(WAIT_MS) { compose.onAllNodesWithText("igual").fetchSemanticsNodes().isNotEmpty() }
+        assertEquals("es", container.library.state.value.settings.targetLanguage)
+        compose.onNodeWithText("Translate into:").assertDoesNotExist()
     }
 
     private fun SemanticsNodeInteraction.invokeCustomAction(label: String) {
@@ -301,7 +444,13 @@ class AppTest {
 
     @Test
     fun wordsScreenShowsSavedWordsAndReviewWorks() {
-        container.library.saveWord("bay", learned = false, translation = "bahía", context = "The edge of the bay.")
+        container.library.saveWord(
+            "bay",
+            learned = false,
+            translation = "bahía",
+            context = "The edge of the bay.",
+            translationLanguage = "es",
+        )
         compose.onAllNodesWithText("Words").onFirst().performClick()
         compose.onNodeWithText("bahía").assertExists()
         compose.onNodeWithText("Review now").performClick()
@@ -378,5 +527,30 @@ class AppTest {
         compose.onNodeWithText(noDefinition).assertExists()
         compose.onNodeWithText("igual").assertDoesNotExist()
         compose.onAllNodes(paragraph).onFirst().assertExists()
+
+        // Saving never waits for the translation: the card closes and the word is saved without one.
+        compose.onNodeWithText("Save word").performClick()
+        compose.waitUntil(WAIT_MS) { container.library.state.value.word("equal") != null }
+        compose.waitUntil(WAIT_MS) { compose.onAllNodesWithText(unavailable).fetchSemanticsNodes().isEmpty() }
+        compose.onNodeWithText("Save word").assertDoesNotExist()
+        val saved = container.library.state.value.word("equal")!!
+        assertEquals("", saved.translation)
+        assertNull(saved.translationLanguage)
+        assertTrue(container.library.state.value.isLearning("equal"))
+    }
+
+    // S12: a word saved without a translation says so in Review until one can be made.
+    @Test
+    fun reviewSaysWhenAWordHasNoTranslationYet() {
+        offline = true
+        val context = ApplicationProvider.getApplicationContext<Context>()
+        container.library.saveWord("bay", learned = false, context = "The edge of the bay.")
+        compose.onAllNodesWithText("Words").onFirst().performClick()
+        compose.onNodeWithText("Review now").performClick()
+        compose.onNodeWithText("Show meaning").performClick()
+
+        val noTranslation = context.getString(R.string.no_translation)
+        compose.waitUntil(WAIT_MS) { compose.onAllNodesWithText(noTranslation).fetchSemanticsNodes().isNotEmpty() }
+        assertEquals("", container.library.state.value.word("bay")!!.translation)
     }
 }

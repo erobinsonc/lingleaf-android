@@ -1,6 +1,9 @@
 package app.lingleaf
 
 import android.content.Context
+import android.content.res.Resources
+import android.net.ConnectivityManager
+import android.net.NetworkCapabilities
 import android.speech.tts.TextToSpeech
 import android.speech.tts.UtteranceProgressListener
 import android.util.Log
@@ -11,9 +14,14 @@ import app.lingleaf.core.HttpFetcher
 import app.lingleaf.core.HttpResponse
 import app.lingleaf.core.Library
 import app.lingleaf.core.NetworkException
+import app.lingleaf.core.Settings
 import app.lingleaf.core.Storage
+import app.lingleaf.core.TranslationLanguages
 import com.google.android.gms.tasks.Task
+import com.google.mlkit.common.model.DownloadConditions
+import com.google.mlkit.common.model.RemoteModelManager
 import com.google.mlkit.nl.translate.TranslateLanguage
+import com.google.mlkit.nl.translate.TranslateRemoteModel
 import com.google.mlkit.nl.translate.Translation
 import com.google.mlkit.nl.translate.TranslatorOptions
 import kotlinx.coroutines.CoroutineDispatcher
@@ -24,16 +32,22 @@ import kotlinx.coroutines.SupervisorJob
 import kotlinx.coroutines.flow.MutableStateFlow
 import kotlinx.coroutines.flow.StateFlow
 import kotlinx.coroutines.flow.asStateFlow
+import kotlinx.coroutines.launch
 import kotlinx.coroutines.suspendCancellableCoroutine
 import kotlinx.coroutines.withContext
+import kotlinx.coroutines.withTimeoutOrNull
 import java.io.ByteArrayOutputStream
 import java.io.File
 import java.io.InputStream
 import java.net.HttpURLConnection
 import java.net.URL
 import java.util.Locale
+import java.util.concurrent.atomic.AtomicBoolean
 import kotlin.coroutines.resume
 import kotlin.coroutines.resumeWithException
+
+/** Whether a language can be translated into on the device right now. */
+enum class ModelStatus { READY, DOWNLOADING, NEEDS_WIFI }
 
 fun interface Translator {
     /** Translates English [text] into [target] (an ML Kit language code). */
@@ -41,6 +55,12 @@ fun interface Translator {
         text: String,
         target: String,
     ): String
+
+    /** Starts downloading [target]'s language model in the background when it's missing. */
+    fun prepare(target: String) = Unit
+
+    /** Whether [target]'s language model is on the device, being downloaded, or waiting for Wi‑Fi. */
+    suspend fun modelStatus(target: String): ModelStatus = ModelStatus.READY
 }
 
 interface Speaker {
@@ -62,16 +82,51 @@ class AppContainer(
     val translator: Translator,
     val speaker: Speaker,
     val bundledStories: () -> List<BundledStory>,
+    /** The system's preferred languages as BCP 47 tags, most preferred first. */
+    val preferredLanguages: () -> List<String> = ::systemLanguages,
+    /** The phone's region (ISO 3166, e.g. "BR"), used to suggest a translation language. */
+    val region: () -> String? = ::systemRegion,
     val io: CoroutineDispatcher = Dispatchers.IO,
 ) {
     /**
-     * Outlives screens, for work that must finish after one closes (saving progress).
-     * A failed background save is logged instead of crashing the app.
+     * Outlives screens, for work that must finish after one closes (saving progress,
+     * a translation that arrives after its word was saved).
+     * A failed background job is logged instead of crashing the app.
      */
     val appScope =
         CoroutineScope(
             SupervisorJob() + io + CoroutineExceptionHandler { _, error -> Log.w("Lingleaf", "Background work failed", error) },
         )
+
+    private val filling = AtomicBoolean(false)
+
+    /** The language chosen in Settings, else the first suitable system language; null means ask (SPEC S14). */
+    fun targetLanguage(settings: Settings): String? =
+        settings.targetLanguage ?: TranslationLanguages.pick(preferredLanguages(), TRANSLATION_LANGUAGES)
+
+    /** Translates [text] into [target], or null if that fails or takes longer than [TRANSLATION_TIMEOUT_MS]. */
+    suspend fun translateOrNull(
+        text: String,
+        target: String,
+    ): String? = withTimeoutOrNull(TRANSLATION_TIMEOUT_MS) { runCatching { translator.translate(text, target) }.getOrNull() }
+
+    /**
+     * Fills in, on the device, saved words with no translation or one in another
+     * language (SPEC S12, S14). Stops at the first failure (e.g. no language model yet).
+     */
+    fun fillMissingTranslations(target: String) {
+        if (!filling.compareAndSet(false, true)) return
+        appScope.launch {
+            try {
+                for (word in library.wordsNeedingTranslation(target)) {
+                    val translation = translateOrNull(word.word, target) ?: break
+                    library.setTranslation(word.word, translation, target)
+                }
+            } finally {
+                filling.set(false)
+            }
+        }
+    }
 
     companion object {
         private val STORIES =
@@ -87,7 +142,7 @@ class AppContainer(
                 library = Library(FileStorage(context.filesDir)),
                 dictionary = DictionaryClient(http),
                 gutenberg = GutenbergClient(http),
-                translator = MlKitTranslator(),
+                translator = MlKitTranslator(context.applicationContext),
                 speaker = AndroidSpeaker(context.applicationContext),
                 bundledStories = {
                     STORIES.map { (asset, title, level) ->
@@ -99,42 +154,87 @@ class AppContainer(
     }
 }
 
+/** Longest wait for one translation, including a language model download. */
+const val TRANSLATION_TIMEOUT_MS = 20_000L
+
 /** Languages the user can translate into, as ML Kit codes. */
 val TRANSLATION_LANGUAGES =
-    listOf("es", "pt", "fr", "it", "de", "nl", "pl", "uk", "ru", "tr", "ar", "hi", "id", "vi", "zh", "ja", "ko")
+    listOf("es", "pt", "fr", "it", "de", "nl", "pl", "uk", "ru", "tr", "ar", "hi", "id", "vi", "zh", "ja", "ko", "th")
 
-/** The phone's language when it's supported and not English; Spanish otherwise. */
-fun defaultTargetLanguage(): String = Locale.getDefault().language.takeIf { it in TRANSLATION_LANGUAGES } ?: "es"
+/** The system's preferred-language list (not the app's own language, which is only English or Spanish). */
+fun systemLanguages(): List<String> {
+    val tags = Resources.getSystem().configuration.locales.toLanguageTags()
+    return tags.split(',').filter { it.isNotBlank() }
+}
 
+fun systemRegion(): String? {
+    val locales = Resources.getSystem().configuration.locales
+    return if (locales.isEmpty()) null else locales[0].country.takeIf { it.isNotEmpty() }
+}
+
+/** A language's name in that language: "es" → "Español", "zh" → "中文". */
 fun languageName(code: String): String {
-    val locale = Locale(code)
+    val locale = Locale.forLanguageTag(code)
     return locale.getDisplayLanguage(locale).replaceFirstChar { it.titlecase(locale) }
 }
 
-/** On-device translation with Google ML Kit. Downloads each language model once (~30 MB). */
-class MlKitTranslator : Translator {
+/**
+ * On-device translation with Google ML Kit. Each language model (~30 MB) is
+ * downloaded once, only over Wi‑Fi.
+ */
+class MlKitTranslator(
+    context: Context,
+) : Translator {
     private val clients = mutableMapOf<String, com.google.mlkit.nl.translate.Translator>()
+    private val connectivity = context.getSystemService(ConnectivityManager::class.java)
+    private val wifiOnly = DownloadConditions.Builder().requireWifi().build()
+
+    private fun mlKitLanguage(target: String) = TranslateLanguage.fromLanguageTag(target) ?: TranslateLanguage.SPANISH
+
+    private fun client(target: String): com.google.mlkit.nl.translate.Translator {
+        val language = mlKitLanguage(target)
+        return synchronized(clients) {
+            clients.getOrPut(language) {
+                Translation.getClient(
+                    TranslatorOptions
+                        .Builder()
+                        .setSourceLanguage(TranslateLanguage.ENGLISH)
+                        .setTargetLanguage(language)
+                        .build(),
+                )
+            }
+        }
+    }
 
     override suspend fun translate(
         text: String,
         target: String,
     ): String {
-        val language = TranslateLanguage.fromLanguageTag(target) ?: TranslateLanguage.SPANISH
-        val client =
-            synchronized(clients) {
-                clients.getOrPut(language) {
-                    Translation.getClient(
-                        TranslatorOptions
-                            .Builder()
-                            .setSourceLanguage(TranslateLanguage.ENGLISH)
-                            .setTargetLanguage(language)
-                            .build(),
-                    )
-                }
-            }
-        client.downloadModelIfNeeded().await()
+        val client = client(target)
+        client.downloadModelIfNeeded(wifiOnly).await()
         return client.translate(text).await()
     }
+
+    override fun prepare(target: String) {
+        client(target).downloadModelIfNeeded(wifiOnly)
+    }
+
+    override suspend fun modelStatus(target: String): ModelStatus {
+        val model = TranslateRemoteModel.Builder(mlKitLanguage(target)).build()
+        val downloaded = runCatching { RemoteModelManager.getInstance().isModelDownloaded(model).await() }.getOrDefault(false)
+        return when {
+            downloaded -> ModelStatus.READY
+            onWifi() -> ModelStatus.DOWNLOADING
+            else -> ModelStatus.NEEDS_WIFI
+        }
+    }
+
+    private fun onWifi(): Boolean =
+        runCatching {
+            val capabilities = connectivity?.getNetworkCapabilities(connectivity.activeNetwork)
+            capabilities?.hasTransport(NetworkCapabilities.TRANSPORT_WIFI) == true ||
+                capabilities?.hasTransport(NetworkCapabilities.TRANSPORT_ETHERNET) == true
+        }.getOrDefault(false)
 }
 
 private suspend fun <T> Task<T>.await(): T =
