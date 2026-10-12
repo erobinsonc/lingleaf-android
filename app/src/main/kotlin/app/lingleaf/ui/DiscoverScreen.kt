@@ -382,7 +382,8 @@ private fun Cover(book: GutenbergBook) {
     val url = book.coverUrl
     val image by produceState<ImageBitmap?>(null, url) {
         val load = container.covers
-        if (url != null && load != null) value = load(url)
+        // Null (the drawn cover) without a cover, in UI tests or when loading fails.
+        value = if (url != null && load != null) load(url) else null
     }
     val loaded = image
     if (loaded == null) {
