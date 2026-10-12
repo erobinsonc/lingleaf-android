@@ -38,7 +38,6 @@ import androidx.compose.runtime.Composable
 import androidx.compose.runtime.LaunchedEffect
 import androidx.compose.runtime.getValue
 import androidx.compose.runtime.mutableStateOf
-import androidx.compose.runtime.produceState
 import androidx.compose.runtime.remember
 import androidx.compose.runtime.rememberCoroutineScope
 import androidx.compose.runtime.saveable.rememberSaveable
@@ -380,10 +379,12 @@ private fun LevelFilter(
 private fun Cover(book: GutenbergBook) {
     val container = LocalContainer.current
     val url = book.coverUrl
-    val image by produceState<ImageBitmap?>(null, url) {
+    // What produceState does, written out: its lint check doesn't see this assignment.
+    var image by remember(url) { mutableStateOf<ImageBitmap?>(null) }
+    LaunchedEffect(url) {
         val load = container.covers
         // Null (the drawn cover) without a cover, in UI tests or when loading fails.
-        value = if (url != null && load != null) load(url) else null
+        image = if (url != null && load != null) load(url) else null
     }
     val loaded = image
     if (loaded == null) {
