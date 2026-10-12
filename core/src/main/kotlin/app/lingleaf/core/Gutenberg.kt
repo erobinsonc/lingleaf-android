@@ -117,10 +117,8 @@ class GutenbergClient(private val http: HttpFetcher) {
         private const val BASE = "https://gutendex.com/books"
         private val json = Json { ignoreUnknownKeys = true }
 
-        /** Project Gutenberg's file cache: the plain-text edition and the medium cover. */
+        /** The plain-text edition in Project Gutenberg's file cache. */
         fun textUrl(id: Int) = "https://www.gutenberg.org/cache/epub/$id/pg$id.txt"
-
-        fun coverUrl(id: Int) = "https://www.gutenberg.org/cache/epub/$id/pg$id.cover.medium.jpg"
 
         /**
          * The recommended classics, shipped with the app (title, author, level), so Discover
@@ -149,7 +147,7 @@ class GutenbergClient(private val http: HttpFetcher) {
                     id = id,
                     title = title,
                     authors = listOf(GutenbergBook.Person(author)),
-                    formats = mapOf("text/plain; charset=utf-8" to textUrl(id), "image/jpeg" to coverUrl(id)),
+                    formats = mapOf("text/plain; charset=utf-8" to textUrl(id)),
                 )
             }
         }

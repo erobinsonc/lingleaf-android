@@ -54,7 +54,7 @@ class GutenbergTest {
         assertEquals("Alice's Adventures in Wonderland", alice.displayTitle)
         assertEquals("Lewis Carroll", alice.authorName)
         assertEquals("https://www.gutenberg.org/cache/epub/11/pg11.txt", alice.textUrl)
-        assertEquals("https://www.gutenberg.org/cache/epub/11/pg11.cover.medium.jpg", alice.coverUrl)
+        assertNull(alice.coverUrl, "the app draws the cover")
         assertEquals("B2", GutenbergClient.levelFor(11))
     }
 
