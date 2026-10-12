@@ -477,9 +477,16 @@ class FileStorage(
     ) {
         val target = File(dir, name)
         val temp = File(dir, "$name.tmp")
-        temp.writeText(content)
-        // rename(2) replaces the target atomically; if it fails, keep the old file rather than half-write it.
-        if (!temp.renameTo(target)) {
+        // rename(2) replaces the target atomically. If writing or renaming fails (a full disk, a
+        // missing folder), keep the old file rather than half-write it or crash, as iOS does.
+        val saved =
+            try {
+                temp.writeText(content)
+                temp.renameTo(target)
+            } catch (_: IOException) {
+                false
+            }
+        if (!saved) {
             temp.delete()
             Log.w("Lingleaf", "Could not save $name")
         }
