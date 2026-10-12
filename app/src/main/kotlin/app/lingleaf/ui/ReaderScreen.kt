@@ -1,6 +1,6 @@
 package app.lingleaf.ui
 
-import android.animation.ValueAnimator
+import android.provider.Settings.Global
 import androidx.compose.foundation.layout.Box
 import androidx.compose.foundation.layout.Column
 import androidx.compose.foundation.layout.PaddingValues
@@ -187,6 +187,7 @@ private fun ReaderText(
     onWordTap: (Int, WordRange) -> Unit,
 ) {
     val listState = rememberLazyListState(initialFirstVisibleItemIndex = initialParagraph)
+    val context = LocalContext.current
     val words = remember(paragraphs) { paragraphs.map(TextTools::wordRanges) }
     val style =
         TextStyle(
@@ -212,7 +213,7 @@ private fun ReaderText(
         if (wordY in 0..(viewport * 2 / 5)) return@LaunchedEffect
         val offset = (item.size * selected.word.start / length - viewport / 5).coerceAtLeast(0)
         // No animation when the system turns animations off (Remove animations).
-        if (ValueAnimator.areAnimatorsEnabled()) {
+        if (Global.getFloat(context.contentResolver, Global.ANIMATOR_DURATION_SCALE, 1f) > 0f) {
             listState.animateScrollToItem(selected.paragraph, offset)
         } else {
             listState.scrollToItem(selected.paragraph, offset)
