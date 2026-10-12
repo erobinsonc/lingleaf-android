@@ -97,8 +97,8 @@ class LibraryTest {
         assertTrue(state.isLearning("animals"))
         assertFalse(state.isLearning("equal"))
         assertTrue(library.dueWords().isEmpty(), "a new word is first reviewed tomorrow")
-        clock.instant = java.time.Instant.parse("2026-10-10T00:00:00Z")
-        assertEquals("animal", library.dueWords().single().word, "due from 00:00 the next day")
+        clock.instant = java.time.Instant.parse("2026-10-10T04:00:00Z")
+        assertEquals("animal", library.dueWords().single().word, "due from 04:00 the next day")
 
         library.saveWord("animal", learned = true, translation = "")
         assertFalse(library.state.value.isLearning("animals"))
@@ -165,7 +165,7 @@ class LibraryTest {
         val saved = library.state.value.word("bay")!!
         assertFalse(saved.learned)
         assertEquals(0, saved.box)
-        assertEquals("2026-10-10T00:00", saved.nextReview, "back to a first review tomorrow")
+        assertEquals("2026-10-10T04:00", saved.nextReview, "back to a first review tomorrow")
     }
 
     @Test
@@ -194,11 +194,20 @@ class LibraryTest {
     @Test
     fun `context translation is kept with its sentence`() {
         val library = library()
-        library.saveWord("sea", learned = false, context = "By the sea.", contextTranslation = "Junto al mar.")
+        library.saveWord("sea", learned = false, context = "By the sea.", contextTranslation = "Junto al mar.", translationLanguage = "es")
         library.saveWord("sea", learned = false)
         assertEquals("Junto al mar.", library.state.value.word("sea")?.contextTranslation)
         library.saveWord("sea", learned = false, context = "The sea is blue.")
         assertNull(library.state.value.word("sea")?.contextTranslation, "a new sentence drops the old translation")
+        assertEquals(listOf("sea"), library.contextsNeedingTranslation("es").map { it.word })
+        library.setContextTranslation("sea", "El mar es azul.", "es")
+        library.setContextTranslation("sea", " ", "es")
+        library.setContextTranslation("missing", "x", "es")
+        val sea = library().state.value.word("sea")
+        assertEquals("El mar es azul.", sea?.contextTranslation("es"))
+        assertNull(sea?.contextTranslation("pt"), "another language needs its own translation")
+        assertTrue(library.contextsNeedingTranslation("es").isEmpty())
+        assertEquals(listOf("sea"), library.contextsNeedingTranslation("pt").map { it.word })
     }
 
     @Test

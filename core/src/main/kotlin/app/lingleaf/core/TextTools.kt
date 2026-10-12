@@ -115,6 +115,22 @@ object TextTools {
         return out
     }
 
+    /**
+     * Where a saved word appears in [sentence], to mark it: its forms ("animals" for
+     * "animal"), or, for a saved group of words ("did not go"), that group (ignoring case).
+     */
+    fun occurrences(
+        word: String,
+        sentence: String,
+    ): List<WordRange> {
+        val key = normalize(word)
+        if (' ' in key) {
+            val start = normalize(sentence).indexOf(key)
+            return if (start < 0) emptyList() else listOf(WordRange(start, start + key.length))
+        }
+        return wordRanges(sentence).filter { key in matchKeys(sentence.substring(it.start, it.end)) }
+    }
+
     /** The word plus its likely base forms: what to match against saved words. */
     fun matchKeys(word: String): Set<String> = setOf(normalize(word)) + baseFormCandidates(word)
 

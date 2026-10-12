@@ -122,6 +122,11 @@ class AppContainer(
                     val translation = translateOrNull(word.word, target) ?: break
                     library.setTranslation(word.word, translation, target)
                 }
+                // The saved sentences too, shown under the meaning in Review (SPEC S7).
+                for (word in library.contextsNeedingTranslation(target)) {
+                    val translation = translateOrNull(word.context, target) ?: break
+                    library.setContextTranslation(word.word, translation, target)
+                }
             } finally {
                 filling.set(false)
             }

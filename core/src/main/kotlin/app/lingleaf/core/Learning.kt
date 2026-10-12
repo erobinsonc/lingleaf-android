@@ -10,6 +10,12 @@ object Srs {
     /** Days until the next review for each box. */
     val intervals = listOf(1L, 3L, 7L, 14L, 30L)
 
+    /**
+     * Review days start at 04:00 local time, so a word saved late at night still gets a
+     * night's sleep before its first review.
+     */
+    const val DAY_START_HOUR = 4L
+
     /** Max words in one review session. */
     const val SESSION_LIMIT = 20
 
@@ -29,11 +35,20 @@ object Srs {
             else -> SrsResult(box = box + 1, nextReview = startOfDay(intervals[box], now), learned = false)
         }
 
-    /** The start (00:00) of the day [days] after [date]'s day. */
+    /**
+     * The start (04:00) of the review day [days] after [date]'s review day; a review day
+     * runs from 04:00 to 04:00, so 01:00 still belongs to the day before.
+     */
     fun startOfDay(
         days: Long,
         date: LocalDateTime,
-    ): LocalDateTime = date.toLocalDate().plusDays(days).atStartOfDay()
+    ): LocalDateTime =
+        date
+            .minusHours(DAY_START_HOUR)
+            .toLocalDate()
+            .plusDays(days)
+            .atStartOfDay()
+            .plusHours(DAY_START_HOUR)
 
     /**
      * Up to [limit] words, interleaved by source (book) so one book doesn't fill the

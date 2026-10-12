@@ -61,7 +61,7 @@ import app.lingleaf.core.VocabWord
 /**
  * Recall-first review of due words with spaced repetition (SPEC S7): the word alone, then
  * "Show meaning" reveals the translation, the sentence it came from and that sentence's
- * translation; only then "Again" or "Got it".
+ * translation; only then "Again" or "I remembered".
  */
 @Composable
 fun ReviewScreen(onBack: () -> Unit) {
@@ -69,7 +69,7 @@ fun ReviewScreen(onBack: () -> Unit) {
     val library = container.library
     val state by library.state.collectAsStateWithLifecycle()
     val queue = remember { library.reviewSession().toMutableStateList() }
-    val total = remember { queue.size }
+    var total by remember { mutableIntStateOf(queue.size) }
     var reviewed by remember { mutableIntStateOf(0) }
     var revealed by remember { mutableStateOf(false) }
     val target = container.targetLanguage(state.settings)
@@ -87,11 +87,22 @@ fun ReviewScreen(onBack: () -> Unit) {
     ScreenScaffold(title = stringResource(R.string.review_title), onBack = onBack) { modifier ->
         val current = queue.firstOrNull()
         if (current == null) {
-            ReviewDone(tomorrow = remember { library.dueByEndOfTomorrow() }, onBack = onBack, modifier = modifier)
+            ReviewDone(
+                dueNow = library.dueWords().size,
+                tomorrow = library.dueByEndOfTomorrow(),
+                onBack = onBack,
+                onKeepGoing = {
+                    queue.addAll(library.reviewSession())
+                    total = queue.size
+                    reviewed = 0
+                },
+                modifier = modifier,
+            )
         } else {
             ReviewCard(
                 // The saved word, so a translation filled in meanwhile shows up.
                 word = state.word(current.word) ?: current,
+                target = target,
                 progress = if (total == 0) 0f else reviewed / total.toFloat(),
                 revealed = revealed,
                 onReveal = { revealed = true },
@@ -104,8 +115,10 @@ fun ReviewScreen(onBack: () -> Unit) {
 
 @Composable
 private fun ReviewDone(
+    dueNow: Int,
     tomorrow: Int,
     onBack: () -> Unit,
+    onKeepGoing: () -> Unit,
     modifier: Modifier,
 ) {
     Box(
@@ -121,10 +134,17 @@ private fun ReviewDone(
                 tint = MaterialTheme.colorScheme.primary,
                 modifier = Modifier.size(64.dp),
             )
-            // "Done for today. 12 more tomorrow."
-            Text(stringResource(R.string.review_done), style = MaterialTheme.typography.headlineMedium)
-            if (tomorrow > 0) Text(pluralStringResource(R.plurals.more_tomorrow, tomorrow, tomorrow))
+            // "Done for today. 12 more tomorrow.", or, when more words are due now than one
+            // session holds, "Done for now. 15 more due today." with Keep going.
+            if (dueNow > 0) {
+                Text(stringResource(R.string.review_done_for_now), style = MaterialTheme.typography.headlineMedium)
+                Text(pluralStringResource(R.plurals.more_due_today, dueNow, dueNow))
+            } else {
+                Text(stringResource(R.string.review_done), style = MaterialTheme.typography.headlineMedium)
+                if (tomorrow > 0) Text(pluralStringResource(R.plurals.more_tomorrow, tomorrow, tomorrow))
+            }
             Button(onClick = onBack) { Text(stringResource(R.string.done)) }
+            if (dueNow > 0) OutlinedButton(onClick = onKeepGoing) { Text(stringResource(R.string.keep_going)) }
         }
     }
 }
@@ -132,6 +152,7 @@ private fun ReviewDone(
 @Composable
 private fun ReviewCard(
     word: VocabWord,
+    target: String?,
     progress: Float,
     revealed: Boolean,
     onReveal: () -> Unit,
@@ -206,12 +227,13 @@ private fun ReviewCard(
                                         style = MaterialTheme.typography.headlineSmall,
                                         textAlign = TextAlign.Center,
                                     )
-                                    if (word.context.isNotEmpty()) SavedSentence(word)
                                 }
                             } else {
                                 FilledTonalButton(onClick = onReveal) { Text(stringResource(R.string.show_meaning)) }
                             }
                         }
+                        // Outside the live region: TalkBack reads the meaning, not the whole sentence too.
+                        if (revealed && word.context.isNotEmpty()) SavedSentence(word, target)
                     }
                 }
             }
@@ -225,13 +247,17 @@ private fun ReviewCard(
 
 /** The sentence the word was saved from (the word in bold), its translation and a button to hear it. */
 @Composable
-private fun SavedSentence(word: VocabWord) {
+private fun SavedSentence(
+    word: VocabWord,
+    target: String?,
+) {
     val container = LocalContainer.current
     HorizontalDivider(Modifier.padding(vertical = 12.dp))
     Row(Modifier.fillMaxWidth(), verticalAlignment = Alignment.Top) {
         Column(Modifier.weight(1f)) {
             Text(markedSentence(word.context, word.word), fontStyle = FontStyle.Italic, fontFamily = ReadingFont)
-            word.contextTranslation?.let {
+            // Only in the current translation language; another one is translated meanwhile.
+            word.contextTranslation(target)?.let {
                 Spacer(Modifier.height(6.dp))
                 Text(it, color = MaterialTheme.colorScheme.onSurfaceVariant)
             }
@@ -251,15 +277,7 @@ internal fun markedSentence(
     word: String,
 ) = buildAnnotatedString {
     append(sentence)
-    val bold = SpanStyle(fontWeight = FontWeight.Bold)
-    if (' ' in word) {
-        val start = sentence.indexOf(word, ignoreCase = true)
-        if (start >= 0) addStyle(bold, start, start + word.length)
-    } else {
-        for (range in TextTools.wordRanges(sentence)) {
-            if (word in TextTools.matchKeys(sentence.substring(range.start, range.end))) addStyle(bold, range.start, range.end)
-        }
-    }
+    for (range in TextTools.occurrences(word, sentence)) addStyle(SpanStyle(fontWeight = FontWeight.Bold), range.start, range.end)
 }
 
 @Composable

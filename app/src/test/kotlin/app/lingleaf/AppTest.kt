@@ -456,11 +456,15 @@ class AppTest {
         compose.onAllNodesWithText("Words").onFirst().performClick()
         compose.onNodeWithText("bahía").assertExists()
         compose.onNodeWithText("Review now").performClick()
-        compose.onNodeWithText("Got it").assertDoesNotExist()
+        compose.onNodeWithText("I remembered").assertDoesNotExist()
         compose.onNodeWithText("Show meaning").performClick()
-        // The meaning brings the sentence, the word in bold, and then the answers.
+        // The meaning brings the sentence, the word in bold, its translation (filled in on the device), then the answers.
         compose.onNodeWithText("The edge of the bay.").assertExists()
-        compose.onNodeWithText("Got it").performClick()
+        compose.waitUntil(WAIT_MS) { compose.onAllNodesWithText("[es] The edge of the bay.").fetchSemanticsNodes().isNotEmpty() }
+        // "Again" repeats the word, recall first again.
+        compose.onNodeWithText("Again").performClick()
+        compose.onNodeWithText("Show meaning").performClick()
+        compose.onNodeWithText("I remembered").performClick()
         compose.onNodeWithText("Done for today.").assertExists()
         compose.onNodeWithText("1 more tomorrow.").assertExists()
         assertEquals(1, container.library.state.value.word("bay")!!.box)

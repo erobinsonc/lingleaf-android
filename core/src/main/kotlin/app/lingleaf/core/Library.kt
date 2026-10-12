@@ -43,9 +43,16 @@ data class VocabWord(
     val nextReview: String,
     /** Language code of [translation]; null for words saved before it was recorded. */
     val translationLanguage: String? = null,
-    /** The translation of [context], when the card had it at save time. */
+    /**
+     * The translation of [context] and the language it is in; filled in later when the
+     * card didn't have it, and again when the translation language changes.
+     */
     val contextTranslation: String? = null,
+    val contextTranslationLanguage: String? = null,
 ) {
+    /** [contextTranslation] when it is in [language]. */
+    fun contextTranslation(language: String?) = contextTranslation.takeIf { contextTranslationLanguage == language }
+
     fun isDue(now: LocalDateTime) = !learned && !LocalDateTime.parse(nextReview).isAfter(now)
 
     fun needsTranslation(language: String) = translation.isEmpty() || translationLanguage != language
@@ -208,10 +215,14 @@ class Library(
     /** Today's review session: at most [Srs.SESSION_LIMIT] due words, interleaved by book. */
     fun reviewSession(): List<VocabWord> = Srs.session(dueWords())
 
-    /** Words being learned that are due by the end of tomorrow, for "12 more tomorrow". */
+    /** Words being learned that come due before the end of tomorrow (not those due now), for "12 more tomorrow". */
     fun dueByEndOfTomorrow(): Int {
-        val end = Srs.startOfDay(2, now())
-        return _state.value.words.count { !it.learned && LocalDateTime.parse(it.nextReview).isBefore(end) }
+        val now = now()
+        val end = Srs.startOfDay(2, now)
+        return _state.value.words.count {
+            val next = LocalDateTime.parse(it.nextReview)
+            !it.learned && next.isAfter(now) && next.isBefore(end)
+        }
     }
 
     /**
@@ -249,6 +260,12 @@ class Library(
                 contextTranslation =
                     contextTranslation?.takeIf { it.isNotBlank() }
                         ?: entry.contextTranslation.takeIf { context.isBlank() || context == entry.context },
+                contextTranslationLanguage =
+                    if (!contextTranslation.isNullOrBlank()) {
+                        translationLanguage
+                    } else {
+                        entry.contextTranslationLanguage.takeIf { context.isBlank() || context == entry.context }
+                    },
                 source = source.ifBlank { entry.source },
             )
         replaceWord(key, entry)
@@ -280,6 +297,23 @@ class Library(
         if (translation.isBlank() || !entry.needsTranslation(language)) return
         replaceWord(key, entry.copy(translation = translation, translationLanguage = language))
     }
+
+    /** Records the translation of a word's sentence that arrived after it was saved. */
+    @Synchronized
+    fun setContextTranslation(
+        word: String,
+        translation: String,
+        language: String,
+    ) {
+        val key = TextTools.normalize(word)
+        val entry = _state.value.words.firstOrNull { it.word == key } ?: return
+        if (translation.isBlank() || entry.context.isEmpty()) return
+        replaceWord(key, entry.copy(contextTranslation = translation, contextTranslationLanguage = language))
+    }
+
+    /** Words whose sentence has no translation into [language] yet. */
+    fun contextsNeedingTranslation(language: String): List<VocabWord> =
+        _state.value.words.filter { it.context.isNotEmpty() && it.contextTranslation(language) == null }
 
     /** Words with no translation, or one in a language other than [language]. */
     fun wordsNeedingTranslation(language: String): List<VocabWord> = _state.value.words.filter { it.needsTranslation(language) }

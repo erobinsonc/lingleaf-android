@@ -109,6 +109,13 @@
         <item quantity="many">%d más mañana.</item>
         <item quantity="other">%d más mañana.</item>
     </plurals>
+    <string name="review_done_for_now">Listo por ahora.</string>
+    <plurals name="more_due_today">
+        <item quantity="one">Queda %d para hoy.</item>
+        <item quantity="many">Quedan %d para hoy.</item>
+        <item quantity="other">Quedan %d para hoy.</item>
+    </plurals>
+    <string name="keep_going">Seguir</string>
     <string name="done">Listo</string>
 
     <string name="settings_title">Ajustes</string>
