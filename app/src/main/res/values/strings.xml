@@ -100,6 +100,7 @@
     <string name="book_unavailable">This book isn\'t available right now.</string>
     <string name="download_offline">You\'re offline. Connect to the internet to download it.</string>
     <string name="not_available">Not available</string>
+    <string name="downloaded">“%1$s” is in your library.</string>
     <string name="retry">Retry</string>
     <string name="get">Get</string>
     <!-- Screen readers: the Get button with the book it downloads. -->

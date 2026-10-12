@@ -3,6 +3,7 @@ package app.lingleaf.ui
 import androidx.annotation.StringRes
 import androidx.compose.foundation.horizontalScroll
 import androidx.compose.foundation.layout.Arrangement
+import androidx.compose.foundation.layout.Box
 import androidx.compose.foundation.layout.Column
 import androidx.compose.foundation.layout.Row
 import androidx.compose.foundation.layout.Spacer
@@ -28,11 +29,12 @@ import androidx.compose.material3.ListItem
 import androidx.compose.material3.ListItemDefaults
 import androidx.compose.material3.MaterialTheme
 import androidx.compose.material3.OutlinedTextField
+import androidx.compose.material3.SnackbarHostState
 import androidx.compose.material3.Text
 import androidx.compose.material3.TextButton
 import androidx.compose.runtime.Composable
+import androidx.compose.runtime.LaunchedEffect
 import androidx.compose.runtime.getValue
-import androidx.compose.runtime.mutableStateMapOf
 import androidx.compose.runtime.mutableStateOf
 import androidx.compose.runtime.remember
 import androidx.compose.runtime.rememberCoroutineScope
@@ -44,36 +46,25 @@ import androidx.compose.ui.graphics.Color
 import androidx.compose.ui.platform.LocalContext
 import androidx.compose.ui.platform.testTag
 import androidx.compose.ui.res.stringResource
+import androidx.compose.ui.semantics.LiveRegionMode
 import androidx.compose.ui.semantics.contentDescription
+import androidx.compose.ui.semantics.liveRegion
 import androidx.compose.ui.semantics.onClick
 import androidx.compose.ui.semantics.semantics
 import androidx.compose.ui.text.input.ImeAction
 import androidx.compose.ui.text.style.TextOverflow
 import androidx.compose.ui.unit.dp
 import androidx.lifecycle.compose.collectAsStateWithLifecycle
+import app.lingleaf.BookDownload
 import app.lingleaf.R
 import app.lingleaf.core.GutenbergBook
 import app.lingleaf.core.GutenbergClient
 import app.lingleaf.core.GutenbergException
-import kotlinx.coroutines.CancellationException
-import kotlinx.coroutines.CoroutineStart
 import kotlinx.coroutines.Job
 import kotlinx.coroutines.delay
 import kotlinx.coroutines.isActive
 import kotlinx.coroutines.launch
 import kotlinx.coroutines.withContext
-
-/** A download in progress (0…1, with its job to cancel) or why it failed. */
-private sealed interface Download {
-    data class Running(
-        val fraction: Float,
-        val job: Job,
-    ) : Download
-
-    data class Failed(
-        val reason: GutenbergException.Reason,
-    ) : Download
-}
 
 /**
  * Recommended classics (shipped with the app) and search of Project Gutenberg, with a
@@ -93,7 +84,8 @@ fun DiscoverScreen(onOpenBook: (String) -> Unit) {
     // The search has taken over 8 s: say Project Gutenberg can be slow, and offer Cancel.
     var slow by remember { mutableStateOf(false) }
     var searchError by remember { mutableStateOf<GutenbergException.Reason?>(null) }
-    val downloads = remember { mutableStateMapOf<Int, Download>() }
+    val downloads by container.downloads.collectAsStateWithLifecycle()
+    val snackbar = remember { SnackbarHostState() }
 
     fun cancelSearch() {
         searchJob?.cancel()
@@ -131,42 +123,28 @@ fun DiscoverScreen(onOpenBook: (String) -> Unit) {
             }
     }
 
-    fun download(book: GutenbergBook) {
-        val job =
-            scope.launch(start = CoroutineStart.LAZY) {
-                try {
-                    withContext(container.io) {
-                        val text =
-                            container.gutenberg.downloadText(book) { fraction ->
-                                scope.launch {
-                                    val current = downloads[book.id]
-                                    if (current is Download.Running) downloads[book.id] = current.copy(fraction = fraction.toFloat())
-                                }
-                            }
-                        container.library.addBook(
-                            title = book.displayTitle,
-                            author = book.authorName ?: context.getString(R.string.unknown_author),
-                            text = text,
-                            level = GutenbergClient.levelFor(book.id),
-                            gutenbergId = book.id,
-                        )
-                    }
-                    downloads.remove(book.id)
-                } catch (error: GutenbergException) {
-                    downloads[book.id] = Download.Failed(error.reason)
-                } catch (cancelled: CancellationException) {
-                    downloads.remove(book.id)
-                    throw cancelled
-                }
+    // When a download finishes, say so: the Read button alone changes nothing a screen reader hears.
+    val unknownAuthor = stringResource(R.string.unknown_author)
+    val previous = remember { mutableMapOf<Int, BookDownload>() }
+    LaunchedEffect(downloads) {
+        for ((id, before) in previous) {
+            if (before is BookDownload.Running && id !in downloads && state.books.any { it.gutenbergId == id }) {
+                val title =
+                    GutenbergClient.RECOMMENDED_BOOKS.firstOrNull { it.id == id }?.displayTitle
+                        ?: results?.firstOrNull { it.id == id }?.displayTitle
+                if (title != null) snackbar.showSnackbar(context.getString(R.string.downloaded, title))
             }
-        downloads[book.id] = Download.Running(0f, job)
-        job.start()
+        }
+        previous.clear()
+        previous.putAll(downloads)
     }
+
+    fun download(book: GutenbergBook) = container.download(book, unknownAuthor)
 
     val recommended = GutenbergClient.filter(GutenbergClient.RECOMMENDED_BOOKS, levelFilter)
     val levels = remember { GutenbergClient.RECOMMENDED.values.distinct() }
 
-    ScreenScaffold(title = stringResource(R.string.discover_title)) { modifier ->
+    ScreenScaffold(title = stringResource(R.string.discover_title), snackbarHostState = snackbar) { modifier ->
         LazyColumn(modifier) {
             item {
                 OutlinedTextField(
@@ -195,9 +173,15 @@ fun DiscoverScreen(onOpenBook: (String) -> Unit) {
                 )
             }
             if (searching) item { SearchProgress(slow, onCancel = ::cancelSearch) }
+            // Results and errors appear without moving focus: polite live regions say them.
             searchError?.let { reason ->
                 item {
-                    Column(Modifier.fillMaxWidth().padding(horizontal = 16.dp, vertical = 8.dp)) {
+                    Column(
+                        Modifier
+                            .fillMaxWidth()
+                            .padding(horizontal = 16.dp, vertical = 8.dp)
+                            .semantics { liveRegion = LiveRegionMode.Polite },
+                    ) {
                         Text(
                             stringResource(
                                 if (reason ==
@@ -215,7 +199,9 @@ fun DiscoverScreen(onOpenBook: (String) -> Unit) {
                 }
             }
             results?.let { found ->
-                item { SectionHeader(stringResource(R.string.results)) }
+                item {
+                    Box(Modifier.semantics { liveRegion = LiveRegionMode.Polite }) { SectionHeader(stringResource(R.string.results)) }
+                }
                 if (found.isEmpty()) {
                     item { Text(stringResource(R.string.no_results), Modifier.padding(24.dp)) }
                 } else {
@@ -260,7 +246,10 @@ private fun SearchProgress(
     onCancel: () -> Unit,
 ) {
     Row(
-        Modifier.fillMaxWidth().padding(horizontal = 16.dp, vertical = 8.dp),
+        Modifier
+            .fillMaxWidth()
+            .padding(horizontal = 16.dp, vertical = 8.dp)
+            .semantics { liveRegion = LiveRegionMode.Polite },
         verticalAlignment = Alignment.CenterVertically,
     ) {
         CircularProgressIndicator(Modifier.size(24.dp), strokeWidth = 2.dp)
@@ -280,11 +269,12 @@ private fun SearchProgress(
 private fun BookItem(
     book: GutenbergBook,
     savedId: String?,
-    download: Download?,
+    download: BookDownload?,
     onGet: (GutenbergBook) -> Unit,
     onOpenBook: (String) -> Unit,
 ) {
-    val failure = (download as? Download.Failed)?.reason
+    val container = LocalContainer.current
+    val failure = (download as? BookDownload.Failed)?.reason
     ListItem(
         colors = ListItemDefaults.colors(containerColor = Color.Transparent),
         leadingContent = { BookCover(book.displayTitle) },
@@ -298,7 +288,8 @@ private fun BookItem(
                     }
                     Text(book.authorName ?: stringResource(R.string.unknown_author), maxLines = 1, overflow = TextOverflow.Ellipsis)
                 }
-                failure?.let { Text(stringResource(downloadMessage(it))) }
+                // Polite live region: TalkBack reads why the download failed.
+                failure?.let { Text(stringResource(downloadMessage(it)), Modifier.semantics { liveRegion = LiveRegionMode.Polite }) }
             }
         },
         trailingContent = {
@@ -309,23 +300,22 @@ private fun BookItem(
                         Text(stringResource(R.string.read))
                     }
                 }
-                download is Download.Running -> {
+                download is BookDownload.Running -> {
                     val label = stringResource(R.string.downloading_book, book.displayTitle)
                     val cancel = stringResource(R.string.cancel_download)
                     IconButton(
-                        onClick = { download.job.cancel() },
+                        onClick = { container.cancelDownload(book.id) },
                         modifier =
                             Modifier.semantics {
                                 contentDescription = label
                                 onClick(label = cancel) {
-                                    download.job.cancel()
+                                    container.cancelDownload(book.id)
                                     true
                                 }
                             },
                     ) { CircularProgressIndicator(progress = { download.fraction }, modifier = Modifier.size(28.dp), strokeWidth = 3.dp) }
                 }
                 book.textUrl == null -> Text(stringResource(R.string.not_available), color = MaterialTheme.colorScheme.onSurfaceVariant)
-                failure == GutenbergException.Reason.UNAVAILABLE -> Unit
                 else -> {
                     // Visible text stays short; screen readers hear which book it gets.
                     val label = stringResource(if (failure == null) R.string.get_book else R.string.retry_book, book.displayTitle)

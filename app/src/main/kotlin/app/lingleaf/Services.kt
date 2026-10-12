@@ -9,7 +9,9 @@ import android.speech.tts.UtteranceProgressListener
 import android.util.Log
 import app.lingleaf.core.BundledStory
 import app.lingleaf.core.DictionaryClient
+import app.lingleaf.core.GutenbergBook
 import app.lingleaf.core.GutenbergClient
+import app.lingleaf.core.GutenbergException
 import app.lingleaf.core.HttpFetcher
 import app.lingleaf.core.HttpResponse
 import app.lingleaf.core.Library
@@ -24,15 +26,19 @@ import com.google.mlkit.nl.translate.TranslateLanguage
 import com.google.mlkit.nl.translate.TranslateRemoteModel
 import com.google.mlkit.nl.translate.Translation
 import com.google.mlkit.nl.translate.TranslatorOptions
+import kotlinx.coroutines.CancellationException
 import kotlinx.coroutines.CoroutineDispatcher
 import kotlinx.coroutines.CoroutineExceptionHandler
 import kotlinx.coroutines.CoroutineScope
+import kotlinx.coroutines.CoroutineStart
 import kotlinx.coroutines.Dispatchers
+import kotlinx.coroutines.Job
 import kotlinx.coroutines.SupervisorJob
 import kotlinx.coroutines.ensureActive
 import kotlinx.coroutines.flow.MutableStateFlow
 import kotlinx.coroutines.flow.StateFlow
 import kotlinx.coroutines.flow.asStateFlow
+import kotlinx.coroutines.flow.update
 import kotlinx.coroutines.launch
 import kotlinx.coroutines.suspendCancellableCoroutine
 import kotlinx.coroutines.withContext
@@ -104,6 +110,65 @@ class AppContainer(
         )
 
     private val filling = AtomicBoolean(false)
+
+    private val _downloads = MutableStateFlow<Map<Int, BookDownload>>(emptyMap())
+
+    /**
+     * Book downloads by Gutenberg id. They run in [appScope], so leaving Discover doesn't
+     * cancel them; the screen only shows them (SPEC S9).
+     */
+    val downloads: StateFlow<Map<Int, BookDownload>> = _downloads.asStateFlow()
+
+    /** Downloads [book] into the library; [unknownAuthor] names a book without one. */
+    fun download(
+        book: GutenbergBook,
+        unknownAuthor: String,
+    ) {
+        if (_downloads.value[book.id] is BookDownload.Running) return
+        val job =
+            appScope.launch(start = CoroutineStart.LAZY) {
+                try {
+                    var shown = 0.0
+                    val text =
+                        gutenberg.downloadText(book) { fraction ->
+                            // One update per percent, not one per 8 KB chunk.
+                            if (fraction - shown >= 0.01 || fraction >= 1.0) {
+                                shown = fraction
+                                updateDownload(book.id) { (it as? BookDownload.Running)?.copy(fraction = fraction.toFloat()) }
+                            }
+                        }
+                    library.addBook(
+                        title = book.displayTitle,
+                        author = book.authorName ?: unknownAuthor,
+                        text = text,
+                        level = GutenbergClient.levelFor(book.id),
+                        gutenbergId = book.id,
+                    )
+                    updateDownload(book.id) { null }
+                } catch (error: GutenbergException) {
+                    updateDownload(book.id) { BookDownload.Failed(error.reason) }
+                } catch (cancelled: CancellationException) {
+                    updateDownload(book.id) { null }
+                    throw cancelled
+                }
+            }
+        updateDownload(book.id) { BookDownload.Running(0f, job) }
+        job.start()
+    }
+
+    fun cancelDownload(id: Int) {
+        (_downloads.value[id] as? BookDownload.Running)?.job?.cancel()
+    }
+
+    private fun updateDownload(
+        id: Int,
+        change: (BookDownload?) -> BookDownload?,
+    ) {
+        _downloads.update { downloads ->
+            val next = change(downloads[id])
+            if (next == null) downloads - id else downloads + (id to next)
+        }
+    }
 
     /** The language chosen in Settings, else the first suitable system language; null means ask (SPEC S14). */
     fun targetLanguage(settings: Settings): String? =
@@ -415,4 +480,16 @@ class FileStorage(
     override fun delete(name: String) {
         File(dir, name).delete()
     }
+}
+
+/** A book download in progress (0…1, with its job) or why it failed. */
+sealed interface BookDownload {
+    data class Running(
+        val fraction: Float,
+        val job: Job,
+    ) : BookDownload
+
+    data class Failed(
+        val reason: GutenbergException.Reason,
+    ) : BookDownload
 }
