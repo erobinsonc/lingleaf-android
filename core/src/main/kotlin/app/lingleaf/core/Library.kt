@@ -43,6 +43,8 @@ data class VocabWord(
     val nextReview: String,
     /** Language code of [translation]; null for words saved before it was recorded. */
     val translationLanguage: String? = null,
+    /** The translation of [context], when the card had it at save time. */
+    val contextTranslation: String? = null,
 ) {
     fun isDue(now: LocalDateTime) = !learned && !LocalDateTime.parse(nextReview).isAfter(now)
 
@@ -203,6 +205,15 @@ class Library(
         return _state.value.words.filter { it.isDue(now) }.sortedBy { it.nextReview }
     }
 
+    /** Today's review session: at most [Srs.SESSION_LIMIT] due words, interleaved by book. */
+    fun reviewSession(): List<VocabWord> = Srs.session(dueWords())
+
+    /** Words being learned that are due by the end of tomorrow, for "12 more tomorrow". */
+    fun dueByEndOfTomorrow(): Int {
+        val end = Srs.startOfDay(2, now())
+        return _state.value.words.count { !it.learned && LocalDateTime.parse(it.nextReview).isBefore(end) }
+    }
+
     /**
      * Saves [word] for review, or as known when [learned]. A word that was known
      * goes back to the first box. Blank values keep what was saved before.
@@ -217,12 +228,16 @@ class Library(
         context: String = "",
         source: String = "",
         translationLanguage: String? = null,
+        contextTranslation: String? = null,
     ): VocabWord? {
         val key = TextTools.normalize(word)
         val now = now().toString()
         val existing = _state.value.words.firstOrNull { it.word == key }
         var entry = existing ?: VocabWord(word = key, createdAt = now, nextReview = now)
-        if (!learned && (existing == null || existing.learned)) entry = entry.copy(box = 0, nextReview = now)
+        // A new word is first reviewed tomorrow, after a night's sleep (S7).
+        if (!learned && (existing == null || existing.learned)) {
+            entry = entry.copy(box = 0, nextReview = Srs.startOfDay(1, now()).toString())
+        }
         val newTranslation = translation?.takeIf { it.isNotBlank() }
         entry =
             entry.copy(
@@ -231,6 +246,9 @@ class Library(
                 translationLanguage = if (newTranslation != null) translationLanguage else entry.translationLanguage,
                 phonetic = phonetic?.takeIf { it.isNotBlank() } ?: entry.phonetic,
                 context = context.ifBlank { entry.context },
+                contextTranslation =
+                    contextTranslation?.takeIf { it.isNotBlank() }
+                        ?: entry.contextTranslation.takeIf { context.isBlank() || context == entry.context },
                 source = source.ifBlank { entry.source },
             )
         replaceWord(key, entry)

@@ -216,6 +216,7 @@ class AppTest {
             context = "The edge of the bay.",
             translationLanguage = "es",
         )
+        dueNow("bay")
         compose.onAllNodesWithText("Words").onFirst().performClick()
         compose.onNodeWithText("Review now").performClick()
         assertTappablesAreLabelled("Review")
@@ -451,14 +452,22 @@ class AppTest {
             context = "The edge of the bay.",
             translationLanguage = "es",
         )
+        dueNow("bay")
         compose.onAllNodesWithText("Words").onFirst().performClick()
         compose.onNodeWithText("bahía").assertExists()
         compose.onNodeWithText("Review now").performClick()
+        compose.onNodeWithText("Got it").assertDoesNotExist()
         compose.onNodeWithText("Show meaning").performClick()
-        compose.onNodeWithText("I know it").performClick()
-        compose.onNodeWithText("All done!").assertExists()
+        // The meaning brings the sentence, the word in bold, and then the answers.
+        compose.onNodeWithText("The edge of the bay.").assertExists()
+        compose.onNodeWithText("Got it").performClick()
+        compose.onNodeWithText("Done for today.").assertExists()
+        compose.onNodeWithText("1 more tomorrow.").assertExists()
         assertEquals(1, container.library.state.value.word("bay")!!.box)
     }
+
+    /** New words are first due tomorrow (SPEC S7); "Again" makes one due now. */
+    private fun dueNow(word: String) = container.library.answerReview(word, correct = false)
 
     // S6 Listen
     @Test
@@ -545,6 +554,7 @@ class AppTest {
         offline = true
         val context = ApplicationProvider.getApplicationContext<Context>()
         container.library.saveWord("bay", learned = false, context = "The edge of the bay.")
+        dueNow("bay")
         compose.onAllNodesWithText("Words").onFirst().performClick()
         compose.onNodeWithText("Review now").performClick()
         compose.onNodeWithText("Show meaning").performClick()

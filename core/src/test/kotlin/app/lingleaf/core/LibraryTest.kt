@@ -96,7 +96,9 @@ class LibraryTest {
         val state = library.state.value
         assertTrue(state.isLearning("animals"))
         assertFalse(state.isLearning("equal"))
-        assertEquals("animal", library.dueWords().single().word)
+        assertTrue(library.dueWords().isEmpty(), "a new word is first reviewed tomorrow")
+        clock.instant = java.time.Instant.parse("2026-10-10T00:00:00Z")
+        assertEquals("animal", library.dueWords().single().word, "due from 00:00 the next day")
 
         library.saveWord("animal", learned = true, translation = "")
         assertFalse(library.state.value.isLearning("animals"))
@@ -111,6 +113,8 @@ class LibraryTest {
     fun `review answers schedule the next review`() {
         val library = library()
         library.saveWord("equal", learned = false)
+        clock.instant = clock.instant.plusSeconds(86_400)
+        assertEquals(0, library.dueWords().single().box)
         library.answerReview("equal", correct = true)
         assertTrue(library.dueWords().isEmpty())
         clock.instant = clock.instant.plusSeconds(86_400)
@@ -161,7 +165,40 @@ class LibraryTest {
         val saved = library.state.value.word("bay")!!
         assertFalse(saved.learned)
         assertEquals(0, saved.box)
-        assertEquals("bay", library.dueWords().single().word)
+        assertEquals("2026-10-10T00:00", saved.nextReview, "back to a first review tomorrow")
+    }
+
+    @Test
+    fun `review session interleaves books and counts tomorrow`() {
+        val library = library()
+        for (word in listOf("a1", "a2", "a3")) library.saveWord(word, learned = false, source = "A")
+        for (word in listOf("b1", "b2")) library.saveWord(word, learned = false, source = "B")
+        library.saveWord("known", learned = true, source = "A")
+        assertEquals(5, library.dueByEndOfTomorrow())
+        clock.instant = clock.instant.plusSeconds(86_400)
+        assertEquals(setOf("A", "B"), library.reviewSession().take(2).map { it.source }.toSet(), "one book doesn't fill the session")
+        assertEquals(5, library.reviewSession().size)
+        assertEquals(3, Srs.session(library.dueWords(), limit = 3).size)
+        for (word in library.reviewSession()) library.answerReview(word.word, correct = true)
+        assertEquals(5, library.dueByEndOfTomorrow(), "answered words are due again tomorrow")
+    }
+
+    @Test
+    fun `a session holds at most twenty words`() {
+        val library = library()
+        for (index in 0 until 25) library.saveWord("w$index", learned = false)
+        clock.instant = clock.instant.plusSeconds(86_400)
+        assertEquals(Srs.SESSION_LIMIT, library.reviewSession().size)
+    }
+
+    @Test
+    fun `context translation is kept with its sentence`() {
+        val library = library()
+        library.saveWord("sea", learned = false, context = "By the sea.", contextTranslation = "Junto al mar.")
+        library.saveWord("sea", learned = false)
+        assertEquals("Junto al mar.", library.state.value.word("sea")?.contextTranslation)
+        library.saveWord("sea", learned = false, context = "The sea is blue.")
+        assertNull(library.state.value.word("sea")?.contextTranslation, "a new sentence drops the old translation")
     }
 
     @Test

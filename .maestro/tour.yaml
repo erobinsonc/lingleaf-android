@@ -5,6 +5,9 @@ appId: app.lingleaf
 ---
 - launchApp:
     clearState: true
+    # Debug builds only: a word waiting for review (new words are first due tomorrow).
+    arguments:
+      dueWord: true
 # Dismisses a system "isn't responding" dialog if the emulator shows one.
 - tapOn:
     text: "Wait"

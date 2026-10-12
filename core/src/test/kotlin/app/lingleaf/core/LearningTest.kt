@@ -11,7 +11,7 @@ class LearningTest {
 
     @Test
     fun `correct answer moves to the next box`() {
-        assertEquals(SrsResult(1, LocalDateTime.of(2026, 10, 10, 8, 0), false), Srs.review(0, true, now))
+        assertEquals(SrsResult(1, LocalDateTime.of(2026, 10, 10, 0, 0), false), Srs.review(0, true, now))
     }
 
     @Test

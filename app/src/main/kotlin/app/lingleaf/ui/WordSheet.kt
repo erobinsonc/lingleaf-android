@@ -187,6 +187,7 @@ fun WordSheet(
                         context = sentence,
                         source = source,
                         translationLanguage = language.takeIf { shown != null },
+                        contextTranslation = sentenceTranslation,
                     )
                 }
             if (shown == null && language != null && pending != null) {
