@@ -1,5 +1,6 @@
 package app.lingleaf.ui
 
+import android.animation.ValueAnimator
 import androidx.compose.foundation.layout.Box
 import androidx.compose.foundation.layout.Column
 import androidx.compose.foundation.layout.PaddingValues
@@ -44,6 +45,7 @@ import androidx.compose.ui.unit.sp
 import androidx.lifecycle.compose.LifecycleResumeEffect
 import androidx.lifecycle.compose.collectAsStateWithLifecycle
 import app.lingleaf.R
+import app.lingleaf.core.FunctionWords
 import app.lingleaf.core.TextTools
 import app.lingleaf.core.WordRange
 import kotlinx.coroutines.launch
@@ -151,13 +153,20 @@ fun ReaderScreen(
 
     selection?.let { current ->
         val paragraph = paragraphs?.getOrNull(current.paragraph) ?: return@let
+        val sentenceRange = TextTools.sentenceRangeAt(paragraph, current.word.start)
+        val sentence = paragraph.substring(sentenceRange.start, sentenceRange.end)
+        val inSentence =
+            WordRange(current.word.start - sentenceRange.start, current.word.end - sentenceRange.start)
+                .takeIf { current.word.start >= sentenceRange.start && current.word.end <= sentenceRange.end }
         WordSheet(
             word = paragraph.substring(current.word.start, current.word.end),
-            sentence = TextTools.sentenceAt(paragraph, current.word.start),
+            sentence = sentence,
+            rangeInSentence = inSentence,
+            function = inSentence?.let { FunctionWords.analyze(sentence, it) },
             source = book?.title.orEmpty(),
             onChanged = { change ->
                 scope.launch {
-                    snackbar.showUndo(context.getString(change.message, change.word), context.getString(R.string.undo), undoTimeout()) {
+                    snackbar.showUndo(context.getString(change.message, change.label), context.getString(R.string.undo), undoTimeout()) {
                         withContext(container.io) { library.restoreWord(change.word, change.previous) }
                     }
                 }
@@ -189,6 +198,25 @@ private fun ReaderText(
 
     LaunchedEffect(listState) {
         snapshotFlow { listState.firstVisibleItemIndex }.collect { onScroll(it) }
+    }
+
+    // The sheet covers the lower part of the reader: when the tapped word is there, scroll it
+    // near the top (SPEC S17). Its height in the paragraph is estimated from its offset.
+    LaunchedEffect(selection) {
+        val selected = selection ?: return@LaunchedEffect
+        val info = listState.layoutInfo
+        val item = info.visibleItemsInfo.firstOrNull { it.index == selected.paragraph } ?: return@LaunchedEffect
+        val viewport = info.viewportEndOffset - info.viewportStartOffset
+        val length = paragraphs[selected.paragraph].length.coerceAtLeast(1)
+        val wordY = item.offset + item.size * selected.word.start / length
+        if (wordY in 0..(viewport * 2 / 5)) return@LaunchedEffect
+        val offset = (item.size * selected.word.start / length - viewport / 5).coerceAtLeast(0)
+        // No animation when the system turns animations off (Remove animations).
+        if (ValueAnimator.areAnimatorsEnabled()) {
+            listState.animateScrollToItem(selected.paragraph, offset)
+        } else {
+            listState.scrollToItem(selected.paragraph, offset)
+        }
     }
 
     Box(Modifier.fillMaxSize(), contentAlignment = Alignment.TopCenter) {

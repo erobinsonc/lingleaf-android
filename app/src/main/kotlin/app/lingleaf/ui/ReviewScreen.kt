@@ -191,7 +191,9 @@ private fun ReviewCard(
                                     horizontalAlignment = Alignment.CenterHorizontally,
                                     modifier = Modifier.semantics(mergeDescendants = true) {},
                                 ) {
-                                    if (word.phonetic.isNotEmpty()) Text(word.phonetic, color = MaterialTheme.colorScheme.onSurfaceVariant)
+                                    if (word.phonetic.isNotEmpty() && word.kind == null) {
+                                        Text(word.phonetic, color = MaterialTheme.colorScheme.onSurfaceVariant)
+                                    }
                                     Text(
                                         word.translation.ifEmpty { stringResource(R.string.no_translation) },
                                         style = MaterialTheme.typography.headlineSmall,

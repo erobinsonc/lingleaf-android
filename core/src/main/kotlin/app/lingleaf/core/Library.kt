@@ -43,6 +43,13 @@ data class VocabWord(
     val nextReview: String,
     /** Language code of [translation]; null for words saved before it was recorded. */
     val translationLanguage: String? = null,
+    /**
+     * Set when [word] is the verb group of a helper or modal verb ("did not go"): what is
+     * learned and translated, since the helper alone means little. Null for other words.
+     */
+    val kind: FunctionWord.Kind? = null,
+    /** The helper or modal verb's base form ("do" for "did not go"). */
+    val base: String? = null,
 ) {
     fun isDue(now: LocalDateTime) = !learned && !LocalDateTime.parse(nextReview).isAfter(now)
 
@@ -207,6 +214,7 @@ class Library(
      * Saves [word] for review, or as known when [learned]. A word that was known
      * goes back to the first box. Blank values keep what was saved before.
      * Returns the previous record (null if the word was new), for Undo with [restoreWord].
+     * For a helper or modal verb, [word] is its verb group and [kind]/[base] say what it is.
      */
     @Synchronized
     fun saveWord(
@@ -217,6 +225,8 @@ class Library(
         context: String = "",
         source: String = "",
         translationLanguage: String? = null,
+        kind: FunctionWord.Kind? = null,
+        base: String? = null,
     ): VocabWord? {
         val key = TextTools.normalize(word)
         val now = now().toString()
@@ -232,6 +242,8 @@ class Library(
                 phonetic = phonetic?.takeIf { it.isNotBlank() } ?: entry.phonetic,
                 context = context.ifBlank { entry.context },
                 source = source.ifBlank { entry.source },
+                kind = kind,
+                base = if (kind == null) null else base,
             )
         replaceWord(key, entry)
         return existing

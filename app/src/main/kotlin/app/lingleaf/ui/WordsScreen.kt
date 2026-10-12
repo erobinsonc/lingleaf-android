@@ -154,13 +154,17 @@ private fun WordRow(
         headlineContent = {
             Row {
                 Text(word.word, fontWeight = FontWeight.SemiBold)
-                if (word.phonetic.isNotEmpty()) {
+                if (word.phonetic.isNotEmpty() && word.kind == null) {
                     Text("  ${word.phonetic}", color = MaterialTheme.colorScheme.onSurfaceVariant)
                 }
             }
         },
         supportingContent = {
             Column {
+                // A helper or modal verb is saved as its verb group: "do · Helper verb".
+                word.kind?.let {
+                    Text("${word.base.orEmpty()} · ${stringResource(it.label)}", color = MaterialTheme.colorScheme.onSurfaceVariant)
+                }
                 if (word.translation.isNotEmpty()) Text(word.translation)
                 if (word.context.isNotEmpty()) {
                     Text(

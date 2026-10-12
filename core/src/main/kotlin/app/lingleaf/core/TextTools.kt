@@ -57,15 +57,40 @@ object TextTools {
     fun sentenceAt(
         paragraph: String,
         offset: Int,
-    ): String {
+    ): String = sentenceRangeAt(paragraph, offset).let { paragraph.substring(it.start, it.end) }
+
+    /**
+     * Where [sentenceAt] is in [paragraph], without surrounding whitespace, so a
+     * word's offset in the paragraph can be turned into its offset in the sentence.
+     */
+    fun sentenceRangeAt(
+        paragraph: String,
+        offset: Int,
+    ): WordRange {
         var start = 0
+        var end = paragraph.length
         for (match in sentenceEnd.findAll(paragraph)) {
-            val end = match.range.last + 1
-            if (end > offset) return paragraph.substring(start, end).trim()
-            start = end
+            val matchEnd = match.range.last + 1
+            if (matchEnd > offset) {
+                end = matchEnd
+                break
+            }
+            start = matchEnd
         }
-        val rest = paragraph.substring(start).trim()
-        return rest.ifEmpty { paragraph.trim() }
+        val sentence = trimmed(paragraph, start, end)
+        return if (sentence.start == sentence.end) trimmed(paragraph, 0, paragraph.length) else sentence
+    }
+
+    private fun trimmed(
+        text: String,
+        from: Int,
+        to: Int,
+    ): WordRange {
+        var start = from
+        var end = to
+        while (start < end && text[start].isWhitespace()) start++
+        while (end > start && text[end - 1].isWhitespace()) end--
+        return WordRange(start, end)
     }
 
     /**
