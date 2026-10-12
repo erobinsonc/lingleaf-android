@@ -2,11 +2,15 @@ package app.lingleaf
 
 import android.content.Context
 import android.content.res.Resources
+import android.graphics.BitmapFactory
 import android.net.ConnectivityManager
 import android.net.NetworkCapabilities
 import android.speech.tts.TextToSpeech
 import android.speech.tts.UtteranceProgressListener
 import android.util.Log
+import android.util.LruCache
+import androidx.compose.ui.graphics.ImageBitmap
+import androidx.compose.ui.graphics.asImageBitmap
 import app.lingleaf.core.BundledStory
 import app.lingleaf.core.DictionaryClient
 import app.lingleaf.core.GutenbergBook
@@ -98,6 +102,8 @@ class AppContainer(
     /** The phone's region (ISO 3166, e.g. "BR"), used to suggest a translation language. */
     val region: () -> String? = ::systemRegion,
     val io: CoroutineDispatcher = Dispatchers.IO,
+    /** Loads a book cover; null loads none (UI tests, so they never depend on the network). */
+    val covers: (suspend (String) -> ImageBitmap?)? = null,
 ) {
     /**
      * Outlives screens, for work that must finish after one closes (saving progress,
@@ -217,6 +223,7 @@ class AppContainer(
                 library = Library(FileStorage(context.filesDir)),
                 dictionary = DictionaryClient(http),
                 gutenberg = GutenbergClient(http),
+                covers = CoverLoader(HttpsFetcher(maxBytes = MAX_COVER_BYTES))::load,
                 translator = MlKitTranslator(context.applicationContext),
                 speaker = AndroidSpeaker(context.applicationContext),
                 bundledStories = {
@@ -492,4 +499,30 @@ sealed interface BookDownload {
     data class Failed(
         val reason: GutenbergException.Reason,
     ) : BookDownload
+}
+
+/** Largest cover image accepted; Gutenberg's medium covers are about 20–60 KB. */
+const val MAX_COVER_BYTES = 2 * 1024 * 1024
+
+/**
+ * Book covers over HTTPS (through [HttpsFetcher], so HTTPS only and size-capped),
+ * decoded on the IO dispatcher and kept in memory for the session. Any failure
+ * returns null and the drawn cover stays.
+ */
+class CoverLoader(
+    private val http: HttpFetcher,
+) {
+    private val cache = LruCache<String, ImageBitmap>(64)
+
+    suspend fun load(url: String): ImageBitmap? {
+        cache.get(url)?.let { return it }
+        val image =
+            withContext(Dispatchers.IO) {
+                val response = runCatching { http.get(url) }.getOrNull()
+                if (response == null || response.status != 200) return@withContext null
+                BitmapFactory.decodeByteArray(response.body, 0, response.body.size)?.asImageBitmap()
+            } ?: return null
+        cache.put(url, image)
+        return image
+    }
 }
