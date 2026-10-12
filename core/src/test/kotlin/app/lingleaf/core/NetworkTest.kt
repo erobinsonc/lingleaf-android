@@ -67,6 +67,13 @@ class GutenbergTest {
         }
 
     @Test
+    fun `covers load only from the Gutenberg file cache`() {
+        val elsewhere = GutenbergBook(id = 3, title = "x", formats = mapOf("image/jpeg" to "http://example.com/huge.jpg"))
+        assertEquals("https://www.gutenberg.org/cache/epub/3/pg3.cover.medium.jpg", elsewhere.coverUrl, "not the catalog's link")
+        assertNull(GutenbergBook(id = 4, title = "No cover", formats = emptyMap()).coverUrl)
+    }
+
+    @Test
     fun `filter by level keeps order and null keeps everything`() {
         val books = GutenbergClient.RECOMMENDED.keys.map { GutenbergBook(id = it, title = "Book $it") }
         assertEquals(books, GutenbergClient.filter(books, null))

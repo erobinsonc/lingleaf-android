@@ -2,6 +2,7 @@ package app.lingleaf
 
 import android.content.Context
 import android.content.res.Resources
+import android.graphics.Bitmap
 import android.graphics.BitmapFactory
 import android.net.ConnectivityManager
 import android.net.NetworkCapabilities
@@ -506,13 +507,20 @@ const val MAX_COVER_BYTES = 2 * 1024 * 1024
 
 /**
  * Book covers over HTTPS (through [HttpsFetcher], so HTTPS only and size-capped),
- * decoded on the IO dispatcher and kept in memory for the session. Any failure
+ * decoded as small thumbnails on the IO dispatcher and kept in memory for the session. Any failure
  * returns null and the drawn cover stays.
  */
 class CoverLoader(
     private val http: HttpFetcher,
 ) {
-    private val cache = LruCache<String, ImageBitmap>(64)
+    // Sized by bytes, not entries: a few dozen small thumbnails at most.
+    private val cache =
+        object : LruCache<String, ImageBitmap>(COVER_CACHE_BYTES) {
+            override fun sizeOf(
+                key: String,
+                value: ImageBitmap,
+            ) = value.width * value.height * 4
+        }
 
     suspend fun load(url: String): ImageBitmap? {
         cache.get(url)?.let { return it }
@@ -520,9 +528,41 @@ class CoverLoader(
             withContext(Dispatchers.IO) {
                 val response = runCatching { http.get(url) }.getOrNull()
                 if (response == null || response.status != 200) return@withContext null
-                BitmapFactory.decodeByteArray(response.body, 0, response.body.size)?.asImageBitmap()
+                decodeThumbnail(response.body)?.asImageBitmap()
             } ?: return null
         cache.put(url, image)
         return image
+    }
+
+    companion object {
+        /** Twice the 44×62 dp shown at the densest screens: sharp, yet a few hundred KB at most. */
+        const val THUMBNAIL_WIDTH = 176
+        const val THUMBNAIL_HEIGHT = 248
+
+        /** A real cover is under 1000 px a side; anything far larger is refused before decoding. */
+        const val MAX_SIDE = 4096
+        const val COVER_CACHE_BYTES = 8 * 1024 * 1024
+
+        /**
+         * Reads the size first, refuses huge images and decodes a downsampled copy, so a small
+         * file that claims enormous dimensions can't exhaust memory. Null when it isn't an image.
+         */
+        fun decodeThumbnail(bytes: ByteArray): Bitmap? {
+            val bounds = BitmapFactory.Options().apply { inJustDecodeBounds = true }
+            BitmapFactory.decodeByteArray(bytes, 0, bytes.size, bounds)
+            val width = bounds.outWidth
+            val height = bounds.outHeight
+            if (width <= 0 || height <= 0 || width > MAX_SIDE || height > MAX_SIDE) return null
+            var sample = 1
+            while (width / (sample * 2) >= THUMBNAIL_WIDTH && height / (sample * 2) >= THUMBNAIL_HEIGHT) sample *= 2
+            val options = BitmapFactory.Options().apply { inSampleSize = sample }
+            return try {
+                BitmapFactory.decodeByteArray(bytes, 0, bytes.size, options)
+            } catch (_: OutOfMemoryError) {
+                null
+            } catch (_: IllegalArgumentException) {
+                null
+            }
+        }
     }
 }

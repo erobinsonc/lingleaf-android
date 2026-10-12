@@ -32,7 +32,12 @@ data class GutenbergBook(
     val displayTitle: String
         get() = title.split(" : ", ";", "\$b", "\n", "\r").first().trim().ifEmpty { title.trim() }
 
-    val coverUrl: String? get() = formats["image/jpeg"]
+    /**
+     * The medium cover from Project Gutenberg's file cache, never a link taken from the
+     * catalog: covers load only from www.gutenberg.org. Null when the catalog lists none.
+     */
+    val coverUrl: String?
+        get() = if (formats.containsKey("image/jpeg")) GutenbergClient.coverUrl(id) else null
 
     /**
      * The plain-text edition, straight from Project Gutenberg's file cache: the catalog's
