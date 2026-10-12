@@ -221,7 +221,9 @@ private fun ReviewCard(
                                     horizontalAlignment = Alignment.CenterHorizontally,
                                     modifier = Modifier.semantics(mergeDescendants = true) {},
                                 ) {
-                                    if (word.phonetic.isNotEmpty()) Text(word.phonetic, color = MaterialTheme.colorScheme.onSurfaceVariant)
+                                    if (word.phonetic.isNotEmpty() && word.kind == null) {
+                                        Text(word.phonetic, color = MaterialTheme.colorScheme.onSurfaceVariant)
+                                    }
                                     Text(
                                         word.translation.ifEmpty { stringResource(R.string.no_translation) },
                                         style = MaterialTheme.typography.headlineSmall,
@@ -233,7 +235,12 @@ private fun ReviewCard(
                             }
                         }
                         // Outside the live region: TalkBack reads the meaning, not the whole sentence too.
-                        if (revealed && word.context.isNotEmpty()) SavedSentence(word, target)
+                        if (revealed &&
+                            word.context.isNotEmpty() &&
+                            TextTools.normalize(word.context) != word.word
+                        ) {
+                            SavedSentence(word, target)
+                        }
                     }
                 }
             }

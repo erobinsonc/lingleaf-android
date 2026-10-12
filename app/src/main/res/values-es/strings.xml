@@ -148,4 +148,27 @@
     <string name="credits">Libros: Project Gutenberg (dominio público). Definiciones: dictionaryapi.dev. Traducción: Google ML Kit, en el teléfono. Sin cuentas, sin anuncios, sin rastreo.</string>
     <string name="reading_progress">Progreso de lectura</string>
     <string name="review_progress">Progreso del repaso</string>
+    <!-- Helper and modal verbs on the word sheet (SPEC S16) -->
+    <string name="helper_verb">Verbo auxiliar</string>
+    <string name="modal_verb">Verbo modal</string>
+    <string name="note_past_negative_contracted">“%1$s” (= “%2$s”) + verbo en forma base = negación en pasado: “didn\'t go”, no “didn\'t went”.</string>
+    <string name="note_past_negative">“%1$s” + verbo en forma base = negación en pasado: “did not go”, no “did not went”.</string>
+    <string name="note_present_negative_contracted">“%1$s” (= “%2$s”) + verbo en forma base = negación en presente: “%1$s like”, no “%1$s likes”.</string>
+    <string name="note_present_negative">“%1$s” + verbo en forma base = negación en presente: “%1$s like”, no “%1$s likes”.</string>
+    <string name="note_prohibition">“%1$s” + verbo en forma base sirve para prohibir: “Don\'t touch” = no toques.</string>
+    <string name="note_question_tag">“%1$s” + pronombre al final pide que el otro confirme, como “¿verdad?”.</string>
+    <string name="note_modal_not_allowed">“%1$s” + verbo: está prohibido.</string>
+    <string name="note_modal_negative_contracted">“%1$s” (= “%2$s”): la forma negativa de “%3$s” + verbo.</string>
+    <string name="note_modal_negative">“%1$s”: la forma negativa de “%2$s” + verbo.</string>
+    <string name="note_past_question">“%1$s” abre una pregunta sobre el pasado.</string>
+    <string name="note_present_question">“%1$s” abre una pregunta sobre el presente.</string>
+    <string name="note_will">“will” + verbo: el futuro (iré, irás…).</string>
+    <string name="note_would">“would” + verbo: lo que pasaría (iría, haría…) o un pedido amable.</string>
+    <string name="note_can">“can” + verbo: poder (ser capaz o tener permiso).</string>
+    <string name="note_could">“could” + verbo: podía o podría.</string>
+    <string name="note_shall">“shall” + verbo: el futuro, o una propuesta (“Shall we go?” = ¿Vamos?).</string>
+    <string name="note_should">“should” + verbo: un consejo (debería…).</string>
+    <string name="note_must">“must” + verbo: hay que hacerlo, o seguro que es así.</string>
+    <string name="note_may">“may” + verbo: quizás, o permiso.</string>
+    <string name="note_might">“might” + verbo: quizás, puede que…</string>
 </resources>

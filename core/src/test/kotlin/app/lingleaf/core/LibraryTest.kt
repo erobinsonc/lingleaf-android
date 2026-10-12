@@ -375,4 +375,28 @@ class LibraryTest {
         assertTrue(library.state.value.books.isEmpty())
         assertTrue(storage.files.keys.none { it.startsWith("book-") })
     }
+
+    @Test
+    fun `helper and modal verbs are saved as their verb group`() {
+        val library = library()
+        library.saveWord(
+            "did not go",
+            learned = false,
+            translation = "no fue",
+            translationLanguage = "es",
+            kind = FunctionWord.Kind.HELPER,
+            base = "do",
+        )
+        library.saveWord("doesn't like", learned = false, kind = FunctionWord.Kind.HELPER, base = "do")
+        library.saveWord("Do", learned = true, translation = "hacer", translationLanguage = "es")
+        val reloaded = library().state.value
+        val past = assertNotNull(reloaded.word("Did not go"))
+        assertEquals(FunctionWord.Kind.HELPER, past.kind)
+        assertEquals("do", past.base)
+        assertEquals("no fue", past.translation, "each verb group is its own record")
+        assertEquals("do", reloaded.word("doesn't like")?.base)
+        assertNull(reloaded.word("do")?.kind, "\"do\" as a word stays separate")
+        assertFalse(reloaded.isLearning("did"), "a verb group doesn't underline the helper everywhere")
+        assertEquals(listOf("doesn't like"), library.wordsNeedingTranslation("es").map { it.word })
+    }
 }
