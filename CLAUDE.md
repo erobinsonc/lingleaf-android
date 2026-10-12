@@ -3,6 +3,13 @@
 Lingleaf: learn English by reading real books. Two native apps share one product
 spec: this repo (lingleaf-android) and [lingleaf-ios](https://github.com/erobinsonc/lingleaf-ios).
 
+## Security first (mandatory)
+
+- Security is the first design driver. The code is public: assume attackers read every line, the CI and the history.
+- Treat every outside byte as hostile, including from our documented hosts (they can be compromised) and files the learner imports.
+- When security conflicts with a feature, convenience or speed, security wins; present the trade-off to the maintainer.
+- No new host, permission, dependency, entitlement or stored data without the security validators below.
+
 ## Git flow (mandatory)
 
 ```
@@ -26,7 +33,9 @@ feat/*, fix/*  ──PR──▶  develop  ──release PR──▶  main
 
 | Change touches | Run |
 |---|---|
-| Networking, storage, manifests, dependencies, CI | `security-reviewer` |
+| Every pull request | `security-reviewer` |
+| Outside data (network, imported files, links, other apps), storage, decoders, manifests, dependencies, build, signing, CI | `ethical-hacker`, `android-security-reviewer` |
+| Every release PR (develop → main) | full audit: `security-reviewer`, `ethical-hacker`, `android-security-reviewer` |
 | Any screen or component | `accessibility-reviewer`, `usability-reviewer`, `platform-guidelines-reviewer`, `ux-experience-reviewer` |
 | Any flow or user-facing text, and every release PR (develop → main) | `ux-experience-reviewer` (both apps, simplicity first) |
 | Any user-facing text (app/src/main/res/values*/strings.xml) | `ux-writing-reviewer` |
