@@ -7,6 +7,15 @@ import kotlin.test.assertTrue
 
 class TextToolsTest {
     @Test
+    fun `occurrences find the saved word or group in a sentence`() {
+        val sentence = "All animals are equal, but some animal is more equal."
+        assertEquals(listOf("animals", "animal"), TextTools.occurrences("animal", sentence).map { sentence.substring(it.start, it.end) })
+        val group = "He did NOT go home."
+        assertEquals(listOf("did NOT go"), TextTools.occurrences("did not go", group).map { group.substring(it.start, it.end) })
+        assertTrue(TextTools.occurrences("can we fix", group).isEmpty())
+    }
+
+    @Test
     fun `paragraphs join hard-wrapped lines and handle CRLF`() {
         assertEquals(
             listOf("Line one line two.", "Second paragraph."),

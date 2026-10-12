@@ -6,8 +6,10 @@ import androidx.compose.foundation.layout.Box
 import androidx.compose.foundation.layout.BoxWithConstraints
 import androidx.compose.foundation.layout.Column
 import androidx.compose.foundation.layout.Row
+import androidx.compose.foundation.layout.Spacer
 import androidx.compose.foundation.layout.fillMaxSize
 import androidx.compose.foundation.layout.fillMaxWidth
+import androidx.compose.foundation.layout.height
 import androidx.compose.foundation.layout.heightIn
 import androidx.compose.foundation.layout.navigationBarsPadding
 import androidx.compose.foundation.layout.padding
@@ -16,11 +18,13 @@ import androidx.compose.foundation.rememberScrollState
 import androidx.compose.foundation.verticalScroll
 import androidx.compose.material.icons.Icons
 import androidx.compose.material.icons.automirrored.filled.VolumeUp
+import androidx.compose.material.icons.filled.RecordVoiceOver
 import androidx.compose.material.icons.filled.Verified
 import androidx.compose.material3.Button
 import androidx.compose.material3.Card
 import androidx.compose.material3.CardDefaults
 import androidx.compose.material3.FilledTonalButton
+import androidx.compose.material3.HorizontalDivider
 import androidx.compose.material3.Icon
 import androidx.compose.material3.IconButton
 import androidx.compose.material3.LinearProgressIndicator
@@ -43,22 +47,29 @@ import androidx.compose.ui.semantics.LiveRegionMode
 import androidx.compose.ui.semantics.contentDescription
 import androidx.compose.ui.semantics.liveRegion
 import androidx.compose.ui.semantics.semantics
+import androidx.compose.ui.text.SpanStyle
+import androidx.compose.ui.text.buildAnnotatedString
 import androidx.compose.ui.text.font.FontStyle
 import androidx.compose.ui.text.font.FontWeight
 import androidx.compose.ui.text.style.TextAlign
 import androidx.compose.ui.unit.dp
 import androidx.lifecycle.compose.collectAsStateWithLifecycle
 import app.lingleaf.R
+import app.lingleaf.core.TextTools
 import app.lingleaf.core.VocabWord
 
-/** Flashcard review of due words with spaced repetition. */
+/**
+ * Recall-first review of due words with spaced repetition (SPEC S7): the word alone, then
+ * "Show meaning" reveals the translation, the sentence it came from and that sentence's
+ * translation; only then "Again" or "I remembered".
+ */
 @Composable
 fun ReviewScreen(onBack: () -> Unit) {
     val container = LocalContainer.current
     val library = container.library
     val state by library.state.collectAsStateWithLifecycle()
-    val queue = remember { library.dueWords().toMutableStateList() }
-    val total = remember { queue.size }
+    val queue = remember { library.reviewSession().toMutableStateList() }
+    var total by remember { mutableIntStateOf(queue.size) }
     var reviewed by remember { mutableIntStateOf(0) }
     var revealed by remember { mutableStateOf(false) }
     val target = container.targetLanguage(state.settings)
@@ -76,11 +87,22 @@ fun ReviewScreen(onBack: () -> Unit) {
     ScreenScaffold(title = stringResource(R.string.review_title), onBack = onBack) { modifier ->
         val current = queue.firstOrNull()
         if (current == null) {
-            ReviewDone(reviewed = reviewed, onBack = onBack, modifier = modifier)
+            ReviewDone(
+                dueNow = library.dueWords().size,
+                tomorrow = library.dueByEndOfTomorrow(),
+                onBack = onBack,
+                onKeepGoing = {
+                    queue.addAll(library.reviewSession())
+                    total = queue.size
+                    reviewed = 0
+                },
+                modifier = modifier,
+            )
         } else {
             ReviewCard(
                 // The saved word, so a translation filled in meanwhile shows up.
                 word = state.word(current.word) ?: current,
+                target = target,
                 progress = if (total == 0) 0f else reviewed / total.toFloat(),
                 revealed = revealed,
                 onReveal = { revealed = true },
@@ -93,8 +115,10 @@ fun ReviewScreen(onBack: () -> Unit) {
 
 @Composable
 private fun ReviewDone(
-    reviewed: Int,
+    dueNow: Int,
+    tomorrow: Int,
     onBack: () -> Unit,
+    onKeepGoing: () -> Unit,
     modifier: Modifier,
 ) {
     Box(
@@ -110,9 +134,17 @@ private fun ReviewDone(
                 tint = MaterialTheme.colorScheme.primary,
                 modifier = Modifier.size(64.dp),
             )
-            Text(stringResource(R.string.review_done), style = MaterialTheme.typography.headlineMedium)
-            Text(pluralStringResource(R.plurals.reviewed_count, reviewed, reviewed))
+            // "Done for today. 12 more tomorrow.", or, when more words are due now than one
+            // session holds, "Done for now. 15 more due today." with Keep going.
+            if (dueNow > 0) {
+                Text(stringResource(R.string.review_done_for_now), style = MaterialTheme.typography.headlineMedium)
+                Text(pluralStringResource(R.plurals.more_due_today, dueNow, dueNow))
+            } else {
+                Text(stringResource(R.string.review_done), style = MaterialTheme.typography.headlineMedium)
+                if (tomorrow > 0) Text(pluralStringResource(R.plurals.more_tomorrow, tomorrow, tomorrow))
+            }
             Button(onClick = onBack) { Text(stringResource(R.string.done)) }
+            if (dueNow > 0) OutlinedButton(onClick = onKeepGoing) { Text(stringResource(R.string.keep_going)) }
         }
     }
 }
@@ -120,6 +152,7 @@ private fun ReviewDone(
 @Composable
 private fun ReviewCard(
     word: VocabWord,
+    target: String?,
     progress: Float,
     revealed: Boolean,
     onReveal: () -> Unit,
@@ -176,9 +209,6 @@ private fun ReviewCard(
                                 )
                             }
                         }
-                        if (word.context.isNotEmpty()) {
-                            Text(word.context, fontStyle = FontStyle.Italic, textAlign = TextAlign.Center)
-                        }
                         // A polite live region: when "Show meaning" is replaced by the answer,
                         // TalkBack reads the translation instead of going silent.
                         AnimatedContent(
@@ -202,28 +232,73 @@ private fun ReviewCard(
                                 FilledTonalButton(onClick = onReveal) { Text(stringResource(R.string.show_meaning)) }
                             }
                         }
+                        // Outside the live region: TalkBack reads the meaning, not the whole sentence too.
+                        if (revealed && word.context.isNotEmpty()) SavedSentence(word, target)
                     }
                 }
             }
         }
-        Row(
-            horizontalArrangement = Arrangement.spacedBy(12.dp),
-            modifier = Modifier.padding(top = 12.dp),
-        ) {
-            OutlinedButton(
-                onClick = { onAnswer(false) },
-                modifier =
-                    Modifier
-                        .weight(1f)
-                        .heightIn(min = 52.dp),
-            ) { Text(stringResource(R.string.again), textAlign = TextAlign.Center) }
-            Button(
-                onClick = { onAnswer(true) },
-                modifier =
-                    Modifier
-                        .weight(1f)
-                        .heightIn(min = 52.dp),
-            ) { Text(stringResource(R.string.i_know_it), textAlign = TextAlign.Center) }
+        // Only after the meaning is shown: recall comes first.
+        if (revealed) {
+            AnswerButtons(onAnswer)
         }
+    }
+}
+
+/** The sentence the word was saved from (the word in bold), its translation and a button to hear it. */
+@Composable
+private fun SavedSentence(
+    word: VocabWord,
+    target: String?,
+) {
+    val container = LocalContainer.current
+    HorizontalDivider(Modifier.padding(vertical = 12.dp))
+    Row(Modifier.fillMaxWidth(), verticalAlignment = Alignment.Top) {
+        Column(Modifier.weight(1f)) {
+            Text(markedSentence(word.context, word.word), fontStyle = FontStyle.Italic, fontFamily = ReadingFont)
+            // Only in the current translation language; another one is translated meanwhile.
+            word.contextTranslation(target)?.let {
+                Spacer(Modifier.height(6.dp))
+                Text(it, color = MaterialTheme.colorScheme.onSurfaceVariant)
+            }
+        }
+        IconButton(onClick = { container.speaker.speak(word.context, container.library.state.value.settings.speechRate) }) {
+            Icon(Icons.Filled.RecordVoiceOver, contentDescription = stringResource(R.string.listen_sentence))
+        }
+    }
+}
+
+/**
+ * [sentence] with the saved [word] in bold: its inflected forms ("animals" for "animal"),
+ * or, for a saved group of words, that group.
+ */
+internal fun markedSentence(
+    sentence: String,
+    word: String,
+) = buildAnnotatedString {
+    append(sentence)
+    for (range in TextTools.occurrences(word, sentence)) addStyle(SpanStyle(fontWeight = FontWeight.Bold), range.start, range.end)
+}
+
+@Composable
+private fun AnswerButtons(onAnswer: (Boolean) -> Unit) {
+    Row(
+        horizontalArrangement = Arrangement.spacedBy(12.dp),
+        modifier = Modifier.padding(top = 12.dp),
+    ) {
+        OutlinedButton(
+            onClick = { onAnswer(false) },
+            modifier =
+                Modifier
+                    .weight(1f)
+                    .heightIn(min = 52.dp),
+        ) { Text(stringResource(R.string.again), textAlign = TextAlign.Center) }
+        Button(
+            onClick = { onAnswer(true) },
+            modifier =
+                Modifier
+                    .weight(1f)
+                    .heightIn(min = 52.dp),
+        ) { Text(stringResource(R.string.got_it), textAlign = TextAlign.Center) }
     }
 }
