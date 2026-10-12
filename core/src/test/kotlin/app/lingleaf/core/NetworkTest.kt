@@ -47,33 +47,23 @@ class GutenbergTest {
     }
 
     @Test
-    fun `recommended books parse and keep curated order`() =
-        runTest {
-            val client =
-                GutenbergClient { url ->
-                    assertEquals(true, "ids=21,55" in url)
-                    ok("""{"count": 2, "results": [$alice, {"id": 21, "title": "Fables"}]}""")
-                }
-            val books = client.fetchRecommended()
-            assertEquals(listOf(21, 11), books.map { it.id })
-            assertNull(books[0].authorName)
-            assertEquals("Lewis Carroll", books[1].authorName)
-            assertEquals("https://example.com/11.utf8.txt", books[1].textUrl)
-            assertEquals("https://example.com/11.jpg", books[1].coverUrl)
-            assertEquals("B2", GutenbergClient.levelFor(11))
-        }
+    fun `recommended books ship with the app with direct links`() {
+        val books = GutenbergClient.RECOMMENDED_BOOKS
+        assertEquals(GutenbergClient.RECOMMENDED.keys.toList(), books.map { it.id }, "same books, same order as the levels")
+        val alice = books.first { it.id == 11 }
+        assertEquals("Alice's Adventures in Wonderland", alice.displayTitle)
+        assertEquals("Lewis Carroll", alice.authorName)
+        assertEquals("https://www.gutenberg.org/cache/epub/11/pg11.txt", alice.textUrl)
+        assertEquals("https://www.gutenberg.org/cache/epub/11/pg11.cover.medium.jpg", alice.coverUrl)
+        assertEquals("B2", GutenbergClient.levelFor(11))
+    }
 
     @Test
-    fun `recommended request asks for every curated id`() =
+    fun `catalog books download from the file cache`() =
         runTest {
-            var requested = ""
-            GutenbergClient { url ->
-                requested = url
-                ok("""{"results": []}""")
-            }.fetchRecommended()
-            val ids = requested.substringAfter("ids=").split(",").map { it.toInt() }
-            assertEquals(GutenbergClient.RECOMMENDED.keys.toList(), ids)
-            assertEquals(16, ids.size)
+            val book = GutenbergClient { ok("""{"results": [$alice]}""") }.search("alice").single()
+            assertEquals("https://www.gutenberg.org/cache/epub/11/pg11.txt", book.textUrl, "not the catalog's redirecting link")
+            assertNull(GutenbergBook(id = 2, title = "No text", formats = mapOf("application/zip" to "https://example.com/2.zip")).textUrl)
         }
 
     @Test
@@ -93,25 +83,51 @@ class GutenbergTest {
         assertEquals(listOf("A2", "B1", "B2", "C1", "C2"), GutenbergClient.RECOMMENDED.values.distinct())
     }
 
+    private suspend fun reason(block: suspend () -> Unit) = assertFailsWith<GutenbergException> { block() }.reason
+
     @Test
-    fun `search encodes the query and errors on bad status`() =
+    fun `search encodes the query and says why it failed`() =
         runTest {
             val client =
                 GutenbergClient { url ->
-                    if ("search=tom+sawyer" in url) ok("""{"results": []}""") else HttpResponse(500, ByteArray(0))
+                    when {
+                        "search=tom+sawyer" in url -> ok("""{"results": []}""")
+                        "search=offline" in url -> throw NetworkException("No internet", NetworkException.Kind.OFFLINE)
+                        "search=slow" in url -> throw NetworkException("Timed out", NetworkException.Kind.TIMED_OUT)
+                        "search=other" in url -> throw NetworkException("Other")
+                        "search=broken" in url -> ok("<html>")
+                        else -> HttpResponse(500, ByteArray(0))
+                    }
                 }
             assertEquals(emptyList(), client.search("tom sawyer"))
-            assertFailsWith<NetworkException> { client.search("other") }
+            assertEquals(GutenbergException.Reason.OFFLINE, reason { client.search("offline") })
+            assertEquals(GutenbergException.Reason.TIMED_OUT, reason { client.search("slow") })
+            assertEquals(GutenbergException.Reason.FAILED, reason { client.search("other") })
+            assertEquals(GutenbergException.Reason.FAILED, reason { client.search("broken") })
+            assertEquals(GutenbergException.Reason.FAILED, reason { client.search("server") })
         }
 
     @Test
-    fun `download strips boilerplate and rejects empty books`() =
+    fun `download strips boilerplate, reports progress and says why it failed`() =
         runTest {
             val book = GutenbergBook(id = 1, title = "X", formats = mapOf("text/plain" to "https://example.com/1.txt"))
-            assertEquals("Café story.", GutenbergClient { ok("h\n*** START OF IT ***\nCafé story.\n*** END OF IT ***") }.downloadText(book))
-            assertFailsWith<NetworkException> { GutenbergClient { ok("*** START OF IT ***\n*** END OF IT ***") }.downloadText(book) }
-            assertFailsWith<NetworkException> { GutenbergClient { notFound }.downloadText(book) }
-            assertFailsWith<NetworkException> { GutenbergClient { notFound }.downloadText(GutenbergBook(id = 2, title = "No text")) }
+            val progress = mutableListOf<Double>()
+            val text =
+                GutenbergClient { url ->
+                    assertEquals("https://www.gutenberg.org/cache/epub/1/pg1.txt", url)
+                    ok("h\n*** START OF IT ***\nCafé story.\n*** END OF IT ***")
+                }.downloadText(book) { progress += it }
+            assertEquals("Café story.", text)
+            assertEquals(listOf(1.0), progress)
+            val unavailable = GutenbergException.Reason.UNAVAILABLE
+            assertEquals(unavailable, reason { GutenbergClient { ok("*** START OF IT ***\n*** END OF IT ***") }.downloadText(book) })
+            assertEquals(unavailable, reason { GutenbergClient { notFound }.downloadText(book) })
+            assertEquals(unavailable, reason { GutenbergClient { HttpResponse(403, ByteArray(0)) }.downloadText(book) })
+            assertEquals(
+                GutenbergException.Reason.FAILED,
+                reason { GutenbergClient { HttpResponse(503, ByteArray(0)) }.downloadText(book) },
+            )
+            assertEquals(unavailable, reason { GutenbergClient { ok("x") }.downloadText(GutenbergBook(id = 2, title = "No text")) })
         }
 }
 

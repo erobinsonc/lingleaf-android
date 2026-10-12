@@ -82,17 +82,13 @@ appId: app.lingleaf
 - back
 
 - tapOn: "Discover"
-# The catalog comes from gutendex.com, which can take a while to answer.
+# The recommended books ship with the app, so they show at once.
 - extendedWaitUntil:
     visible: "Get"
-    timeout: 60000
-    optional: true
+    timeout: 10000
 - takeScreenshot: 09-discover
-# Optional so a slow or unreachable catalog still leaves the remaining screenshots;
-# the filter itself is covered by the filterRecommendedBooksByLevel test.
 - tapOn:
     id: "level-filter-B1"
-    optional: true
 - takeScreenshot: 10-discover-level-filter
 
 - tapOn: "Settings"

@@ -71,13 +71,21 @@
     <string name="level_all">Todos</string>
     <string name="level_all_description">Todos los niveles</string>
     <string name="no_books_at_level">No hay libros recomendados en este nivel.</string>
-    <string name="catalog_failed">No se pudo cargar el catálogo. Revisa tu conexión.</string>
+    <string name="searching_gutenberg">Buscando en Project Gutenberg…</string>
+    <string name="still_searching">Sigue buscando. Project Gutenberg puede tardar.</string>
+    <string name="search_offline">Sin conexión. Conéctate a internet para buscar.</string>
+    <string name="gutenberg_no_answer">Project Gutenberg no respondió. Inténtalo de nuevo.</string>
+    <string name="read">Leer</string>
+    <string name="read_book">Leer %1$s</string>
+    <string name="retry_book">Reintentar %1$s</string>
+    <string name="downloading_book">Descargando %1$s</string>
+    <string name="cancel_download">Cancelar descarga</string>
+    <string name="book_unavailable">Este libro no está disponible ahora.</string>
+    <string name="download_offline">Sin conexión. Conéctate a internet para descargarlo.</string>
+    <string name="not_available">No disponible</string>
     <string name="retry">Reintentar</string>
     <string name="get">Obtener</string>
     <string name="get_book">Obtener %1$s</string>
-    <string name="in_library">En tu biblioteca</string>
-    <string name="downloaded">“%1$s” está en tu biblioteca.</string>
-    <string name="download_failed">No se pudo descargar “%1$s”. Intenta de nuevo.</string>
     <string name="gutenberg_credit">Clásicos gratuitos de dominio público de Project Gutenberg.</string>
     <string name="unknown_author">Autor desconocido</string>
 
