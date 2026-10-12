@@ -61,6 +61,16 @@ class FunctionWordsTest {
     }
 
     @Test
+    fun `question tags`() {
+        val (tag, chunk) = analyze("You went, didn't you?", "didn")
+        assertEquals(FunctionWord.Use.QuestionTag, tag?.use)
+        assertEquals("do", tag?.base)
+        assertNull(chunk)
+        assertEquals(FunctionWord.Use.QuestionTag, analyze("She can swim, can't she?", "can't").first?.use)
+        assertEquals(FunctionWord.Use.Modal("can"), analyze("She can swim, can't she?", "can").first?.use, "the first can is not the tag")
+    }
+
+    @Test
     fun modals() {
         val (will, willChunk) = analyze("We will go home.", "will")
         assertEquals(FunctionWord.Kind.MODAL, will?.kind)

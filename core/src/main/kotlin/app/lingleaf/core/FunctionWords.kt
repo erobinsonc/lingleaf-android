@@ -45,6 +45,9 @@ data class FunctionWord(
         /** "Don't touch that.": telling someone not to do something. */
         data object Prohibition : Use
 
+        /** "You went, didn't you?": asks the listener to agree, like "right?". */
+        data object QuestionTag : Use
+
         /** The modal's base form ("will" for "won't"). */
         data class Modal(val base: String) : Use
     }
@@ -144,6 +147,13 @@ object FunctionWords {
         val next = tokens.getOrNull(index + 1)
         val isQuestion = sentence.trimEnd(' ', '"', '”', '’', ')', ']').endsWith("?")
         val group = groupEnd(tokens, index, next, isQuestion)?.let { WordRange(range.start, words[it].end) }
+
+        // A question tag: ", didn't you?" / ", can't she?" closing the sentence.
+        val before = if (index > 0) sentence.substring(words[index - 1].end, range.start) else ""
+        if (isQuestion && index > 0 && ',' in before && index == tokens.size - 2 && tokens[index + 1] in pronouns) {
+            if (token in doForms) return FunctionWord(FunctionWord.Kind.HELPER, "do", FunctionWord.Use.QuestionTag, null)
+            modals[token]?.let { return FunctionWord(FunctionWord.Kind.MODAL, it, FunctionWord.Use.QuestionTag, null) }
+        }
 
         val past = doForms[token]
         if (past != null) {

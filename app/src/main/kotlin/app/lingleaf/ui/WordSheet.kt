@@ -395,6 +395,7 @@ private fun functionNote(
                 stringResource(R.string.note_present_negative, negative)
             }
         FunctionWord.Use.Prohibition -> stringResource(R.string.note_prohibition, negative)
+        FunctionWord.Use.QuestionTag -> stringResource(R.string.note_question_tag, word)
         FunctionWord.Use.PastQuestion -> stringResource(R.string.note_past_question, word)
         FunctionWord.Use.PresentQuestion -> stringResource(R.string.note_present_question, word)
         is FunctionWord.Use.Modal -> stringResource(modalNotes[use.base] ?: R.string.note_might)

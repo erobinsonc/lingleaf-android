@@ -161,6 +161,7 @@
     <string name="note_present_negative_contracted">“%1$s” (= “%2$s”) + base verb = present negative: “doesn\'t like”, not “doesn\'t likes”.</string>
     <string name="note_present_negative">“%1$s” + base verb = present negative: “does not like”, not “does not likes”.</string>
     <string name="note_prohibition">“%1$s” + base verb tells someone not to do it: “Don\'t touch”.</string>
+    <string name="note_question_tag">“%1$s” + pronoun at the end asks the listener to agree, like “right?”.</string>
     <string name="note_past_question">“%1$s” starts a question about the past.</string>
     <string name="note_present_question">“%1$s” starts a question about the present.</string>
     <string name="note_will">“will” + verb: the future.</string>

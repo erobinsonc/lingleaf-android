@@ -140,6 +140,7 @@
     <string name="note_present_negative_contracted">“%1$s” (= “%2$s”) + verbo en forma base = negativo en presente: “doesn\'t like”, no “doesn\'t likes”.</string>
     <string name="note_present_negative">“%1$s” + verbo en forma base = negativo en presente: “does not like”, no “does not likes”.</string>
     <string name="note_prohibition">“%1$s” + verbo en forma base sirve para prohibir: “Don\'t touch” = no toques.</string>
+    <string name="note_question_tag">“%1$s” + pronombre al final pide que el otro confirme, como “¿verdad?”.</string>
     <string name="note_past_question">“%1$s” abre una pregunta sobre el pasado.</string>
     <string name="note_present_question">“%1$s” abre una pregunta sobre el presente.</string>
     <string name="note_will">“will” + verbo: el futuro (iré, irás…).</string>
