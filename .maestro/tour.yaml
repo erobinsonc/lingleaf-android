@@ -5,6 +5,9 @@ appId: app.lingleaf
 ---
 - launchApp:
     clearState: true
+    # Debug builds only: a word waiting for review (new words are first due tomorrow).
+    arguments:
+      dueWord: true
 # Dismisses a system "isn't responding" dialog if the emulator shows one.
 - tapOn:
     text: "Wait"
@@ -79,6 +82,9 @@ appId: app.lingleaf
 - tapOn: "Show meaning"
 - waitForAnimationToEnd
 - takeScreenshot: 08-review-meaning
+- tapOn: "I remembered"
+- waitForAnimationToEnd
+- takeScreenshot: 09-review-done
 - back
 
 - tapOn: "Discover"
@@ -87,13 +93,13 @@ appId: app.lingleaf
     visible: "Get"
     timeout: 60000
     optional: true
-- takeScreenshot: 09-discover
+- takeScreenshot: 10-discover
 # Optional so a slow or unreachable catalog still leaves the remaining screenshots;
 # the filter itself is covered by the filterRecommendedBooksByLevel test.
 - tapOn:
     id: "level-filter-B1"
     optional: true
-- takeScreenshot: 10-discover-level-filter
+- takeScreenshot: 11-discover-level-filter
 
 - tapOn: "Settings"
-- takeScreenshot: 11-settings
+- takeScreenshot: 12-settings

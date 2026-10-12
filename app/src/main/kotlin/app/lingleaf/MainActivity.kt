@@ -1,11 +1,13 @@
 package app.lingleaf
 
 import android.app.Application
+import android.content.pm.ApplicationInfo
 import android.os.Bundle
 import androidx.activity.ComponentActivity
 import androidx.activity.compose.setContent
 import androidx.activity.enableEdgeToEdge
 import app.lingleaf.ui.LingleafApp
+import kotlinx.coroutines.flow.first
 import kotlinx.coroutines.launch
 
 class LingleafApplication : Application() {
@@ -27,6 +29,38 @@ class MainActivity : ComponentActivity() {
         super.onCreate(savedInstanceState)
         enableEdgeToEdge()
         val container = (application as LingleafApplication).container
+        if (savedInstanceState == null && isDebuggable() && wantsDueWord()) seedDueWord(container)
         setContent { LingleafApp(container) }
+    }
+
+    private fun isDebuggable() = applicationInfo.flags and ApplicationInfo.FLAG_DEBUGGABLE != 0
+
+    /** Maestro passes launch arguments as string extras; a boolean works too. */
+    private fun wantsDueWord() = intent.getBooleanExtra(DUE_WORD, false) || intent.getStringExtra(DUE_WORD) == "true"
+
+    /**
+     * Debug builds only, for the screenshot tour: a word waiting for review, since new
+     * words are first due tomorrow (SPEC S7). Runs once the library has loaded.
+     */
+    private fun seedDueWord(container: AppContainer) {
+        container.appScope.launch {
+            container.library.state.first { it.books.isNotEmpty() }
+            val sentence = "Tom lives in a small house by the sea."
+            container.library.saveWord(
+                "sea",
+                learned = false,
+                translation = "mar",
+                translationLanguage = "es",
+                context = sentence,
+                contextTranslation = "Tom vive en una casa pequeña junto al mar.",
+                source = "The Red Boat",
+            )
+            // "Again" makes it due now.
+            container.library.answerReview("sea", correct = false)
+        }
+    }
+
+    private companion object {
+        const val DUE_WORD = "dueWord"
     }
 }
