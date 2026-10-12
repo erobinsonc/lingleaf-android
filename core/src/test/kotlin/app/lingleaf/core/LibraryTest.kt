@@ -351,5 +351,6 @@ class LibraryTest {
         assertEquals("do", reloaded.word("doesn't like")?.base)
         assertNull(reloaded.word("do")?.kind, "\"do\" as a word stays separate")
         assertFalse(reloaded.isLearning("did"), "a verb group doesn't underline the helper everywhere")
+        assertEquals(listOf("doesn't like"), library.wordsNeedingTranslation("es").map { it.word })
     }
 }

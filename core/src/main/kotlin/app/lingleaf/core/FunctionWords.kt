@@ -20,6 +20,11 @@ data class FunctionWord(
      * sentence that ends right after the word: "Yes, I can.").
      */
     val chunk: WordRange?,
+    /**
+     * A negative modal: "mustn't", "cannot", "will not". Its note says so, since the
+     * meaning can flip ("must" = necessary, "mustn't" = not allowed).
+     */
+    val negative: Boolean = false,
 ) {
     @Serializable
     enum class Kind {
@@ -88,6 +93,9 @@ object FunctionWords {
 
     private val pronouns = setOf("i", "you", "he", "she", "it", "we", "they")
     private val questionWords = setOf("what", "where", "when", "why", "how", "who", "whom", "whose", "which")
+
+    /** Words that may come before a prohibition: "Please don't go", "And don't forget". */
+    private val leadIns = setOf("please", "oh", "now", "so", "and", "but", "then", "well", "no", "yes", "just")
 
     /** Skipped on the way to the main verb: "should have known", "will never be able". */
     private val inGroup =
@@ -159,7 +167,7 @@ object FunctionWords {
         if (past != null) {
             if (token.endsWith("n't") || next == "not") {
                 // "Don't touch that." / "Do not touch": first word, no subject → a prohibition.
-                if (index == 0 && !past && token != "doesn't" && token != "does" && !isQuestion) {
+                if (tokens.take(index).all { it in leadIns } && !past && token != "doesn't" && token != "does" && !isQuestion) {
                     return FunctionWord(FunctionWord.Kind.HELPER, "do", FunctionWord.Use.Prohibition, group)
                 }
                 val use = if (past) FunctionWord.Use.PastNegative else FunctionWord.Use.PresentNegative
@@ -175,7 +183,8 @@ object FunctionWords {
         if (index > 0 && tokens[index - 1] in determiners) return null
         // "May" and "Will" capitalized mid-sentence are a month and a name.
         if (index > 0 && (token == "may" || token == "will") && surface.first().isUpperCase()) return null
-        return FunctionWord(FunctionWord.Kind.MODAL, base, FunctionWord.Use.Modal(base), group)
+        val negative = token.endsWith("n't") || token == "cannot" || next == "not"
+        return FunctionWord(FunctionWord.Kind.MODAL, base, FunctionWord.Use.Modal(base), group, negative)
     }
 
     /**

@@ -49,6 +49,7 @@ import androidx.compose.ui.text.style.TextAlign
 import androidx.compose.ui.unit.dp
 import androidx.lifecycle.compose.collectAsStateWithLifecycle
 import app.lingleaf.R
+import app.lingleaf.core.TextTools
 import app.lingleaf.core.VocabWord
 
 /** Flashcard review of due words with spaced repetition. */
@@ -176,7 +177,7 @@ private fun ReviewCard(
                                 )
                             }
                         }
-                        if (word.context.isNotEmpty()) {
+                        if (word.context.isNotEmpty() && TextTools.normalize(word.context) != word.word) {
                             Text(word.context, fontStyle = FontStyle.Italic, textAlign = TextAlign.Center)
                         }
                         // A polite live region: when "Show meaning" is replaced by the answer,

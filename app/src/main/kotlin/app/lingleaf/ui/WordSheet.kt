@@ -140,7 +140,14 @@ fun WordSheet(
     // The dictionary's base form ("animal") when it differs from the tapped word ("animals").
     val headword = function?.base ?: entry?.word?.takeIf { it != TextTools.normalize(word) } ?: word
     val savedKey = if (function == null) headword else chunk ?: sentence
-    val savedName = if (function == null) headword else chunk ?: word
+    // How messages name it: "did not go"; without a verb group, the start of the sentence.
+    val savedName =
+        when {
+            function == null -> headword
+            chunk != null -> chunk
+            sentence.length > 30 -> sentence.take(30) + "…"
+            else -> sentence
+        }
     val saved = state.word(savedKey)
 
     LaunchedEffect(word) {
@@ -247,7 +254,7 @@ fun WordSheet(
                     // A helper or modal verb: how the verb group sounds ("didn't go", not "do").
                     val spoken = if (function == null) headword else chunk ?: word
                     FilledTonalIconButton(onClick = { container.speaker.speak(spoken, state.settings.speechRate) }) {
-                        Icon(Icons.AutoMirrored.Filled.VolumeUp, contentDescription = stringResource(R.string.listen_word, headword))
+                        Icon(Icons.AutoMirrored.Filled.VolumeUp, contentDescription = stringResource(R.string.listen_word, spoken))
                     }
                     Spacer(Modifier.width(12.dp))
                     Text(headword, style = MaterialTheme.typography.headlineMedium, fontWeight = FontWeight.SemiBold)
@@ -266,10 +273,11 @@ fun WordSheet(
                         color = MaterialTheme.colorScheme.onSurfaceVariant,
                     )
                 }
-                chunk?.let { Text(it, style = MaterialTheme.typography.titleMedium, textAlign = TextAlign.Center) }
                 if (target == null) {
                     LanguagePrompt(onPick = ::chooseLanguage)
                 } else {
+                    // The verb group it belongs to, then its translation (as on iOS, once a language is set).
+                    chunk?.let { Text(it, style = MaterialTheme.typography.titleMedium, textAlign = TextAlign.Center) }
                     if (function == null || chunk != null) {
                         TranslationText(translation ?: tappedTranslation, translationFailed, modelStatus, target)
                     }
@@ -394,11 +402,28 @@ private fun functionNote(
             } else {
                 stringResource(R.string.note_present_negative, negative)
             }
+        is FunctionWord.Use.Modal ->
+            if (function.negative) {
+                // The meaning can flip: "must" = necessary, "mustn't" = not allowed.
+                val shown = if (contracted || word == "cannot") word else "$word not"
+                when {
+                    use.base == "must" -> stringResource(R.string.note_modal_not_allowed, shown)
+                    contracted || word == "cannot" ->
+                        stringResource(
+                            R.string.note_modal_negative_contracted,
+                            shown,
+                            "${use.base} not",
+                            use.base,
+                        )
+                    else -> stringResource(R.string.note_modal_negative, shown, use.base)
+                }
+            } else {
+                stringResource(modalNotes[use.base] ?: R.string.note_might)
+            }
         FunctionWord.Use.Prohibition -> stringResource(R.string.note_prohibition, negative)
         FunctionWord.Use.QuestionTag -> stringResource(R.string.note_question_tag, word)
         FunctionWord.Use.PastQuestion -> stringResource(R.string.note_past_question, word)
         FunctionWord.Use.PresentQuestion -> stringResource(R.string.note_present_question, word)
-        is FunctionWord.Use.Modal -> stringResource(modalNotes[use.base] ?: R.string.note_might)
     }
 }
 

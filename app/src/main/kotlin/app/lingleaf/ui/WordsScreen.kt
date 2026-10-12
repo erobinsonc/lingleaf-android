@@ -46,6 +46,7 @@ import androidx.compose.ui.text.style.TextOverflow
 import androidx.compose.ui.unit.dp
 import androidx.lifecycle.compose.collectAsStateWithLifecycle
 import app.lingleaf.R
+import app.lingleaf.core.TextTools
 import app.lingleaf.core.VocabWord
 import kotlinx.coroutines.launch
 
@@ -166,7 +167,7 @@ private fun WordRow(
                     Text("${word.base.orEmpty()} · ${stringResource(it.label)}", color = MaterialTheme.colorScheme.onSurfaceVariant)
                 }
                 if (word.translation.isNotEmpty()) Text(word.translation)
-                if (word.context.isNotEmpty()) {
+                if (word.context.isNotEmpty() && TextTools.normalize(word.context) != word.word) {
                     Text(
                         word.context,
                         maxLines = 2,
