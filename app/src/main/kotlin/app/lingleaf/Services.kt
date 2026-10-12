@@ -535,12 +535,6 @@ class CoverLoader(
     }
 
     companion object {
-        /** Twice the 44×62 dp shown at the densest screens: sharp, yet a few hundred KB at most. */
-        const val THUMBNAIL_WIDTH = 176
-        const val THUMBNAIL_HEIGHT = 248
-
-        /** A real cover is under 1000 px a side; anything far larger is refused before decoding. */
-        const val MAX_SIDE = 4096
         const val COVER_CACHE_BYTES = 8 * 1024 * 1024
 
         /**
@@ -550,11 +544,7 @@ class CoverLoader(
         fun decodeThumbnail(bytes: ByteArray): Bitmap? {
             val bounds = BitmapFactory.Options().apply { inJustDecodeBounds = true }
             BitmapFactory.decodeByteArray(bytes, 0, bytes.size, bounds)
-            val width = bounds.outWidth
-            val height = bounds.outHeight
-            if (width <= 0 || height <= 0 || width > MAX_SIDE || height > MAX_SIDE) return null
-            var sample = 1
-            while (width / (sample * 2) >= THUMBNAIL_WIDTH && height / (sample * 2) >= THUMBNAIL_HEIGHT) sample *= 2
+            val sample = GutenbergClient.coverSample(bounds.outWidth, bounds.outHeight) ?: return null
             val options = BitmapFactory.Options().apply { inSampleSize = sample }
             return try {
                 BitmapFactory.decodeByteArray(bytes, 0, bytes.size, options)

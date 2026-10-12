@@ -74,6 +74,15 @@ class GutenbergTest {
     }
 
     @Test
+    fun `covers decode downsampled and huge images are refused`() {
+        assertEquals(1, GutenbergClient.coverSample(350, 500), "a medium cover stays sharp")
+        assertEquals(4, GutenbergClient.coverSample(1000, 1400))
+        assertNull(GutenbergClient.coverSample(5000, 10), "a side over 4096 px")
+        assertNull(GutenbergClient.coverSample(4096, 4096), "over 4 megapixels")
+        assertNull(GutenbergClient.coverSample(-1, -1), "not an image")
+    }
+
+    @Test
     fun `filter by level keeps order and null keeps everything`() {
         val books = GutenbergClient.RECOMMENDED.keys.map { GutenbergBook(id = it, title = "Book $it") }
         assertEquals(books, GutenbergClient.filter(books, null))
