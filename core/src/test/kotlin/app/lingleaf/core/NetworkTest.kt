@@ -4,6 +4,7 @@ import kotlinx.coroutines.test.runTest
 import kotlin.test.Test
 import kotlin.test.assertEquals
 import kotlin.test.assertFailsWith
+import kotlin.test.assertFalse
 import kotlin.test.assertNull
 import kotlin.test.assertTrue
 
@@ -80,6 +81,14 @@ class GutenbergTest {
         assertNull(GutenbergClient.coverSample(5000, 10), "a side over 4096 px")
         assertNull(GutenbergClient.coverSample(4096, 4096), "over 4 megapixels")
         assertNull(GutenbergClient.coverSample(-1, -1), "not an image")
+    }
+
+    @Test
+    fun `only JPEG covers reach the image decoder`() {
+        assertTrue(GutenbergClient.isJpeg(byteArrayOf(0xFF.toByte(), 0xD8.toByte(), 0xFF.toByte(), 0xE0.toByte())))
+        assertFalse(GutenbergClient.isJpeg("RIFF....WEBP".toByteArray()), "WebP")
+        assertFalse(GutenbergClient.isJpeg(byteArrayOf(0xFF.toByte(), 0xD8.toByte())), "too short")
+        assertFalse(GutenbergClient.isJpeg(ByteArray(0)))
     }
 
     @Test

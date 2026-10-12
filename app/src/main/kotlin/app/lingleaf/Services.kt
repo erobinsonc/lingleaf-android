@@ -545,12 +545,15 @@ class CoverLoader(
         const val COVER_CACHE_BYTES = 8 * 1024 * 1024
 
         /**
-         * Reads the size first, refuses huge images and decodes a downsampled copy, so a small
-         * file that claims enormous dimensions can't exhaust memory. Null when it isn't an image.
+         * Only JPEG, by its first bytes and by what the decoder reads. Reads the size first,
+         * refuses huge images and decodes a downsampled copy, so a small file that claims enormous
+         * dimensions can't exhaust memory. Null when it isn't a JPEG image.
          */
         fun decodeThumbnail(bytes: ByteArray): Bitmap? {
+            if (!GutenbergClient.isJpeg(bytes)) return null
             val bounds = BitmapFactory.Options().apply { inJustDecodeBounds = true }
             BitmapFactory.decodeByteArray(bytes, 0, bytes.size, bounds)
+            if (bounds.outMimeType != "image/jpeg") return null
             val sample = GutenbergClient.coverSample(bounds.outWidth, bounds.outHeight) ?: return null
             val options = BitmapFactory.Options().apply { inSampleSize = sample }
             return try {

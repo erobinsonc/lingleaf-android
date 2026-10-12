@@ -136,6 +136,13 @@ class GutenbergClient(private val http: HttpFetcher) {
         const val COVER_THUMBNAIL_HEIGHT = 248
 
         /**
+         * Whether [bytes] start like a JPEG file (FF D8 FF). Only JPEG covers reach the system's
+         * image decoder: formats with a history of decoder exploits (WebP, HEIC…) never do.
+         */
+        fun isJpeg(bytes: ByteArray): Boolean =
+            bytes.size >= 3 && bytes[0] == 0xFF.toByte() && bytes[1] == 0xD8.toByte() && bytes[2] == 0xFF.toByte()
+
+        /**
          * The power-of-two downsampling that keeps a cover of [width]×[height] px at least
          * thumbnail-sized, or null when the image is empty or too large to decode safely.
          */
