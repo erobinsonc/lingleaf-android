@@ -32,6 +32,7 @@ import androidx.compose.ui.text.TextLayoutResult
 import androidx.test.core.app.ApplicationProvider
 import app.lingleaf.core.BundledStory
 import app.lingleaf.core.DictionaryClient
+import app.lingleaf.core.FunctionWord
 import app.lingleaf.core.GutenbergClient
 import app.lingleaf.core.HttpResponse
 import app.lingleaf.core.Library
@@ -86,7 +87,7 @@ private val recommendedCatalog =
 /** Generous: CI runners are slow on the first test, and lookups run on real background threads. */
 private const val WAIT_MS = 15_000L
 
-private const val STORY = "All animals are equal, but some are more equal.\n\nThe end."
+private const val STORY = "All animals are equal, but some are more equal.\n\nCan we fix it?\n\nThe end."
 
 private const val ALICE_TITLE = "Alice's Adventures in Wonderland"
 private const val ALICE_TEXT_URL = "https://www.gutenberg.org/ebooks/11.txt.utf-8"
@@ -231,6 +232,30 @@ class AppTest {
                 hasText("bahía") and hasAnyAncestor(SemanticsMatcher.expectValue(SemanticsProperties.LiveRegion, LiveRegionMode.Polite)),
             )
             .assertExists()
+    }
+
+    @Test
+    fun aModalVerbShowsItsVerbGroupAndWhatItDoes() {
+        compose.onAllNodesWithText("The Red Boat").onFirst().performClick()
+        val paragraph = hasText("Can we fix it?")
+        compose.waitUntil(WAIT_MS) { compose.onAllNodes(paragraph).fetchSemanticsNodes().isNotEmpty() }
+        val node = compose.onAllNodes(paragraph).onFirst()
+        val layouts = mutableListOf<TextLayoutResult>()
+        node.fetchSemanticsNode().config[SemanticsActions.GetTextLayoutResult].action!!.invoke(layouts)
+        val box = layouts.first().getBoundingBox(1)
+        node.performTouchInput { click(Offset(box.center.x, box.center.y)) }
+
+        compose.waitUntil(WAIT_MS) { compose.onAllNodesWithText("[es] Can we fix").fetchSemanticsNodes().isNotEmpty() }
+        compose.onNodeWithText("Modal verb").assertExists()
+        compose.onNodeWithText("Can we fix").assertExists()
+        compose.onNodeWithText("“can” + verb: be able to, or be allowed to.").assertExists()
+
+        compose.onNodeWithText("Save word").performClick()
+        compose.waitUntil(WAIT_MS) { container.library.state.value.word("can we fix") != null }
+        val saved = container.library.state.value.word("can we fix")!!
+        assertEquals(FunctionWord.Kind.MODAL, saved.kind)
+        assertEquals("can", saved.base)
+        assertEquals("[es] Can we fix", saved.translation)
     }
 
     @Test

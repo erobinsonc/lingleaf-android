@@ -63,6 +63,7 @@ import androidx.compose.ui.text.buildAnnotatedString
 import androidx.compose.ui.text.font.FontStyle
 import androidx.compose.ui.text.font.FontWeight
 import androidx.compose.ui.text.style.TextAlign
+import androidx.compose.ui.text.style.TextDecoration
 import androidx.compose.ui.text.withStyle
 import androidx.compose.ui.unit.dp
 import androidx.lifecycle.compose.collectAsStateWithLifecycle
@@ -70,9 +71,11 @@ import app.lingleaf.ModelStatus
 import app.lingleaf.R
 import app.lingleaf.TRANSLATION_LANGUAGES
 import app.lingleaf.core.DictionaryEntry
+import app.lingleaf.core.FunctionWord
 import app.lingleaf.core.TextTools
 import app.lingleaf.core.TranslationLanguages
 import app.lingleaf.core.VocabWord
+import app.lingleaf.core.WordRange
 import app.lingleaf.languageName
 import kotlinx.coroutines.Deferred
 import kotlinx.coroutines.async
@@ -80,11 +83,15 @@ import kotlinx.coroutines.flow.first
 import kotlinx.coroutines.launch
 import kotlinx.coroutines.withContext
 
-/** What a card button did to [word], so the reader can say so and offer Undo with [previous]. */
+/**
+ * What a card button did to [word], so the reader can say so (naming it [label]) and
+ * offer Undo with [previous].
+ */
 data class WordChange(
     val word: String,
     @StringRes val message: Int,
     val previous: VocabWord?,
+    val label: String = word,
 )
 
 /** A translation still on its way, and the [word] it is the translation of. */
@@ -106,7 +113,12 @@ fun WordSheet(
     source: String,
     onChanged: (WordChange) -> Unit,
     onDismiss: () -> Unit,
+    rangeInSentence: WordRange? = null,
+    function: FunctionWord? = null,
 ) {
+    // A helper or modal verb (SPEC S16): its verb group ("did not go") is what's shown,
+    // translated, heard and saved; without one, the sentence is saved.
+    val chunk = function?.chunk?.let { sentence.substring(it.start, it.end) }
     val container = LocalContainer.current
     val library = container.library
     val state by library.state.collectAsStateWithLifecycle()
@@ -126,11 +138,22 @@ fun WordSheet(
     var pendingTranslation by remember(word, target) { mutableStateOf<PendingTranslation?>(null) }
 
     // The dictionary's base form ("animal") when it differs from the tapped word ("animals").
-    val headword = entry?.word?.takeIf { it != TextTools.normalize(word) } ?: word
-    val saved = state.word(headword)
+    val headword = function?.base ?: entry?.word?.takeIf { it != TextTools.normalize(word) } ?: word
+    val savedKey = if (function == null) headword else chunk ?: sentence
+    // How messages name it: "did not go"; without a verb group, the start of the sentence.
+    val savedName =
+        when {
+            function == null -> headword
+            chunk != null -> chunk
+            sentence.length > 30 -> sentence.take(30) + "…"
+            else -> sentence
+        }
+    val saved = state.word(savedKey)
 
     LaunchedEffect(word) {
-        entry = withContext(container.io) { container.dictionary.lookup(word) }
+        // A helper or modal verb needs no dictionary: its definition and IPA would be the
+        // base form's ("do"), not what the learner sees ("didn't go").
+        if (function == null) entry = withContext(container.io) { container.dictionary.lookup(word) }
         entryLoaded = true
     }
 
@@ -138,6 +161,15 @@ fun WordSheet(
         if (target == null) return@LaunchedEffect
         launch { modelStatus = runCatching { container.translator.modelStatus(target) }.getOrDefault(ModelStatus.READY) }
         launch { sentenceTranslation = container.translateOrNull(sentence, target) }
+        if (function != null) {
+            // Alone the helper means little ("did" → "hizo"): only its verb group is translated.
+            if (chunk == null) return@LaunchedEffect
+            val group = container.appScope.async { container.translateOrNull(chunk, target) }
+            pendingTranslation = PendingTranslation(savedKey, group)
+            translation = group.await()
+            translationFailed = translation == null
+            return@LaunchedEffect
+        }
         // The tapped form starts right away, alongside the dictionary lookup.
         val tapped = container.appScope.async { container.translateOrNull(word, target) }
         pendingTranslation = PendingTranslation(word, tapped)
@@ -170,9 +202,10 @@ fun WordSheet(
     }
 
     fun save(learned: Boolean) {
-        val key = headword
+        val key = savedKey
         val language = target
-        val shown = translation
+        // Without a verb group, the sentence is what's saved: its translation goes with it.
+        val shown = if (function != null && chunk == null) sentenceTranslation else translation
         // Only a translation of the word being saved may be written to it later.
         val pending = pendingTranslation?.takeIf { it.word == key }?.result
         val phonetic = entry?.phonetic
@@ -187,20 +220,22 @@ fun WordSheet(
                         context = sentence,
                         source = source,
                         translationLanguage = language.takeIf { shown != null },
+                        kind = function?.kind,
+                        base = function?.base,
                         contextTranslation = sentenceTranslation,
                     )
                 }
             if (shown == null && language != null && pending != null) {
                 container.appScope.launch { pending.await()?.let { library.setTranslation(key, it, language) } }
             }
-            close(WordChange(key, if (learned) R.string.word_known_message else R.string.word_saved_message, previous))
+            close(WordChange(key, if (learned) R.string.word_known_message else R.string.word_saved_message, previous, savedName))
         }
     }
 
     fun remove(previous: VocabWord) {
         scope.launch {
             withContext(container.io) { library.deleteWord(previous.word) }
-            close(WordChange(headword, R.string.word_removed_message, previous))
+            close(WordChange(savedKey, R.string.word_removed_message, previous, savedName))
         }
     }
 
@@ -217,8 +252,10 @@ fun WordSheet(
                 verticalArrangement = Arrangement.spacedBy(6.dp),
             ) {
                 Row(verticalAlignment = Alignment.CenterVertically) {
-                    FilledTonalIconButton(onClick = { container.speaker.speak(headword, state.settings.speechRate) }) {
-                        Icon(Icons.AutoMirrored.Filled.VolumeUp, contentDescription = stringResource(R.string.listen_word, headword))
+                    // A helper or modal verb: how the verb group sounds ("didn't go", not "do").
+                    val spoken = if (function == null) headword else chunk ?: word
+                    FilledTonalIconButton(onClick = { container.speaker.speak(spoken, state.settings.speechRate) }) {
+                        Icon(Icons.AutoMirrored.Filled.VolumeUp, contentDescription = stringResource(R.string.listen_word, spoken))
                     }
                     Spacer(Modifier.width(12.dp))
                     Text(headword, style = MaterialTheme.typography.headlineMedium, fontWeight = FontWeight.SemiBold)
@@ -226,14 +263,29 @@ fun WordSheet(
                 entry?.phonetic?.let {
                     Text(it, style = MaterialTheme.typography.titleMedium, color = MaterialTheme.colorScheme.onSurfaceVariant)
                 }
-                if (headword != word) {
+                // A helper or modal verb shows its form in the verb group just below.
+                if (function == null && headword != word) {
                     Text(stringResource(R.string.in_text, word), color = MaterialTheme.colorScheme.onSurfaceVariant)
+                }
+                function?.let {
+                    Text(
+                        stringResource(it.kind.label),
+                        style = MaterialTheme.typography.titleSmall,
+                        color = MaterialTheme.colorScheme.onSurfaceVariant,
+                    )
                 }
                 if (target == null) {
                     LanguagePrompt(onPick = ::chooseLanguage)
                 } else {
-                    TranslationText(translation ?: tappedTranslation, translationFailed, modelStatus, target)
+                    // The verb group it belongs to, then its translation (as on iOS, once a language is set).
+                    chunk?.let { Text(it, style = MaterialTheme.typography.titleMedium, textAlign = TextAlign.Center) }
+                    if (function == null || chunk != null) {
+                        TranslationText(translation ?: tappedTranslation, translationFailed, modelStatus, target)
+                    }
                     LanguageButton(target, onPick = ::chooseLanguage)
+                }
+                function?.let {
+                    Text(functionNote(it, word), color = MaterialTheme.colorScheme.onSurfaceVariant, textAlign = TextAlign.Center)
                 }
                 entry?.definition?.let { definition ->
                     Text(
@@ -245,13 +297,17 @@ fun WordSheet(
                         textAlign = TextAlign.Center,
                     )
                 }
-                if (entryLoaded && entry == null) {
+                if (function == null && entryLoaded && entry == null) {
                     Text(stringResource(R.string.no_definition), color = MaterialTheme.colorScheme.onSurfaceVariant)
                 }
                 HorizontalDivider(Modifier.padding(vertical = 10.dp))
                 Row(Modifier.fillMaxWidth(), verticalAlignment = Alignment.Top) {
                     Column(Modifier.weight(1f)) {
-                        Text(sentence, fontStyle = FontStyle.Italic, fontFamily = ReadingFont)
+                        Text(
+                            markedSentence(sentence, rangeInSentence, function?.chunk),
+                            fontStyle = FontStyle.Italic,
+                            fontFamily = ReadingFont,
+                        )
                         sentenceTranslation?.let {
                             Spacer(Modifier.height(6.dp))
                             Text(it, color = MaterialTheme.colorScheme.onSurfaceVariant)
@@ -302,6 +358,87 @@ fun WordSheet(
         }
     }
 }
+
+/** The sentence with the tapped word in bold, underlined with its verb group if it has one (SPEC S17). */
+private fun markedSentence(
+    sentence: String,
+    word: WordRange?,
+    chunk: WordRange?,
+) = buildAnnotatedString {
+    append(sentence)
+    (chunk ?: word)?.let { addStyle(SpanStyle(textDecoration = TextDecoration.Underline), it.start, it.end) }
+    word?.let { addStyle(SpanStyle(fontWeight = FontWeight.Bold), it.start, it.end) }
+}
+
+@get:StringRes
+val FunctionWord.Kind.label: Int
+    get() =
+        when (this) {
+            FunctionWord.Kind.HELPER -> R.string.helper_verb
+            FunctionWord.Kind.MODAL -> R.string.modal_verb
+        }
+
+private val expandedNegatives = mapOf("didn't" to "did not", "don't" to "do not", "doesn't" to "does not")
+
+/** One short line on what the word does here. [form] is the word as tapped ("did", "didn't"). */
+@Composable
+private fun functionNote(
+    function: FunctionWord,
+    form: String,
+): String {
+    val word = form.lowercase()
+    val contracted = TextTools.normalize(word).endsWith("n't")
+    val negative = if (contracted) word else "$word not"
+    val expanded = expandedNegatives[TextTools.normalize(word)] ?: negative
+    return when (val use = function.use) {
+        FunctionWord.Use.PastNegative ->
+            if (contracted) {
+                stringResource(R.string.note_past_negative_contracted, negative, expanded)
+            } else {
+                stringResource(R.string.note_past_negative, negative)
+            }
+        FunctionWord.Use.PresentNegative ->
+            if (contracted) {
+                stringResource(R.string.note_present_negative_contracted, negative, expanded)
+            } else {
+                stringResource(R.string.note_present_negative, negative)
+            }
+        is FunctionWord.Use.Modal ->
+            if (function.negative) {
+                // The meaning can flip: "must" = necessary, "mustn't" = not allowed.
+                val shown = if (contracted || word == "cannot") word else "$word not"
+                when {
+                    use.base == "must" -> stringResource(R.string.note_modal_not_allowed, shown)
+                    contracted || word == "cannot" ->
+                        stringResource(
+                            R.string.note_modal_negative_contracted,
+                            shown,
+                            "${use.base} not",
+                            use.base,
+                        )
+                    else -> stringResource(R.string.note_modal_negative, shown, use.base)
+                }
+            } else {
+                stringResource(modalNotes[use.base] ?: R.string.note_might)
+            }
+        FunctionWord.Use.Prohibition -> stringResource(R.string.note_prohibition, negative)
+        FunctionWord.Use.QuestionTag -> stringResource(R.string.note_question_tag, word)
+        FunctionWord.Use.PastQuestion -> stringResource(R.string.note_past_question, word)
+        FunctionWord.Use.PresentQuestion -> stringResource(R.string.note_present_question, word)
+    }
+}
+
+private val modalNotes =
+    mapOf(
+        "will" to R.string.note_will,
+        "would" to R.string.note_would,
+        "can" to R.string.note_can,
+        "could" to R.string.note_could,
+        "shall" to R.string.note_shall,
+        "should" to R.string.note_should,
+        "must" to R.string.note_must,
+        "may" to R.string.note_may,
+    )
 
 /**
  * A checked card button: selected, and a screen reader says tapping it will

@@ -45,8 +45,8 @@ data class LingleafColors(
 private val LightLingleafColors =
     LingleafColors(
         learningUnderline = Color(0xFF8A6A00),
-        selectedWordBackground = Brand.Marker.copy(alpha = 0.55f),
-        selectedWordText = Color.Unspecified,
+        selectedWordBackground = Brand.Marker,
+        selectedWordText = Color.Black,
         streakText = Color(0xFFA0430A),
         // Ink on paper ≈6:1; the 55% marker used for selection was ≈1.2:1, too faint for focus.
         focusedWordBackground = Brand.Ink,

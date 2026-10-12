@@ -160,4 +160,27 @@
     <string name="credits">Books: Project Gutenberg (public domain). Definitions: dictionaryapi.dev. Translation: Google ML Kit, on device. No accounts, no ads, no tracking.</string>
     <string name="reading_progress">Reading progress</string>
     <string name="review_progress">Review progress</string>
+    <!-- Helper and modal verbs on the word sheet (SPEC S16) -->
+    <string name="helper_verb">Helper verb</string>
+    <string name="modal_verb">Modal verb</string>
+    <string name="note_past_negative_contracted">“%1$s” (= “%2$s”) + base verb = past negative: “didn\'t go”, not “didn\'t went”.</string>
+    <string name="note_past_negative">“%1$s” + base verb = past negative: “did not go”, not “did not went”.</string>
+    <string name="note_present_negative_contracted">“%1$s” (= “%2$s”) + base verb = present negative: “%1$s like”, not “%1$s likes”.</string>
+    <string name="note_present_negative">“%1$s” + base verb = present negative: “%1$s like”, not “%1$s likes”.</string>
+    <string name="note_prohibition">“%1$s” + base verb tells someone not to do it: “Don\'t touch”.</string>
+    <string name="note_question_tag">“%1$s” + pronoun at the end asks the listener to agree, like “right?”.</string>
+    <string name="note_modal_not_allowed">“%1$s” + verb: it is not allowed.</string>
+    <string name="note_modal_negative_contracted">“%1$s” (= “%2$s”): the negative of “%3$s” + verb.</string>
+    <string name="note_modal_negative">“%1$s”: the negative of “%2$s” + verb.</string>
+    <string name="note_past_question">“%1$s” starts a question about the past.</string>
+    <string name="note_present_question">“%1$s” starts a question about the present.</string>
+    <string name="note_will">“will” + verb: the future.</string>
+    <string name="note_would">“would” + verb: what would happen, or a polite request.</string>
+    <string name="note_can">“can” + verb: be able to, or be allowed to.</string>
+    <string name="note_could">“could” + verb: was able to, or it’s possible.</string>
+    <string name="note_shall">“shall” + verb: the future, or an offer (“Shall we go?”).</string>
+    <string name="note_should">“should” + verb: advice, what is right to do.</string>
+    <string name="note_must">“must” + verb: it is necessary, or it is surely true.</string>
+    <string name="note_may">“may” + verb: maybe, or permission.</string>
+    <string name="note_might">“might” + verb: maybe.</string>
 </resources>
