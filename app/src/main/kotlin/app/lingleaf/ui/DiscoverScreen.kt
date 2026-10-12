@@ -1,5 +1,6 @@
 package app.lingleaf.ui
 
+import androidx.annotation.StringRes
 import androidx.compose.foundation.horizontalScroll
 import androidx.compose.foundation.layout.Arrangement
 import androidx.compose.foundation.layout.Box
@@ -16,9 +17,9 @@ import androidx.compose.foundation.rememberScrollState
 import androidx.compose.foundation.text.KeyboardActions
 import androidx.compose.foundation.text.KeyboardOptions
 import androidx.compose.material.icons.Icons
-import androidx.compose.material.icons.filled.CheckCircle
 import androidx.compose.material.icons.filled.Close
 import androidx.compose.material.icons.filled.Search
+import androidx.compose.material3.Button
 import androidx.compose.material3.CircularProgressIndicator
 import androidx.compose.material3.FilledTonalButton
 import androidx.compose.material3.FilterChip
@@ -30,10 +31,10 @@ import androidx.compose.material3.MaterialTheme
 import androidx.compose.material3.OutlinedTextField
 import androidx.compose.material3.SnackbarHostState
 import androidx.compose.material3.Text
+import androidx.compose.material3.TextButton
 import androidx.compose.runtime.Composable
 import androidx.compose.runtime.LaunchedEffect
 import androidx.compose.runtime.getValue
-import androidx.compose.runtime.mutableStateListOf
 import androidx.compose.runtime.mutableStateOf
 import androidx.compose.runtime.remember
 import androidx.compose.runtime.rememberCoroutineScope
@@ -45,165 +46,186 @@ import androidx.compose.ui.graphics.Color
 import androidx.compose.ui.platform.LocalContext
 import androidx.compose.ui.platform.testTag
 import androidx.compose.ui.res.stringResource
+import androidx.compose.ui.semantics.LiveRegionMode
 import androidx.compose.ui.semantics.contentDescription
+import androidx.compose.ui.semantics.liveRegion
+import androidx.compose.ui.semantics.onClick
 import androidx.compose.ui.semantics.semantics
 import androidx.compose.ui.text.input.ImeAction
 import androidx.compose.ui.text.style.TextOverflow
 import androidx.compose.ui.unit.dp
 import androidx.lifecycle.compose.collectAsStateWithLifecycle
+import app.lingleaf.BookDownload
 import app.lingleaf.R
 import app.lingleaf.core.GutenbergBook
 import app.lingleaf.core.GutenbergClient
+import app.lingleaf.core.GutenbergException
+import kotlinx.coroutines.Job
+import kotlinx.coroutines.delay
+import kotlinx.coroutines.isActive
 import kotlinx.coroutines.launch
 import kotlinx.coroutines.withContext
 
-/** Search and download free public-domain books from Project Gutenberg. */
+/**
+ * Recommended classics (shipped with the app) and search of Project Gutenberg, with a
+ * download that shows its progress, can be cancelled, and says why it failed (SPEC S9, S12).
+ */
 @Composable
-fun DiscoverScreen() {
+fun DiscoverScreen(onOpenBook: (String) -> Unit) {
     val container = LocalContainer.current
     val context = LocalContext.current
     val state by container.library.state.collectAsStateWithLifecycle()
     val scope = rememberCoroutineScope()
-    val snackbar = remember { SnackbarHostState() }
     var query by rememberSaveable { mutableStateOf("") }
     var levelFilter by rememberSaveable { mutableStateOf<String?>(null) }
-    var recommended by remember { mutableStateOf<List<GutenbergBook>>(emptyList()) }
     var results by remember { mutableStateOf<List<GutenbergBook>?>(null) }
-    var loading by remember { mutableStateOf(false) }
-    var failed by remember { mutableStateOf(false) }
-    val downloading = remember { mutableStateListOf<Int>() }
-    val downloaded = state.books.mapNotNull { it.gutenbergId }.toSet()
+    var searchJob by remember { mutableStateOf<Job?>(null) }
+    var searching by remember { mutableStateOf(false) }
+    // The search has taken over 8 s: say Project Gutenberg can be slow, and offer Cancel.
+    var slow by remember { mutableStateOf(false) }
+    var searchError by remember { mutableStateOf<GutenbergException.Reason?>(null) }
+    val downloads by container.downloads.collectAsStateWithLifecycle()
+    val snackbar = remember { SnackbarHostState() }
 
-    fun load(search: String?) {
-        scope.launch {
-            loading = true
-            failed = false
-            runCatching {
-                withContext(container.io) {
-                    if (search == null) container.gutenberg.fetchRecommended() else container.gutenberg.search(search)
-                }
-            }.onSuccess { if (search == null) recommended = it else results = it }
-                .onFailure { failed = true }
-            loading = false
-        }
+    fun cancelSearch() {
+        searchJob?.cancel()
+        searchJob = null
+        searching = false
+        slow = false
+        searchError = null
+        results = null
     }
 
-    fun download(book: GutenbergBook) {
-        scope.launch {
-            downloading += book.id
-            val message =
-                runCatching {
-                    withContext(container.io) {
-                        val text = container.gutenberg.downloadText(book)
-                        container.library.addBook(
-                            title = book.displayTitle,
-                            author = book.authorName ?: context.getString(R.string.unknown_author),
-                            text = text,
-                            level = GutenbergClient.levelFor(book.id),
-                            gutenbergId = book.id,
-                        )
+    // A new search cancels the one still running.
+    fun search() {
+        val text = query.trim()
+        if (text.isEmpty()) return
+        searchJob?.cancel()
+        searching = true
+        slow = false
+        searchError = null
+        results = null
+        searchJob =
+            scope.launch {
+                val timer =
+                    launch {
+                        delay(8_000)
+                        slow = true
                     }
-                }.fold(
-                    onSuccess = { context.getString(R.string.downloaded, book.displayTitle) },
-                    onFailure = { context.getString(R.string.download_failed, book.displayTitle) },
-                )
-            downloading -= book.id
-            snackbar.showSnackbar(message)
-        }
+                try {
+                    results = withContext(container.io) { container.gutenberg.search(text) }
+                } catch (error: GutenbergException) {
+                    searchError = error.reason
+                } finally {
+                    timer.cancel()
+                    if (isActive) searching = false
+                }
+            }
     }
 
-    LaunchedEffect(Unit) { if (recommended.isEmpty()) load(null) }
+    // When a download finishes, say so: the Read button alone changes nothing a screen reader hears.
+    val unknownAuthor = stringResource(R.string.unknown_author)
+    val previous = remember { mutableMapOf<Int, BookDownload>() }
+    LaunchedEffect(downloads) {
+        for ((id, before) in previous) {
+            if (before is BookDownload.Running && id !in downloads && state.books.any { it.gutenbergId == id }) {
+                val title =
+                    GutenbergClient.RECOMMENDED_BOOKS.firstOrNull { it.id == id }?.displayTitle
+                        ?: results?.firstOrNull { it.id == id }?.displayTitle
+                if (title != null) snackbar.showSnackbar(context.getString(R.string.downloaded, title))
+            }
+        }
+        previous.clear()
+        previous.putAll(downloads)
+    }
 
-    val searching = results != null
-    val levels = remember(recommended) { recommended.mapNotNull { GutenbergClient.levelFor(it.id) }.distinct() }
-    val selectedLevel = levelFilter?.takeIf { it in levels }
-    val books = results ?: GutenbergClient.filter(recommended, selectedLevel)
+    fun download(book: GutenbergBook) = container.download(book, unknownAuthor)
+
+    val recommended = GutenbergClient.filter(GutenbergClient.RECOMMENDED_BOOKS, levelFilter)
+    val levels = remember { GutenbergClient.RECOMMENDED.values.distinct() }
 
     ScreenScaffold(title = stringResource(R.string.discover_title), snackbarHostState = snackbar) { modifier ->
         LazyColumn(modifier) {
             item {
                 OutlinedTextField(
                     value = query,
-                    onValueChange = { query = it },
+                    onValueChange = {
+                        query = it
+                        if (it.isEmpty()) cancelSearch()
+                    },
                     label = { Text(stringResource(R.string.search_hint)) },
                     leadingIcon = { Icon(Icons.Filled.Search, contentDescription = null) },
                     trailingIcon = {
                         if (query.isNotEmpty()) {
                             IconButton(onClick = {
                                 query = ""
-                                results = null
+                                cancelSearch()
                             }) { Icon(Icons.Filled.Close, contentDescription = stringResource(R.string.clear_search)) }
                         }
                     },
                     singleLine = true,
                     keyboardOptions = KeyboardOptions(imeAction = ImeAction.Search),
-                    keyboardActions = KeyboardActions(onSearch = { if (query.isNotBlank()) load(query.trim()) }),
+                    keyboardActions = KeyboardActions(onSearch = { search() }),
                     modifier =
                         Modifier
                             .fillMaxWidth()
                             .padding(horizontal = 16.dp, vertical = 8.dp),
                 )
             }
-            item { SectionHeader(stringResource(if (searching) R.string.results else R.string.recommended)) }
-            if (!searching && !loading && !failed && levels.isNotEmpty()) {
-                item { LevelFilter(levels, selectedLevel) { levelFilter = it } }
-            }
-            when {
-                loading -> item { Box(Modifier.fillMaxWidth().padding(32.dp), Alignment.Center) { CircularProgressIndicator() } }
-                failed ->
-                    item {
-                        Column(Modifier.fillMaxWidth().padding(24.dp), horizontalAlignment = Alignment.CenterHorizontally) {
-                            Text(stringResource(R.string.catalog_failed))
-                            Spacer(Modifier.size(12.dp))
-                            FilledTonalButton(
-                                onClick = { load(if (searching) query.trim() else null) },
-                            ) { Text(stringResource(R.string.retry)) }
-                        }
+            if (searching) item { SearchProgress(slow, onCancel = ::cancelSearch) }
+            // Results and errors appear without moving focus: polite live regions say them.
+            searchError?.let { reason ->
+                item {
+                    Column(
+                        Modifier
+                            .fillMaxWidth()
+                            .padding(horizontal = 16.dp, vertical = 8.dp)
+                            .semantics { liveRegion = LiveRegionMode.Polite },
+                    ) {
+                        Text(
+                            stringResource(
+                                if (reason ==
+                                    GutenbergException.Reason.OFFLINE
+                                ) {
+                                    R.string.search_offline
+                                } else {
+                                    R.string.gutenberg_no_answer
+                                },
+                            ),
+                        )
+                        Spacer(Modifier.size(8.dp))
+                        FilledTonalButton(onClick = ::search) { Text(stringResource(R.string.retry)) }
                     }
-                searching && books.isEmpty() -> item { Text(stringResource(R.string.no_results), Modifier.padding(24.dp)) }
-                selectedLevel != null && books.isEmpty() ->
-                    item { Text(stringResource(R.string.no_books_at_level), Modifier.padding(24.dp)) }
-                else ->
-                    items(books, key = { it.id }) { book ->
-                        ListItem(
-                            colors = ListItemDefaults.colors(containerColor = Color.Transparent),
-                            leadingContent = { BookCover(book.displayTitle) },
-                            headlineContent = { Text(book.displayTitle, maxLines = 2, overflow = TextOverflow.Ellipsis) },
-                            supportingContent = {
-                                Row(verticalAlignment = Alignment.CenterVertically, horizontalArrangement = Arrangement.Start) {
-                                    GutenbergClient.levelFor(book.id)?.let {
-                                        LevelBadge(it)
-                                        Spacer(Modifier.width(6.dp))
-                                    }
-                                    Text(
-                                        book.authorName ?: stringResource(R.string.unknown_author),
-                                        maxLines = 1,
-                                        overflow = TextOverflow.Ellipsis,
-                                    )
-                                }
-                            },
-                            trailingContent = {
-                                when {
-                                    book.id in downloaded ->
-                                        Icon(
-                                            Icons.Filled.CheckCircle,
-                                            contentDescription = stringResource(R.string.in_library),
-                                            tint = MaterialTheme.colorScheme.primary,
-                                        )
-                                    book.id in downloading -> CircularProgressIndicator(Modifier.size(24.dp), strokeWidth = 2.dp)
-                                    else -> {
-                                        // Visible text stays short; screen readers hear which book it gets.
-                                        val label = stringResource(R.string.get_book, book.title)
-                                        FilledTonalButton(
-                                            onClick = { download(book) },
-                                            enabled = book.textUrl != null,
-                                            modifier = Modifier.semantics { contentDescription = label },
-                                        ) { Text(stringResource(R.string.get)) }
-                                    }
-                                }
-                            },
+                }
+            }
+            results?.let { found ->
+                item {
+                    Box(Modifier.semantics { liveRegion = LiveRegionMode.Polite }) { SectionHeader(stringResource(R.string.results)) }
+                }
+                if (found.isEmpty()) {
+                    item { Text(stringResource(R.string.no_results), Modifier.padding(24.dp)) }
+                } else {
+                    items(found, key = { "result-${it.id}" }) { book ->
+                        BookItem(
+                            book,
+                            state.books.firstOrNull {
+                                it.gutenbergId == book.id
+                            }?.id,
+                            downloads[book.id],
+                            ::download,
+                            onOpenBook,
                         )
                     }
+                }
+            }
+            item { SectionHeader(stringResource(R.string.recommended)) }
+            item { LevelFilter(levels, levelFilter) { levelFilter = it } }
+            if (recommended.isEmpty()) {
+                item { Text(stringResource(R.string.no_books_at_level), Modifier.padding(24.dp)) }
+            } else {
+                items(recommended, key = { it.id }) { book ->
+                    BookItem(book, state.books.firstOrNull { it.gutenbergId == book.id }?.id, downloads[book.id], ::download, onOpenBook)
+                }
             }
             item {
                 Text(
@@ -216,6 +238,103 @@ fun DiscoverScreen() {
         }
     }
 }
+
+/** "Searching Project Gutenberg…", after 8 s "Still searching…" with Cancel. */
+@Composable
+private fun SearchProgress(
+    slow: Boolean,
+    onCancel: () -> Unit,
+) {
+    Row(
+        Modifier
+            .fillMaxWidth()
+            .padding(horizontal = 16.dp, vertical = 8.dp)
+            .semantics { liveRegion = LiveRegionMode.Polite },
+        verticalAlignment = Alignment.CenterVertically,
+    ) {
+        CircularProgressIndicator(Modifier.size(24.dp), strokeWidth = 2.dp)
+        Spacer(Modifier.width(12.dp))
+        Column(Modifier.weight(1f)) {
+            Text(stringResource(R.string.searching_gutenberg))
+            if (slow) {
+                Text(stringResource(R.string.still_searching), color = MaterialTheme.colorScheme.onSurfaceVariant)
+            }
+        }
+        if (slow) TextButton(onClick = onCancel) { Text(stringResource(R.string.cancel)) }
+    }
+}
+
+/** A book row: Get → a progress ring (tap to cancel) → Read; why a download failed, with Retry when it may pass. */
+@Composable
+private fun BookItem(
+    book: GutenbergBook,
+    savedId: String?,
+    download: BookDownload?,
+    onGet: (GutenbergBook) -> Unit,
+    onOpenBook: (String) -> Unit,
+) {
+    val container = LocalContainer.current
+    val failure = (download as? BookDownload.Failed)?.reason
+    ListItem(
+        colors = ListItemDefaults.colors(containerColor = Color.Transparent),
+        leadingContent = { BookCover(book.displayTitle) },
+        headlineContent = { Text(book.displayTitle, maxLines = 2, overflow = TextOverflow.Ellipsis) },
+        supportingContent = {
+            Column {
+                Row(verticalAlignment = Alignment.CenterVertically, horizontalArrangement = Arrangement.Start) {
+                    GutenbergClient.levelFor(book.id)?.let {
+                        LevelBadge(it)
+                        Spacer(Modifier.width(6.dp))
+                    }
+                    Text(book.authorName ?: stringResource(R.string.unknown_author), maxLines = 1, overflow = TextOverflow.Ellipsis)
+                }
+                // Polite live region: TalkBack reads why the download failed.
+                failure?.let { Text(stringResource(downloadMessage(it)), Modifier.semantics { liveRegion = LiveRegionMode.Polite }) }
+            }
+        },
+        trailingContent = {
+            when {
+                savedId != null -> {
+                    val label = stringResource(R.string.read_book, book.displayTitle)
+                    Button(onClick = { onOpenBook(savedId) }, modifier = Modifier.semantics { contentDescription = label }) {
+                        Text(stringResource(R.string.read))
+                    }
+                }
+                download is BookDownload.Running -> {
+                    val label = stringResource(R.string.downloading_book, book.displayTitle)
+                    val cancel = stringResource(R.string.cancel_download)
+                    IconButton(
+                        onClick = { container.cancelDownload(book.id) },
+                        modifier =
+                            Modifier.semantics {
+                                contentDescription = label
+                                onClick(label = cancel) {
+                                    container.cancelDownload(book.id)
+                                    true
+                                }
+                            },
+                    ) { CircularProgressIndicator(progress = { download.fraction }, modifier = Modifier.size(28.dp), strokeWidth = 3.dp) }
+                }
+                book.textUrl == null -> Text(stringResource(R.string.not_available), color = MaterialTheme.colorScheme.onSurfaceVariant)
+                else -> {
+                    // Visible text stays short; screen readers hear which book it gets.
+                    val label = stringResource(if (failure == null) R.string.get_book else R.string.retry_book, book.displayTitle)
+                    FilledTonalButton(onClick = { onGet(book) }, modifier = Modifier.semantics { contentDescription = label }) {
+                        Text(stringResource(if (failure == null) R.string.get else R.string.retry))
+                    }
+                }
+            }
+        },
+    )
+}
+
+@StringRes
+private fun downloadMessage(reason: GutenbergException.Reason) =
+    when (reason) {
+        GutenbergException.Reason.UNAVAILABLE -> R.string.book_unavailable
+        GutenbergException.Reason.OFFLINE -> R.string.download_offline
+        GutenbergException.Reason.TIMED_OUT, GutenbergException.Reason.FAILED -> R.string.gutenberg_no_answer
+    }
 
 /** Single-choice CEFR level chips: "All" plus the [levels] present in the recommended list. */
 @Composable

@@ -34,40 +34,123 @@ data class GutenbergBook(
 
     val coverUrl: String? get() = formats["image/jpeg"]
 
+    /**
+     * The plain-text edition, straight from Project Gutenberg's file cache: the catalog's
+     * "ebooks/<id>.txt.utf-8" links redirect there, and every hop is another chance to fail.
+     * Null when the catalog lists no plain-text edition.
+     */
     val textUrl: String?
-        get() {
-            val candidates = formats.filter { it.key.startsWith("text/plain") && !it.value.endsWith(".zip") }
-            return (candidates.entries.firstOrNull { "utf-8" in it.key } ?: candidates.entries.firstOrNull())?.value
-        }
+        get() =
+            if (formats.any { it.key.startsWith("text/plain") && !it.value.endsWith(".zip") }) GutenbergClient.textUrl(id) else null
+}
+
+/** Why talking to Project Gutenberg failed, so the learner gets the right message and action. */
+class GutenbergException(
+    val reason: Reason,
+) : Exception(reason.name) {
+    enum class Reason {
+        /** No internet connection. */
+        OFFLINE,
+
+        /** The server didn't answer in time. */
+        TIMED_OUT,
+
+        /** The book can't be had right now (403, 404, 410, no plain text, or empty). */
+        UNAVAILABLE,
+
+        /** Anything else (5xx, a broken answer). */
+        FAILED,
+    }
+
+    companion object {
+        fun of(status: Int) = GutenbergException(if (status in setOf(403, 404, 410)) Reason.UNAVAILABLE else Reason.FAILED)
+
+        fun of(error: NetworkException) =
+            GutenbergException(
+                when (error.kind) {
+                    NetworkException.Kind.OFFLINE -> Reason.OFFLINE
+                    NetworkException.Kind.TIMED_OUT -> Reason.TIMED_OUT
+                    NetworkException.Kind.OTHER -> Reason.FAILED
+                },
+            )
+    }
 }
 
 @Serializable
 private data class GutendexResponse(val results: List<GutenbergBook>)
 
 class GutenbergClient(private val http: HttpFetcher) {
-    suspend fun search(query: String): List<GutenbergBook> = fetch("$BASE?languages=en&search=${URLEncoder.encode(query, "UTF-8")}")
-
-    suspend fun fetchRecommended(): List<GutenbergBook> {
-        val ids = RECOMMENDED.keys.toList()
-        return fetch("$BASE?ids=${ids.joinToString(",")}").sortedBy { ids.indexOf(it.id) }
+    /** Searches the catalog by title or author. Throws [GutenbergException]; cancelling the coroutine cancels the request. */
+    suspend fun search(query: String): List<GutenbergBook> {
+        val response = call { http.get("$BASE?languages=en&search=${URLEncoder.encode(query, "UTF-8")}") }
+        if (response.status != 200) throw GutenbergException.of(response.status)
+        return try {
+            json.decodeFromString<GutendexResponse>(response.text).results
+        } catch (_: IllegalArgumentException) {
+            throw GutenbergException(GutenbergException.Reason.FAILED)
+        }
     }
 
-    suspend fun downloadText(book: GutenbergBook): String {
-        val url = book.textUrl ?: throw NetworkException("No plain-text edition")
-        val response = http.get(url)
-        if (response.status != 200) throw NetworkException("HTTP ${response.status}")
-        return stripBoilerplate(response.text).ifEmpty { throw NetworkException("Empty book") }
+    /**
+     * The book's text without the license header and footer, reporting progress (0…1)
+     * while it downloads. Throws [GutenbergException]; cancelling the coroutine cancels the download.
+     */
+    suspend fun downloadText(
+        book: GutenbergBook,
+        progress: ((Double) -> Unit)? = null,
+    ): String {
+        val url = book.textUrl ?: throw GutenbergException(GutenbergException.Reason.UNAVAILABLE)
+        val response = call { http.get(url, progress) }
+        if (response.status != 200) throw GutenbergException.of(response.status)
+        return stripBoilerplate(response.text).ifEmpty { throw GutenbergException(GutenbergException.Reason.UNAVAILABLE) }
     }
 
-    private suspend fun fetch(url: String): List<GutenbergBook> {
-        val response = http.get(url)
-        if (response.status != 200) throw NetworkException("HTTP ${response.status}")
-        return json.decodeFromString<GutendexResponse>(response.text).results
-    }
+    /** Runs a request, turning network errors into [GutenbergException]. */
+    private suspend fun call(request: suspend () -> HttpResponse): HttpResponse =
+        try {
+            request()
+        } catch (error: NetworkException) {
+            throw GutenbergException.of(error)
+        }
 
     companion object {
         private const val BASE = "https://gutendex.com/books"
         private val json = Json { ignoreUnknownKeys = true }
+
+        /** The plain-text edition in Project Gutenberg's file cache. */
+        fun textUrl(id: Int) = "https://www.gutenberg.org/cache/epub/$id/pg$id.txt"
+
+        /**
+         * The recommended classics, shipped with the app (title, author, level), so Discover
+         * shows them at once and without the catalog. Same order as [RECOMMENDED].
+         */
+        val RECOMMENDED_BOOKS: List<GutenbergBook> by lazy {
+            listOf(
+                Triple(21, "Aesop's Fables", "Aesop"),
+                Triple(55, "The Wonderful Wizard of Oz", "Baum, L. Frank"),
+                Triple(16, "Peter Pan", "Barrie, J. M."),
+                Triple(236, "The Jungle Book", "Kipling, Rudyard"),
+                Triple(11, "Alice's Adventures in Wonderland", "Carroll, Lewis"),
+                Triple(74, "The Adventures of Tom Sawyer", "Twain, Mark"),
+                Triple(120, "Treasure Island", "Stevenson, Robert Louis"),
+                Triple(1661, "The Adventures of Sherlock Holmes", "Doyle, Arthur Conan"),
+                Triple(1342, "Pride and Prejudice", "Austen, Jane"),
+                Triple(84, "Frankenstein", "Shelley, Mary Wollstonecraft"),
+                Triple(174, "The Picture of Dorian Gray", "Wilde, Oscar"),
+                Triple(1400, "Great Expectations", "Dickens, Charles"),
+                Triple(345, "Dracula", "Stoker, Bram"),
+                Triple(2701, "Moby-Dick", "Melville, Herman"),
+                Triple(219, "Heart of Darkness", "Conrad, Joseph"),
+                Triple(145, "Middlemarch", "Eliot, George"),
+            ).map { (id, title, author) ->
+                GutenbergBook(
+                    id = id,
+                    title = title,
+                    authors = listOf(GutenbergBook.Person(author)),
+                    formats = mapOf("text/plain; charset=utf-8" to textUrl(id)),
+                )
+            }
+        }
 
         /** Hand-picked classics with a CEFR level hint, easiest first (A2 to C2). */
         val RECOMMENDED: Map<Int, String> =

@@ -9,7 +9,9 @@ import android.speech.tts.UtteranceProgressListener
 import android.util.Log
 import app.lingleaf.core.BundledStory
 import app.lingleaf.core.DictionaryClient
+import app.lingleaf.core.GutenbergBook
 import app.lingleaf.core.GutenbergClient
+import app.lingleaf.core.GutenbergException
 import app.lingleaf.core.HttpFetcher
 import app.lingleaf.core.HttpResponse
 import app.lingleaf.core.Library
@@ -24,23 +26,32 @@ import com.google.mlkit.nl.translate.TranslateLanguage
 import com.google.mlkit.nl.translate.TranslateRemoteModel
 import com.google.mlkit.nl.translate.Translation
 import com.google.mlkit.nl.translate.TranslatorOptions
+import kotlinx.coroutines.CancellationException
 import kotlinx.coroutines.CoroutineDispatcher
 import kotlinx.coroutines.CoroutineExceptionHandler
 import kotlinx.coroutines.CoroutineScope
+import kotlinx.coroutines.CoroutineStart
 import kotlinx.coroutines.Dispatchers
+import kotlinx.coroutines.Job
 import kotlinx.coroutines.SupervisorJob
+import kotlinx.coroutines.ensureActive
 import kotlinx.coroutines.flow.MutableStateFlow
 import kotlinx.coroutines.flow.StateFlow
 import kotlinx.coroutines.flow.asStateFlow
+import kotlinx.coroutines.flow.update
 import kotlinx.coroutines.launch
 import kotlinx.coroutines.suspendCancellableCoroutine
 import kotlinx.coroutines.withContext
 import kotlinx.coroutines.withTimeoutOrNull
 import java.io.ByteArrayOutputStream
 import java.io.File
+import java.io.IOException
 import java.io.InputStream
+import java.net.ConnectException
 import java.net.HttpURLConnection
+import java.net.SocketTimeoutException
 import java.net.URL
+import java.net.UnknownHostException
 import java.util.Locale
 import java.util.concurrent.atomic.AtomicBoolean
 import kotlin.coroutines.resume
@@ -99,6 +110,65 @@ class AppContainer(
         )
 
     private val filling = AtomicBoolean(false)
+
+    private val _downloads = MutableStateFlow<Map<Int, BookDownload>>(emptyMap())
+
+    /**
+     * Book downloads by Gutenberg id. They run in [appScope], so leaving Discover doesn't
+     * cancel them; the screen only shows them (SPEC S9).
+     */
+    val downloads: StateFlow<Map<Int, BookDownload>> = _downloads.asStateFlow()
+
+    /** Downloads [book] into the library; [unknownAuthor] names a book without one. */
+    fun download(
+        book: GutenbergBook,
+        unknownAuthor: String,
+    ) {
+        if (_downloads.value[book.id] is BookDownload.Running) return
+        val job =
+            appScope.launch(start = CoroutineStart.LAZY) {
+                try {
+                    var shown = 0.0
+                    val text =
+                        gutenberg.downloadText(book) { fraction ->
+                            // One update per percent, not one per 8 KB chunk.
+                            if (fraction - shown >= 0.01 || fraction >= 1.0) {
+                                shown = fraction
+                                updateDownload(book.id) { (it as? BookDownload.Running)?.copy(fraction = fraction.toFloat()) }
+                            }
+                        }
+                    library.addBook(
+                        title = book.displayTitle,
+                        author = book.authorName ?: unknownAuthor,
+                        text = text,
+                        level = GutenbergClient.levelFor(book.id),
+                        gutenbergId = book.id,
+                    )
+                    updateDownload(book.id) { null }
+                } catch (error: GutenbergException) {
+                    updateDownload(book.id) { BookDownload.Failed(error.reason) }
+                } catch (cancelled: CancellationException) {
+                    updateDownload(book.id) { null }
+                    throw cancelled
+                }
+            }
+        updateDownload(book.id) { BookDownload.Running(0f, job) }
+        job.start()
+    }
+
+    fun cancelDownload(id: Int) {
+        (_downloads.value[id] as? BookDownload.Running)?.job?.cancel()
+    }
+
+    private fun updateDownload(
+        id: Int,
+        change: (BookDownload?) -> BookDownload?,
+    ) {
+        _downloads.update { downloads ->
+            val next = change(downloads[id])
+            if (next == null) downloads - id else downloads + (id to next)
+        }
+    }
 
     /** The language chosen in Settings, else the first suitable system language; null means ask (SPEC S14). */
     fun targetLanguage(settings: Settings): String? =
@@ -319,7 +389,17 @@ class AndroidSpeaker(
 class HttpsFetcher(
     private val maxBytes: Int = MAX_BYTES,
 ) : HttpFetcher {
-    override suspend fun get(url: String): HttpResponse =
+    override suspend fun get(url: String): HttpResponse = get(url, null)
+
+    /**
+     * Reads the body in buffered chunks, reporting progress when the length is known.
+     * No connection, a timeout or other failures become [NetworkException] kinds;
+     * cancelling the coroutine stops the read between chunks.
+     */
+    override suspend fun get(
+        url: String,
+        progress: ((Double) -> Unit)?,
+    ): HttpResponse =
         withContext(Dispatchers.IO) {
             if (!url.startsWith("https://")) throw NetworkException("Only HTTPS is allowed")
             val connection = URL(url).openConnection() as HttpURLConnection
@@ -328,9 +408,26 @@ class HttpsFetcher(
             connection.setRequestProperty("User-Agent", "Lingleaf/0.1 (+https://github.com/erobinsonc/lingleaf-android)")
             try {
                 val status = connection.responseCode
-                if (connection.contentLengthLong > maxBytes) throw NetworkException("Response too large")
+                val length = connection.contentLengthLong
+                if (length > maxBytes) throw NetworkException("Response too large")
                 val stream = if (status in 200..299) connection.inputStream else connection.errorStream
-                HttpResponse(status, stream?.use { it.readCapped(maxBytes) } ?: ByteArray(0))
+                val body =
+                    stream?.use {
+                        it.readCapped(maxBytes) { read ->
+                            ensureActive()
+                            if (length > 0) progress?.invoke(read.toDouble() / length)
+                        }
+                    } ?: ByteArray(0)
+                progress?.invoke(1.0)
+                HttpResponse(status, body)
+            } catch (error: UnknownHostException) {
+                throw NetworkException(error.message ?: "No internet", NetworkException.Kind.OFFLINE)
+            } catch (error: ConnectException) {
+                throw NetworkException(error.message ?: "No internet", NetworkException.Kind.OFFLINE)
+            } catch (error: SocketTimeoutException) {
+                throw NetworkException(error.message ?: "Timed out", NetworkException.Kind.TIMED_OUT)
+            } catch (error: IOException) {
+                throw NetworkException(error.message ?: "Network error")
             } finally {
                 connection.disconnect()
             }
@@ -340,8 +437,14 @@ class HttpsFetcher(
 /** Largest download or imported file accepted. The longest recommended book (Middlemarch) is under 2 MB. */
 const val MAX_BYTES = 10 * 1024 * 1024
 
-/** Reads at most [max] bytes; more than that is an error rather than a huge allocation. */
-fun InputStream.readCapped(max: Int): ByteArray {
+/**
+ * Reads at most [max] bytes; more than that is an error rather than a huge allocation.
+ * [onChunk] gets the bytes read so far after each chunk.
+ */
+fun InputStream.readCapped(
+    max: Int,
+    onChunk: (Int) -> Unit = {},
+): ByteArray {
     val out = ByteArrayOutputStream()
     val buffer = ByteArray(DEFAULT_BUFFER_SIZE)
     while (true) {
@@ -349,6 +452,7 @@ fun InputStream.readCapped(max: Int): ByteArray {
         if (read < 0) break
         out.write(buffer, 0, read)
         if (out.size() > max) throw NetworkException("Too large")
+        onChunk(out.size())
     }
     return out.toByteArray()
 }
@@ -376,4 +480,16 @@ class FileStorage(
     override fun delete(name: String) {
         File(dir, name).delete()
     }
+}
+
+/** A book download in progress (0…1, with its job) or why it failed. */
+sealed interface BookDownload {
+    data class Running(
+        val fraction: Float,
+        val job: Job,
+    ) : BookDownload
+
+    data class Failed(
+        val reason: GutenbergException.Reason,
+    ) : BookDownload
 }

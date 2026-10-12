@@ -105,7 +105,7 @@ fun LingleafApp(container: AppContainer) {
             ) { padding ->
                 NavHost(navController, startDestination = Tab.Library.route, modifier = Modifier.padding(padding)) {
                     composable(Tab.Library.route) { LibraryScreen(onOpenBook = { navController.navigate("reader/$it") }) }
-                    composable(Tab.Discover.route) { DiscoverScreen() }
+                    composable(Tab.Discover.route) { DiscoverScreen(onOpenBook = { navController.navigate("reader/$it") }) }
                     composable(Tab.Words.route) { WordsScreen(onReview = { navController.navigate("review") }) }
                     composable(Tab.Settings.route) { SettingsScreen() }
                     composable("reader/{bookId}") { entry ->

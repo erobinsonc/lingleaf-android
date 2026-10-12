@@ -88,14 +88,23 @@
     <string name="level_all">All</string>
     <string name="level_all_description">All levels</string>
     <string name="no_books_at_level">No recommended books at this level.</string>
-    <string name="catalog_failed">Couldn\'t load the catalog. Check your connection.</string>
+    <string name="searching_gutenberg">Searching Project Gutenberg…</string>
+    <string name="still_searching">Still searching. Project Gutenberg can be slow.</string>
+    <string name="search_offline">You\'re offline. Connect to the internet to search.</string>
+    <string name="gutenberg_no_answer">Project Gutenberg didn\'t answer. Try again.</string>
+    <string name="read">Read</string>
+    <string name="read_book">Read %1$s</string>
+    <string name="retry_book">Retry %1$s</string>
+    <string name="downloading_book">Downloading %1$s</string>
+    <string name="cancel_download">Cancel download</string>
+    <string name="book_unavailable">This book isn\'t available right now.</string>
+    <string name="download_offline">You\'re offline. Connect to the internet to download it.</string>
+    <string name="not_available">Not available</string>
+    <string name="downloaded">“%1$s” is in your library.</string>
     <string name="retry">Retry</string>
     <string name="get">Get</string>
     <!-- Screen readers: the Get button with the book it downloads. -->
     <string name="get_book">Get %1$s</string>
-    <string name="in_library">In your library</string>
-    <string name="downloaded">“%1$s” is in your library.</string>
-    <string name="download_failed">Couldn\'t download “%1$s”. Try again.</string>
     <string name="gutenberg_credit">Free public-domain classics from Project Gutenberg.</string>
     <string name="unknown_author">Unknown author</string>
 

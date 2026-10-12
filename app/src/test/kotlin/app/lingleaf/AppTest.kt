@@ -16,6 +16,7 @@ import androidx.compose.ui.test.hasAnyAncestor
 import androidx.compose.ui.test.hasClickAction
 import androidx.compose.ui.test.hasContentDescription
 import androidx.compose.ui.test.hasScrollToIndexAction
+import androidx.compose.ui.test.hasSetTextAction
 import androidx.compose.ui.test.hasTestTag
 import androidx.compose.ui.test.hasText
 import androidx.compose.ui.test.junit4.createComposeRule
@@ -25,8 +26,10 @@ import androidx.compose.ui.test.onNodeWithContentDescription
 import androidx.compose.ui.test.onNodeWithTag
 import androidx.compose.ui.test.onNodeWithText
 import androidx.compose.ui.test.performClick
+import androidx.compose.ui.test.performImeAction
 import androidx.compose.ui.test.performScrollToIndex
 import androidx.compose.ui.test.performScrollToNode
+import androidx.compose.ui.test.performTextInput
 import androidx.compose.ui.test.performTouchInput
 import androidx.compose.ui.text.TextLayoutResult
 import androidx.test.core.app.ApplicationProvider
@@ -69,28 +72,13 @@ private val dictionaryJson =
     """[{"word": "equal", "phonetic": "/ˈiːkwəl/",
          "meanings": [{"partOfSpeech": "adjective", "definitions": [{"definition": "The same in quantity."}]}]}]"""
 
-private fun catalogBook(
-    id: Int,
-    title: String,
-    author: String,
-) = """{"id": $id, "title": "$title", "authors": [{"name": "$author"}],
-       "formats": {"text/plain; charset=us-ascii": "https://www.gutenberg.org/ebooks/$id.txt.utf-8"}}"""
-
-private val recommendedCatalog =
-    listOf(
-        catalogBook(21, "Aesop's Fables", "Aesop"),
-        catalogBook(55, "The Wonderful Wizard of Oz", "Baum, L. Frank"),
-        catalogBook(16, "Peter Pan", "Barrie, J. M."),
-        catalogBook(2701, "Moby-Dick; Or, The Whale", "Melville, Herman"),
-    ).joinToString(prefix = """{"results": [""", postfix = "]}")
-
 /** Generous: CI runners are slow on the first test, and lookups run on real background threads. */
 private const val WAIT_MS = 15_000L
 
 private const val STORY = "All animals are equal, but some are more equal.\n\nCan we fix it?\n\nThe end."
 
 private const val ALICE_TITLE = "Alice's Adventures in Wonderland"
-private const val ALICE_TEXT_URL = "https://www.gutenberg.org/ebooks/11.txt.utf-8"
+private const val ALICE_TEXT_URL = "https://www.gutenberg.org/cache/epub/11/pg11.txt"
 
 private val aliceCatalog =
     """{"results": [{"id": 11, "title": "$ALICE_TITLE", "authors": [{"name": "Carroll, Lewis"}],
@@ -129,6 +117,8 @@ class AppTest {
                     url.endsWith("/equal") -> HttpResponse(200, dictionaryJson.toByteArray())
                     "gutendex" in url -> HttpResponse(200, catalogJson.toByteArray())
                     url == ALICE_TEXT_URL -> HttpResponse(200, aliceText.toByteArray())
+                    // Peter Pan is "not available right now", to show that message.
+                    "cache/epub/16/" in url -> HttpResponse(404, ByteArray(0))
                     else -> HttpResponse(404, ByteArray(0))
                 }
             }
@@ -453,7 +443,6 @@ class AppTest {
 
     @Test
     fun filterRecommendedBooksByLevel() {
-        catalogJson = recommendedCatalog
         compose.onAllNodesWithText("Discover").onFirst().performClick()
         compose.waitUntil(WAIT_MS) { compose.onAllNodes(hasTestTag("level-filter-B1")).fetchSemanticsNodes().isNotEmpty() }
 
@@ -517,14 +506,26 @@ class AppTest {
         assertEquals(listOf("The sun is up. All animals are equal.", "equal", "All animals are equal."), speaker.spoken)
     }
 
-    // S9 Discover: one-tap download into the library
+    // S9 Discover: a search shows its results above the recommended books.
     @Test
-    fun getABookFromDiscoverAddsItToTheLibrary() {
+    fun searchShowsResults() {
         catalogJson = aliceCatalog
         compose.onAllNodesWithText("Discover").onFirst().performClick()
-        val getButton = hasContentDescription("Get $ALICE_TITLE")
-        compose.waitUntil(WAIT_MS) { compose.onAllNodes(getButton).fetchSemanticsNodes().isNotEmpty() }
+        compose.onNode(hasSetTextAction()).performTextInput("alice")
+        compose.onNode(hasSetTextAction()).performImeAction()
+        compose.waitUntil(WAIT_MS) { compose.onAllNodesWithText("Results").fetchSemanticsNodes().isNotEmpty() }
+        compose.onAllNodes(hasContentDescription("Get $ALICE_TITLE")).onFirst().assertExists()
+    }
 
+    // S9 Discover: recommended books ship with the app; Get shows progress and turns into Read;
+    // a missing book says so in its row.
+    @Test
+    fun getABookFromDiscoverAddsItToTheLibrary() {
+        compose.onAllNodesWithText("Discover").onFirst().performClick()
+        val list = compose.onNode(hasScrollToIndexAction())
+        val getButton = hasContentDescription("Get $ALICE_TITLE")
+        compose.waitUntil(WAIT_MS) { compose.onAllNodes(hasScrollToIndexAction()).fetchSemanticsNodes().isNotEmpty() }
+        list.performScrollToNode(getButton)
         compose.onNode(getButton).performClick()
         compose.waitUntil(WAIT_MS) { container.library.state.value.books.any { it.gutenbergId == 11 } }
 
@@ -534,6 +535,13 @@ class AppTest {
         assertEquals("B2", book.level)
         // The license header and footer are gone: only the two story paragraphs remain.
         assertEquals(listOf("Down the Rabbit-Hole", "Alice was beginning to get very tired."), container.library.openBook(book.id))
+        compose.waitUntil(WAIT_MS) { compose.onAllNodes(hasContentDescription("Read $ALICE_TITLE")).fetchSemanticsNodes().isNotEmpty() }
+
+        list.performScrollToNode(hasContentDescription("Get Peter Pan"))
+        compose.onNode(hasContentDescription("Get Peter Pan")).performClick()
+        compose.waitUntil(WAIT_MS) {
+            compose.onAllNodesWithText("This book isn't available right now.").fetchSemanticsNodes().isNotEmpty()
+        }
 
         compose.onAllNodesWithText("Library").onFirst().performClick()
         compose.waitForIdle()
