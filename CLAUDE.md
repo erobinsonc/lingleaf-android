@@ -32,6 +32,7 @@ feat/*, fix/*  ──PR──▶  develop  ──release PR──▶  main
 | Any user-facing text (app/src/main/res/values*/strings.xml) | `ux-writing-reviewer` |
 | Behaviour, shared logic or SPEC.md | `parity-reviewer` |
 | Stories, levels, learning features | `learning-content-reviewer` |
+| Learning features, word card, review, saved-word data | `learning-science-reviewer` (memory and learning evidence, no neuromyths) |
 
 A 🔴 or 🟠 finding blocks the merge. Validators don't edit code; fix and re-run.
 
