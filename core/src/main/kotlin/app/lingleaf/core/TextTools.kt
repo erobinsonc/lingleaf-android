@@ -47,45 +47,71 @@ object TextTools {
     /**
      * [paragraph] in pieces of at most [MAX_PARAGRAPH] UTF-16 units, each cut after the last
      * sentence end that fits, else at the last space, else (no spaces at all) at the limit.
+     * Walks the text once with an index, so a 10 MB text without blank lines splits in linear time.
      */
     internal fun bounded(paragraph: String): List<String> {
-        var rest = paragraph
+        if (paragraph.length <= MAX_PARAGRAPH) return listOf(paragraph)
         val pieces = mutableListOf<String>()
-        while (rest.length > MAX_PARAGRAPH) {
+        var start = 0
+        while (true) {
+            while (start < paragraph.length && paragraph[start].isWhitespace()) start++
+            if (paragraph.length - start <= MAX_PARAGRAPH) {
+                paragraph.substring(start).trim().takeIf { it.isNotEmpty() }?.let { pieces += it }
+                return pieces
+            }
             // One unit past the limit, so the sentence-end lookahead can see what follows.
-            val window = rest.substring(0, MAX_PARAGRAPH + 1)
+            val window = paragraph.substring(start, start + MAX_PARAGRAPH + 1)
             var cut = sentenceEnd.findAll(window).map { it.range.last + 1 }.lastOrNull { it <= MAX_PARAGRAPH } ?: 0
-            if (cut == 0) cut = (MAX_PARAGRAPH - 1 downTo 1).firstOrNull { rest[it] == ' ' || rest[it] == '\t' } ?: MAX_PARAGRAPH
-            if (Character.isHighSurrogate(rest[cut - 1])) cut--
-            val piece = rest.substring(0, cut).trim()
-            if (piece.isNotEmpty()) pieces += piece
-            rest = rest.substring(cut).trim()
+            if (cut == 0) cut = (MAX_PARAGRAPH - 1 downTo 1).firstOrNull { window[it] == ' ' || window[it] == '\t' } ?: MAX_PARAGRAPH
+            // Never between the halves of a surrogate pair, and always forward.
+            if (cut > 1 && Character.isHighSurrogate(window[cut - 1])) cut--
+            window.substring(0, cut).trim().takeIf { it.isNotEmpty() }?.let { pieces += it }
+            start += cut
         }
-        if (rest.isNotEmpty()) pieces += rest
-        return pieces
+    }
+
+    /** At most [max] UTF-16 units of [text], never splitting a surrogate pair. */
+    fun truncated(
+        text: String,
+        max: Int,
+    ): String {
+        if (text.length <= max) return text
+        val end = if (max > 1 && Character.isHighSurrogate(text[max - 1])) max - 1 else max
+        return text.substring(0, end)
     }
 
     /**
-     * Outside text shown as a title or author: no control or invisible formatting
-     * characters (bidi overrides, zero-width), single spaces, at most [MAX_LABEL] characters.
+     * Outside text shown as a title or author: no control, invisible formatting or blank
+     * filler characters (bidi overrides, zero-width, Hangul fillers), at most
+     * [MAX_COMBINING_MARKS] accents on one letter, single spaces, at most [MAX_LABEL] UTF-16 units.
      */
     fun cleanLabel(text: String): String {
         val out = StringBuilder()
+        var marks = 0
         var i = 0
         while (i < text.length) {
             val codePoint = text.codePointAt(i)
-            when (Character.getType(codePoint).toByte()) {
-                Character.FORMAT -> {}
-                Character.CONTROL, Character.LINE_SEPARATOR, Character.PARAGRAPH_SEPARATOR -> out.append(' ')
+            i += Character.charCount(codePoint)
+            val type = Character.getType(codePoint).toByte()
+            if (type == Character.NON_SPACING_MARK || type == Character.ENCLOSING_MARK) {
+                if (++marks <= MAX_COMBINING_MARKS) out.appendCodePoint(codePoint)
+                continue
+            }
+            marks = 0
+            when {
+                type == Character.FORMAT || codePoint in BLANK_FILLERS -> {}
+                type == Character.CONTROL || type == Character.LINE_SEPARATOR || type == Character.PARAGRAPH_SEPARATOR -> out.append(' ')
                 else -> out.appendCodePoint(codePoint)
             }
-            i += Character.charCount(codePoint)
         }
-        val single = out.split(Regex("\\s+")).filter { it.isNotEmpty() }.joinToString(" ")
-        if (single.length <= MAX_LABEL) return single
-        val end = if (Character.isHighSurrogate(single[MAX_LABEL - 1])) MAX_LABEL - 1 else MAX_LABEL
-        return single.substring(0, end)
+        return truncated(out.split(Regex("\\s+")).filter { it.isNotEmpty() }.joinToString(" "), MAX_LABEL)
     }
+
+    /** Accents kept on one letter: real text needs two or three; "Zalgo" text piles up thousands. */
+    const val MAX_COMBINING_MARKS = 4
+
+    /** Characters that show as blank space but are letters or symbols, not whitespace. */
+    private val BLANK_FILLERS = setOf(0x115F, 0x1160, 0x3164, 0xFFA0, 0x2800)
 
     /** Every English word; contractions such as "don't" stay whole. */
     fun wordRanges(text: String): List<WordRange> = wordPattern.findAll(text).map { WordRange(it.range.first, it.range.last + 1) }.toList()

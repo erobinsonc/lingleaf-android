@@ -411,6 +411,15 @@ class LibraryTest {
     }
 
     @Test
+    fun `a huge context is never saved`() {
+        val library = library()
+        library.saveWord("sea", learned = false, context = "sea ".repeat(5_000), contextTranslation = "mar ".repeat(5_000))
+        val saved = library.state.value.word("sea")!!
+        assertEquals(TextTools.MAX_SENTENCE, saved.context.length)
+        assertTrue(saved.contextTranslation!!.length <= 2 * TextTools.MAX_SENTENCE)
+    }
+
+    @Test
     fun `a huge saved context is cut when loaded`() {
         library().saveWord("sea", learned = false, context = "sea ".repeat(5_000))
         assertEquals(TextTools.MAX_SENTENCE, library().state.value.word("sea")!!.context.length)

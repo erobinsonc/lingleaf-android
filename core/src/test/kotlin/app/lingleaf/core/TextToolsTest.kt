@@ -16,6 +16,18 @@ class TextToolsTest {
         val sentences = TextTools.splitParagraphs("A short sentence here. ".repeat(300))
         assertTrue(sentences.all { it.endsWith(".") && it.length <= TextTools.MAX_PARAGRAPH })
         assertEquals(listOf(2_000, 2_000, 500), TextTools.splitParagraphs("a".repeat(4_500)).map { it.length })
+        // A lone high surrogate before a space can't stall the cut.
+        assertTrue(TextTools.splitParagraphs("\uD83D " + "b".repeat(3_000)).isNotEmpty())
+    }
+
+    @Test
+    fun `a 10 MB text without blank lines splits in linear time`() {
+        val book = "word ".repeat(2_000_000)
+        val started = System.nanoTime()
+        val pieces = TextTools.splitParagraphs(book)
+        val seconds = (System.nanoTime() - started) / 1e9
+        assertEquals(5_000, pieces.size, "2,000-unit pieces")
+        assertTrue(seconds < 3, "took $seconds s")
     }
 
     @Test
@@ -33,6 +45,9 @@ class TextToolsTest {
         assertEquals("evil title x", TextTools.cleanLabel("\u202Eevil\u200B title\n  x"))
         assertEquals(TextTools.MAX_LABEL, TextTools.cleanLabel("t".repeat(300)).length)
         assertEquals("Alice’s Adventures", TextTools.cleanLabel("Alice’s Adventures"))
+        assertEquals("a\u0301\u0301\u0301\u0301", TextTools.cleanLabel("a" + "\u0301".repeat(100_000)), "at most 4 accents on a letter")
+        assertEquals("Fake", TextTools.cleanLabel("\u3164\u115F\u2800Fake"), "blank fillers")
+        assertEquals("Café", TextTools.cleanLabel("Cafe\u0301").let { java.text.Normalizer.normalize(it, java.text.Normalizer.Form.NFC) })
     }
 
     @Test

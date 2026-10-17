@@ -136,7 +136,7 @@ class Library(
                 // Saved before contexts were capped, or restored from a backup: cut to size.
                 words =
                     decode(WORDS, ListSerializer(VocabWord.serializer()))
-                        ?.map { if (it.context.length > MAX_CONTEXT) it.copy(context = it.context.take(MAX_CONTEXT)) else it }
+                        ?.map { it.copy(context = TextTools.truncated(it.context, TextTools.MAX_SENTENCE)) }
                         ?: emptyList(),
                 readingLog = decode(READING_LOG, readingLogSerializer) ?: emptyMap(),
                 settings = decode(SETTINGS, Settings.serializer()) ?: Settings(),
@@ -373,9 +373,15 @@ class Library(
         key: String,
         entry: VocabWord,
     ) {
+        // Every saved word passes here: whatever a caller hands in, nothing huge is kept.
+        val bounded =
+            entry.copy(
+                context = TextTools.truncated(entry.context, TextTools.MAX_SENTENCE),
+                contextTranslation = entry.contextTranslation?.let { TextTools.truncated(it, MAX_CONTEXT_TRANSLATION) },
+            )
         _state.update { s ->
             val others = s.words.filterNot { it.word == key }
-            s.copy(words = (others + entry).sortedByDescending { it.createdAt })
+            s.copy(words = (others + bounded).sortedByDescending { it.createdAt })
         }
         saveWords()
     }
@@ -432,7 +438,9 @@ class Library(
         private const val MAX_SESSION_SECONDS = 3600L
         private const val IMPORTED_AUTHOR = "—"
         private const val DEFAULT_TITLE = "Book"
-        private const val MAX_CONTEXT = TextTools.MAX_SENTENCE
+
+        /** A translation can be longer than its sentence; twice the sentence's limit. */
+        private const val MAX_CONTEXT_TRANSLATION = 2 * TextTools.MAX_SENTENCE
 
         /** "Alice.txt" → "Alice", "my.story.TXT" → "my.story"; an empty name becomes "Book". */
         fun importTitle(fileName: String): String {
