@@ -166,7 +166,8 @@ private fun WordRow(
                 // contraction has no label: its base ("it is") says what it is.
                 word.kind?.let { kind ->
                     val label = kind.label?.let { stringResource(it) }
-                    Text(listOfNotNull(word.base.orEmpty(), label).joinToString(" · "), color = MaterialTheme.colorScheme.onSurfaceVariant)
+                    val detail = listOfNotNull(word.base, label).filter { it.isNotEmpty() }
+                    if (detail.isNotEmpty()) Text(detail.joinToString(" · "), color = MaterialTheme.colorScheme.onSurfaceVariant)
                 }
                 if (word.translation.isNotEmpty()) Text(word.translation)
                 if (word.context.isNotEmpty() && TextTools.normalize(word.context) != word.word) {

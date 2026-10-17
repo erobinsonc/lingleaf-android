@@ -205,4 +205,6 @@
     <string name="note_lets">“let\'s” (= “let us”) + verb: a suggestion to do something together: “Let\'s go”.</string>
     <string name="note_its">“it\'s” = “%1$s”; “its” (no apostrophe) = belonging to it.</string>
     <string name="note_whos">“who\'s” = “%1$s”; “whose” = of whom: “Whose book?”</string>
+    <string name="note_had_or_would">“%1$s” can be “%2$s” or “%3$s”: the sentence\'s translation tells which.</string>
+    <string name="either_or">%1$s or %2$s</string>
 </resources>

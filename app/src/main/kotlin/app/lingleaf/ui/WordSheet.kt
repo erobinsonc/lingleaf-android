@@ -54,6 +54,7 @@ import androidx.compose.ui.res.stringResource
 import androidx.compose.ui.semantics.Role
 import androidx.compose.ui.semantics.clearAndSetSemantics
 import androidx.compose.ui.semantics.contentDescription
+import androidx.compose.ui.semantics.heading
 import androidx.compose.ui.semantics.onClick
 import androidx.compose.ui.semantics.role
 import androidx.compose.ui.semantics.selected
@@ -258,7 +259,19 @@ fun WordSheet(
                         Icon(Icons.AutoMirrored.Filled.VolumeUp, contentDescription = stringResource(R.string.listen_word, spoken))
                     }
                     Spacer(Modifier.width(12.dp))
-                    Text(headword, style = MaterialTheme.typography.headlineMedium, fontWeight = FontWeight.SemiBold)
+                    // A screen reader says "he had or he would", not "slash".
+                    val either = headword.split(" / ").takeIf { it.size == 2 }
+                    val spokenHeadword = either?.let { stringResource(R.string.either_or, it[0], it[1]) } ?: headword
+                    Text(
+                        headword,
+                        style = MaterialTheme.typography.headlineMedium,
+                        fontWeight = FontWeight.SemiBold,
+                        modifier =
+                            Modifier.semantics {
+                                heading()
+                                contentDescription = spokenHeadword
+                            },
+                    )
                 }
                 entry?.phonetic?.let {
                     Text(it, style = MaterialTheme.typography.titleMedium, color = MaterialTheme.colorScheme.onSurfaceVariant)
@@ -278,7 +291,10 @@ fun WordSheet(
                     LanguagePrompt(onPick = ::chooseLanguage)
                 } else {
                     // The verb group it belongs to, then its translation (as on iOS, once a language is set).
-                    chunk?.let { Text(it, style = MaterialTheme.typography.titleMedium, textAlign = TextAlign.Center) }
+                    // Not when it is just the tapped word ("That's"): the headword and note explain it.
+                    chunk?.takeIf { it != word }?.let {
+                        Text(it, style = MaterialTheme.typography.titleMedium, textAlign = TextAlign.Center)
+                    }
                     if (function == null || chunk != null) {
                         TranslationText(translation ?: tappedTranslation, translationFailed, modelStatus, target)
                     }
@@ -451,6 +467,8 @@ private fun contractionNote(
         use == FunctionWord.Use.HadBetter -> stringResource(R.string.note_had_better_contracted)
         use == FunctionWord.Use.Modal("will") -> stringResource(R.string.note_will_contracted, word, expansion)
         use is FunctionWord.Use.Modal -> stringResource(R.string.note_would_contracted, word, expansion)
+        // "he'd put": had or would; the sentence's translation settles it.
+        " / " in expansion -> expansion.split(" / ").let { stringResource(R.string.note_had_or_would, word, it[0], it[1]) }
         TextTools.normalize(word) == "let's" -> stringResource(R.string.note_lets)
         // The lookalikes learners mix up.
         TextTools.normalize(word) == "it's" -> stringResource(R.string.note_its, expansion)
