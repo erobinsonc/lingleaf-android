@@ -32,7 +32,7 @@ class ReadAloudController(
     var loopCount by mutableStateOf(0)
         private set
 
-    private fun setLoop(stretch: Pair<SentencePosition, SentencePosition>?) {
+    private fun changeLoop(stretch: Pair<SentencePosition, SentencePosition>?) {
         loop = stretch
         loopCount = stretch?.let { (first, last) -> ReadAloud.count(paragraphs, first, last) } ?: 0
     }
@@ -42,7 +42,7 @@ class ReadAloudController(
         from: SentencePosition,
     ) {
         this.paragraphs = paragraphs
-        setLoop(null)
+        changeLoop(null)
         isReading = true
         speak(from)
     }
@@ -64,7 +64,7 @@ class ReadAloudController(
         val back = ReadAloud.previous(paragraphs, repeated?.first ?: now)
         if (repeated != null) {
             if (back == null) return
-            setLoop(back to repeated.second)
+            changeLoop(back to repeated.second)
         }
         isReading = true
         speak(back ?: now)
@@ -73,7 +73,7 @@ class ReadAloudController(
     /** Repeats the sentence being read until turned off; then reading goes on forward. */
     fun toggleRepeat() {
         val now = current ?: return
-        setLoop(if (loop == null) now to now else null)
+        changeLoop(if (loop == null) now to now else null)
     }
 
     fun pause() {
