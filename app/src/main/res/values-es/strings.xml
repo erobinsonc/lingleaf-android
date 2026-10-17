@@ -36,7 +36,7 @@
     <string name="read_from_here">Leer desde aquí</string>
     <string name="play_reading">Reproducir</string>
     <string name="previous_sentence">Frase anterior</string>
-    <string name="add_previous_sentence">Añadir frase anterior</string>
+    <string name="add_previous_sentence">Agregar frase anterior</string>
     <string name="repeat_sentence">Repetir frase</string>
     <string name="repeating">Repitiendo</string>
     <plurals name="repeating_sentences">
