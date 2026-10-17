@@ -6,6 +6,8 @@ import android.graphics.Bitmap
 import android.graphics.BitmapFactory
 import android.net.ConnectivityManager
 import android.net.NetworkCapabilities
+import android.os.Handler
+import android.os.Looper
 import android.speech.tts.TextToSpeech
 import android.speech.tts.UtteranceProgressListener
 import android.util.Log
@@ -84,9 +86,14 @@ fun interface Translator {
 interface Speaker {
     val isSpeaking: StateFlow<Boolean>
 
+    /**
+     * Speaks [text], stopping anything being said. [onDone] runs on the main thread when it
+     * ends by itself (not when stopped): reading aloud goes on with the next sentence.
+     */
     fun speak(
         text: String,
         rate: Float,
+        onDone: (() -> Unit)? = null,
     )
 
     fun stop()
@@ -336,8 +343,13 @@ class AndroidSpeaker(
     private val speaking = MutableStateFlow(false)
     override val isSpeaking: StateFlow<Boolean> = speaking.asStateFlow()
     private var ready = false
-    private var pending: Pair<String, Float>? = null
+    private var pending: Triple<String, Float, (() -> Unit)?>? = null
     private val tts = TextToSpeech(context, this)
+    private val main = Handler(Looper.getMainLooper())
+
+    // The utterance being spoken and what to run when it ends by itself; only touched on the main thread.
+    private var utterance = 0
+    private var onDone: (() -> Unit)? = null
 
     init {
         tts.setOnUtteranceProgressListener(
@@ -348,6 +360,13 @@ class AndroidSpeaker(
 
                 override fun onDone(utteranceId: String?) {
                     speaking.value = false
+                    main.post {
+                        val done = onDone
+                        if (utteranceId == "lingleaf-$utterance" && done != null) {
+                            onDone = null
+                            done()
+                        }
+                    }
                 }
 
                 @Deprecated("Required override for older Android versions")
@@ -369,7 +388,7 @@ class AndroidSpeaker(
         ready = status == TextToSpeech.SUCCESS
         if (ready) {
             tts.language = Locale.US
-            pending?.let { (text, rate) -> speak(text, rate) }
+            pending?.let { (text, rate, done) -> speak(text, rate, done) }
         }
         pending = null
     }
@@ -377,16 +396,22 @@ class AndroidSpeaker(
     override fun speak(
         text: String,
         rate: Float,
+        onDone: (() -> Unit)?,
     ) {
         if (!ready) {
-            pending = text to rate
+            pending = Triple(text, rate, onDone)
             return
         }
+        utterance++
+        this.onDone = onDone
         tts.setSpeechRate(rate)
-        tts.speak(text, TextToSpeech.QUEUE_FLUSH, null, "lingleaf")
+        tts.speak(text, TextToSpeech.QUEUE_FLUSH, null, "lingleaf-$utterance")
     }
 
     override fun stop() {
+        utterance++
+        onDone = null
+        pending = null
         tts.stop()
         speaking.value = false
     }

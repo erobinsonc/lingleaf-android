@@ -363,7 +363,10 @@ fun TappableParagraph(
     selected: WordRange?,
     onWordTap: (WordRange) -> Unit,
     modifier: Modifier = Modifier,
+    /** The sentence being read aloud, on a neutral fill (yellow marks words being learned). */
+    reading: WordRange? = null,
 ) {
+    val readingBackground = MaterialTheme.colorScheme.secondaryContainer
     var layout by remember { mutableStateOf<TextLayoutResult?>(null) }
     val colors = LocalLingleafColors.current
     val currentOnWordTap by rememberUpdatedState(onWordTap)
@@ -379,9 +382,10 @@ fun TappableParagraph(
                 ),
         )
     val annotated =
-        remember(text, words, selected, colors) {
+        remember(text, words, selected, colors, reading, readingBackground) {
             buildAnnotatedString {
                 append(text)
+                reading?.let { addStyle(SpanStyle(background = readingBackground), it.start, it.end) }
                 for (word in words) {
                     addLink(
                         LinkAnnotation.Clickable(

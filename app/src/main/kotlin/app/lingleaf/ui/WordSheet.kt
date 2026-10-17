@@ -23,6 +23,7 @@ import androidx.compose.material.icons.Icons
 import androidx.compose.material.icons.automirrored.filled.VolumeUp
 import androidx.compose.material.icons.filled.Check
 import androidx.compose.material.icons.filled.ExpandMore
+import androidx.compose.material.icons.filled.PlayArrow
 import androidx.compose.material.icons.filled.RecordVoiceOver
 import androidx.compose.material3.Button
 import androidx.compose.material3.ButtonDefaults
@@ -115,6 +116,8 @@ fun WordSheet(
     onDismiss: () -> Unit,
     rangeInSentence: WordRange? = null,
     function: FunctionWord? = null,
+    /** Reads the book aloud from this sentence on; null hides the button. */
+    onReadFromHere: (() -> Unit)? = null,
 ) {
     // A helper or modal verb (SPEC S16): its verb group ("did not go") is what's shown,
     // translated, heard and saved; without one, the sentence is saved.
@@ -311,6 +314,14 @@ fun WordSheet(
                         sentenceTranslation?.let {
                             Spacer(Modifier.height(6.dp))
                             Text(it, color = MaterialTheme.colorScheme.onSurfaceVariant)
+                        }
+                        // Back to an earlier point, or on from this one (SPEC S6).
+                        onReadFromHere?.let {
+                            TextButton(onClick = it, contentPadding = ButtonDefaults.TextButtonWithIconContentPadding) {
+                                Icon(Icons.Filled.PlayArrow, contentDescription = null, modifier = Modifier.size(ButtonDefaults.IconSize))
+                                Spacer(Modifier.width(ButtonDefaults.IconSpacing))
+                                Text(stringResource(R.string.read_from_here))
+                            }
                         }
                     }
                     IconButton(onClick = { container.speaker.speak(sentence, state.settings.speechRate) }) {

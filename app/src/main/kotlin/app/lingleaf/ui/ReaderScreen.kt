@@ -1,6 +1,7 @@
 package app.lingleaf.ui
 
 import android.provider.Settings.Global
+import androidx.compose.foundation.interaction.DragInteraction
 import androidx.compose.foundation.layout.Box
 import androidx.compose.foundation.layout.Column
 import androidx.compose.foundation.layout.PaddingValues
@@ -10,13 +11,14 @@ import androidx.compose.foundation.layout.navigationBarsPadding
 import androidx.compose.foundation.layout.padding
 import androidx.compose.foundation.layout.widthIn
 import androidx.compose.foundation.lazy.LazyColumn
+import androidx.compose.foundation.lazy.LazyListState
 import androidx.compose.foundation.lazy.itemsIndexed
 import androidx.compose.foundation.lazy.rememberLazyListState
 import androidx.compose.material.icons.Icons
 import androidx.compose.material.icons.automirrored.filled.VolumeUp
 import androidx.compose.material.icons.filled.Add
+import androidx.compose.material.icons.filled.Pause
 import androidx.compose.material.icons.filled.Remove
-import androidx.compose.material.icons.filled.Stop
 import androidx.compose.material3.CircularProgressIndicator
 import androidx.compose.material3.Icon
 import androidx.compose.material3.IconButton
@@ -46,6 +48,8 @@ import androidx.lifecycle.compose.LifecycleResumeEffect
 import androidx.lifecycle.compose.collectAsStateWithLifecycle
 import app.lingleaf.R
 import app.lingleaf.core.FunctionWords
+import app.lingleaf.core.ReadAloud
+import app.lingleaf.core.SentencePosition
 import app.lingleaf.core.TextTools
 import app.lingleaf.core.WordRange
 import kotlinx.coroutines.launch
@@ -62,7 +66,6 @@ fun ReaderScreen(
     val library = container.library
     val state by library.state.collectAsStateWithLifecycle()
     val book = state.books.firstOrNull { it.id == bookId }
-    val speaking by container.speaker.isSpeaking.collectAsStateWithLifecycle()
     var paragraphs by remember { mutableStateOf<List<String>?>(null) }
     var selection by remember { mutableStateOf<Selection?>(null) }
     val fontSize = state.settings.fontSize
@@ -75,6 +78,26 @@ fun ReaderScreen(
     LaunchedEffect(bookId) {
         paragraphs = withContext(container.io) { library.openBook(bookId) }
     }
+    // Reading aloud sentence by sentence (SPEC S6); reading moves the saved position.
+    val reading =
+        remember(bookId) {
+            ReadAloudController(container.speaker, { library.state.value.settings.speechRate }) {
+                library.updateProgress(bookId, it.paragraph)
+            }
+        }
+    // Hoisted so Read aloud starts at the paragraph on screen, not the last saved one.
+    var listState by remember { mutableStateOf<LazyListState?>(null) }
+    var following by remember { mutableStateOf(true) }
+
+    fun readFrom(
+        paragraph: Int,
+        offset: Int,
+    ) {
+        val loaded = paragraphs ?: return
+        val start = ReadAloud.start(loaded, paragraph, offset) ?: return
+        following = true
+        reading.read(loaded, start)
+    }
 
     // Count reading time while the reader is on screen and the app is in front.
     LifecycleResumeEffect(bookId) {
@@ -85,6 +108,8 @@ fun ReaderScreen(
                 library.addReadingTime(seconds)
                 library.flush()
             }
+            // No reading aloud without the text on screen.
+            reading.pause()
             container.speaker.stop()
         }
     }
@@ -95,14 +120,22 @@ fun ReaderScreen(
         snackbarHostState = snackbar,
         actions = {
             IconButton(onClick = {
-                if (speaking) {
-                    container.speaker.stop()
-                } else {
-                    paragraphs?.getOrNull(book?.progressParagraph ?: 0)?.let { container.speaker.speak(it, state.settings.speechRate) }
+                val loaded = paragraphs
+                val visible = listState?.layoutInfo?.visibleItemsInfo?.map { it.index }.orEmpty()
+                val paused = reading.current
+                when {
+                    reading.isReading -> reading.pause()
+                    loaded.isNullOrEmpty() -> Unit
+                    // From the paused sentence when it is on screen, else from the top of the screen.
+                    paused != null && paused.paragraph in visible -> {
+                        following = true
+                        reading.read(loaded, paused)
+                    }
+                    else -> readFrom(listState?.firstVisibleItemIndex ?: book?.progressParagraph ?: 0, 0)
                 }
             }) {
-                if (speaking) {
-                    Icon(Icons.Filled.Stop, contentDescription = stringResource(R.string.stop_reading))
+                if (reading.isReading) {
+                    Icon(Icons.Filled.Pause, contentDescription = stringResource(R.string.pause_reading))
                 } else {
                     Icon(Icons.AutoMirrored.Filled.VolumeUp, contentDescription = stringResource(R.string.read_aloud))
                 }
@@ -144,8 +177,16 @@ fun ReaderScreen(
                         fontSize = fontSize,
                         isLearning = state::isLearning,
                         selection = selection,
+                        reading = reading.current,
+                        following = following,
+                        onFollowingChange = { following = it },
+                        onListState = { listState = it },
                         onScroll = { library.updateProgress(bookId, it) },
-                        onWordTap = { index, word -> selection = Selection(index, word) },
+                        onWordTap = { index, word ->
+                            // Tapping a word pauses reading aloud: its sheet has its own Listen.
+                            reading.pause()
+                            selection = Selection(index, word)
+                        },
                     )
             }
         }
@@ -172,6 +213,10 @@ fun ReaderScreen(
                 }
             },
             onDismiss = { selection = null },
+            onReadFromHere = {
+                selection = null
+                readFrom(current.paragraph, current.word.start)
+            },
         )
     }
 }
@@ -183,10 +228,40 @@ private fun ReaderText(
     fontSize: Float,
     isLearning: (String) -> Boolean,
     selection: Selection?,
+    reading: SentencePosition?,
+    following: Boolean,
+    onFollowingChange: (Boolean) -> Unit,
+    onListState: (LazyListState) -> Unit,
     onScroll: (Int) -> Unit,
     onWordTap: (Int, WordRange) -> Unit,
 ) {
     val listState = rememberLazyListState(initialFirstVisibleItemIndex = initialParagraph)
+    LaunchedEffect(listState) { onListState(listState) }
+    val animate = Global.getFloat(LocalContext.current.contentResolver, Global.ANIMATOR_DURATION_SCALE, 1f) > 0f
+
+    // Scrolling by hand while reading aloud: stop following until the sentence is back on screen.
+    LaunchedEffect(listState) {
+        listState.interactionSource.interactions.collect { if (it is DragInteraction.Start) onFollowingChange(false) }
+    }
+
+    // Keep the sentence being read on screen: when it starts below 85 % of the reader or above
+    // it, scroll it to the upper third (estimated from its offset, as for a tapped word).
+    LaunchedEffect(reading, following) {
+        val sentence = reading ?: return@LaunchedEffect
+        val info = listState.layoutInfo
+        val item = info.visibleItemsInfo.firstOrNull { it.index == sentence.paragraph }
+        val viewport = info.viewportEndOffset - info.viewportStartOffset
+        val length = paragraphs[sentence.paragraph].length.coerceAtLeast(1)
+        val sentenceY = item?.let { it.offset + it.size * sentence.range.start / length }
+        val onScreen = sentenceY != null && sentenceY in 0..(viewport * 85 / 100)
+        if (!following) {
+            if (onScreen) onFollowingChange(true)
+            return@LaunchedEffect
+        }
+        if (onScreen) return@LaunchedEffect
+        val offset = item?.let { (it.size * sentence.range.start / length - viewport / 3).coerceAtLeast(0) } ?: 0
+        if (animate) listState.animateScrollToItem(sentence.paragraph, offset) else listState.scrollToItem(sentence.paragraph, offset)
+    }
     val context = LocalContext.current
     val words = remember(paragraphs) { paragraphs.map(TextTools::wordRanges) }
     val style =
@@ -236,6 +311,7 @@ private fun ReaderText(
                     style = style,
                     isLearning = isLearning,
                     selected = selection?.takeIf { it.paragraph == index }?.word,
+                    reading = reading?.takeIf { it.paragraph == index }?.range,
                     onWordTap = { onWordTap(index, it) },
                     modifier = Modifier.padding(bottom = (fontSize * 0.9f).dp),
                 )

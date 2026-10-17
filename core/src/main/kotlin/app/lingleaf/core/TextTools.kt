@@ -161,6 +161,12 @@ object TextTools {
     fun sentenceRangeAt(
         paragraph: String,
         offset: Int,
+    ): WordRange = capped(paragraph, sentenceBounds(paragraph, offset), offset)
+
+    /** The whole sentence of [paragraph] at [offset], trimmed and not capped. */
+    internal fun sentenceBounds(
+        paragraph: String,
+        offset: Int,
     ): WordRange {
         var start = 0
         var end = paragraph.length
@@ -173,8 +179,7 @@ object TextTools {
             start = matchEnd
         }
         val sentence = trimmed(paragraph, start, end)
-        val found = if (sentence.start == sentence.end) trimmed(paragraph, 0, paragraph.length) else sentence
-        return capped(paragraph, found, offset)
+        return if (sentence.start == sentence.end) trimmed(paragraph, 0, paragraph.length) else sentence
     }
 
     /**

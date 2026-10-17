@@ -57,15 +57,27 @@ import org.robolectric.annotation.GraphicsMode
 class FakeSpeaker : Speaker {
     val spoken = mutableListOf<String>()
     override val isSpeaking: StateFlow<Boolean> = MutableStateFlow(false)
+    private var onDone: (() -> Unit)? = null
 
     override fun speak(
         text: String,
         rate: Float,
+        onDone: (() -> Unit)?,
     ) {
         spoken += text
+        this.onDone = onDone
     }
 
-    override fun stop() = Unit
+    override fun stop() {
+        onDone = null
+    }
+
+    /** The text being spoken ends by itself. */
+    fun finish() {
+        val done = onDone
+        onDone = null
+        done?.invoke()
+    }
 }
 
 private val dictionaryJson =
@@ -495,15 +507,30 @@ class AppTest {
         val paragraph = hasText("The sun is up.", substring = true)
         compose.waitUntil(WAIT_MS) { compose.onAllNodes(paragraph).fetchSemanticsNodes().isNotEmpty() }
 
+        // Read aloud goes on sentence by sentence to the end; the same button pauses (issue #32).
         compose.onNodeWithContentDescription("Read aloud").performClick()
-        assertEquals(listOf("The sun is up. All animals are equal."), speaker.spoken)
+        assertEquals(listOf("The sun is up."), speaker.spoken)
+        compose.onNodeWithContentDescription("Pause").assertExists()
+        compose.runOnIdle { speaker.finish() }
+        compose.runOnIdle { speaker.finish() }
+        assertEquals(listOf("The sun is up.", "All animals are equal.", "The end."), speaker.spoken)
+        compose.runOnIdle { speaker.finish() }
+        compose.onNodeWithContentDescription("Read aloud").assertExists()
 
+        // Tapping a word pauses; its sheet speaks the word and the sentence.
+        compose.onNodeWithContentDescription("Read aloud").performClick()
         compose.onAllNodes(paragraph).onFirst().invokeCustomAction("Look up equal")
         compose.waitUntil(WAIT_MS) { compose.onAllNodesWithText("igual").fetchSemanticsNodes().isNotEmpty() }
+        compose.runOnIdle { speaker.finish() }
         compose.onNodeWithContentDescription("Listen to equal").performClick()
         compose.onNodeWithContentDescription("Listen to the sentence").performClick()
+        assertEquals("paused: nothing more read", listOf("The sun is up.", "equal", "All animals are equal."), speaker.spoken.drop(3))
 
-        assertEquals(listOf("The sun is up. All animals are equal.", "equal", "All animals are equal."), speaker.spoken)
+        // Read from here starts at the word's sentence (issue #33).
+        compose.onNodeWithText("Read from here").performClick()
+        compose.waitForIdle()
+        assertEquals("All animals are equal.", speaker.spoken.last())
+        compose.onNodeWithContentDescription("Pause").assertExists()
     }
 
     // S9 Discover: a search shows its results above the recommended books.

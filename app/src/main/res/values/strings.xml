@@ -37,7 +37,8 @@
 
     <!-- Reader -->
     <string name="read_aloud">Read aloud</string>
-    <string name="stop_reading">Stop reading</string>
+    <string name="pause_reading">Pause</string>
+    <string name="read_from_here">Read from here</string>
     <string name="smaller_text">Smaller text</string>
     <string name="larger_text">Larger text</string>
     <string name="book_empty">This book is empty.</string>

@@ -32,7 +32,8 @@
     </plurals>
 
     <string name="read_aloud">Leer en voz alta</string>
-    <string name="stop_reading">Detener lectura</string>
+    <string name="pause_reading">Pausar</string>
+    <string name="read_from_here">Leer desde aquí</string>
     <string name="smaller_text">Letra más pequeña</string>
     <string name="larger_text">Letra más grande</string>
     <string name="book_empty">Este libro está vacío.</string>
