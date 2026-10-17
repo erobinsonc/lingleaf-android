@@ -20,8 +20,21 @@ android {
     }
 
     buildTypes {
+        // R8 removes unused code (less to attack) and the log calls (proguard-rules.pro).
+        // Renaming hides nothing in an open-source app; shrinking is what counts.
         release {
-            isMinifyEnabled = false
+            isMinifyEnabled = true
+            isShrinkResources = true
+            proguardFiles(getDefaultProguardFile("proguard-android-optimize.txt"), "proguard-rules.pro")
+        }
+        // The release code path (R8 on) with the debug key and test hooks, so CI's emulator
+        // tour proves the shrunk app still saves, reads and shows everything.
+        create("minified") {
+            initWith(getByName("debug"))
+            isMinifyEnabled = true
+            isShrinkResources = true
+            proguardFiles(getDefaultProguardFile("proguard-android-optimize.txt"), "proguard-rules.pro")
+            matchingFallbacks += listOf("debug")
         }
     }
 

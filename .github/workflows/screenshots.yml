@@ -33,7 +33,8 @@ jobs:
           distribution: temurin
           java-version: "17"
       - uses: gradle/actions/setup-gradle@v4
-      - run: ./gradlew :app:assembleDebug --no-daemon
+      # The shrunk (R8) build, so the tour also proves R8 kept everything the app needs.
+      - run: ./gradlew :app:assembleMinified --no-daemon
       # The emulator needs several GB for its data partition; the runner image
       # ships toolchains this job never uses.
       - name: Free disk space

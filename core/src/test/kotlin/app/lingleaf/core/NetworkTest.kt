@@ -203,6 +203,15 @@ class DictionaryTest {
         }
 
     @Test
+    fun `huge answers are cut to sane lengths`() =
+        runTest {
+            val huge = "plural ".repeat(200_000)
+            val result = DictionaryClient { entry("big", huge, phonetic = "x".repeat(5_000)) }.lookup("big")!!
+            assertEquals(DictionaryEntry.MAX_DEFINITION, result.definition!!.length)
+            assertEquals(DictionaryEntry.MAX_SHORT_FIELD, result.phonetic!!.length)
+        }
+
+    @Test
     fun `returns null when offline, on server errors or bad JSON`() =
         runTest {
             assertNull(DictionaryClient { throw NetworkException("offline") }.lookup("equal"))
@@ -210,4 +219,20 @@ class DictionaryTest {
             assertNull(DictionaryClient { ok("not json") }.lookup("equal"))
             assertNull(DictionaryClient { notFound }.lookup("zzzz"))
         }
+}
+
+class HostsTest {
+    @Test
+    fun `only HTTPS to the app's hosts is allowed`() {
+        assertTrue(Hosts.isAllowed("https://www.gutenberg.org/cache/epub/11/pg11.txt"))
+        assertTrue(Hosts.isAllowed("https://gutendex.com/books/?search=alice"))
+        assertTrue(Hosts.isAllowed("https://api.dictionaryapi.dev/api/v2/entries/en/walk"))
+        assertFalse(Hosts.isAllowed("http://www.gutenberg.org/x"), "plain HTTP")
+        assertFalse(Hosts.isAllowed("https://evil.example/x"), "another host")
+        assertFalse(Hosts.isAllowed("https://gutenberg.org.evil.example/x"), "a look-alike host")
+        assertFalse(Hosts.isAllowed("https://www.gutenberg.org:8443/x"), "another port")
+        assertFalse(Hosts.isAllowed("https://user@www.gutenberg.org/x"), "credentials in the URL")
+        assertFalse(Hosts.isAllowed("not a url"))
+        assertFalse(Hosts.isAllowed(null))
+    }
 }
