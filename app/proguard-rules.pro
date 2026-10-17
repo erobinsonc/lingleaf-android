@@ -6,7 +6,7 @@
     *** Companion;
 }
 -if @kotlinx.serialization.Serializable class app.lingleaf.**
--keepclassmembers class <1>$Companion {
+-keepclassmembers class app.lingleaf.<1>$Companion {
     kotlinx.serialization.KSerializer serializer(...);
 }
 -keep,includedescriptorclasses class app.lingleaf.**$$serializer { *; }
