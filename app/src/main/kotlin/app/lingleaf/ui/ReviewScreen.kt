@@ -45,9 +45,11 @@ import androidx.compose.ui.Modifier
 import androidx.compose.ui.res.pluralStringResource
 import androidx.compose.ui.res.stringResource
 import androidx.compose.ui.semantics.LiveRegionMode
+import androidx.compose.ui.semantics.ProgressBarRangeInfo
 import androidx.compose.ui.semantics.clearAndSetSemantics
 import androidx.compose.ui.semantics.contentDescription
 import androidx.compose.ui.semantics.liveRegion
+import androidx.compose.ui.semantics.progressBarRangeInfo
 import androidx.compose.ui.semantics.semantics
 import androidx.compose.ui.semantics.stateDescription
 import androidx.compose.ui.text.SpanStyle
@@ -178,6 +180,8 @@ private fun ReviewCard(
             Modifier.fillMaxWidth().clearAndSetSemantics {
                 contentDescription = progressLabel
                 stateDescription = count
+                // Still a progress bar to TalkBack, as on iOS.
+                progressBarRangeInfo = ProgressBarRangeInfo(reviewed.toFloat(), 0f..maxOf(total, 1).toFloat())
             },
             verticalAlignment = Alignment.CenterVertically,
         ) {
