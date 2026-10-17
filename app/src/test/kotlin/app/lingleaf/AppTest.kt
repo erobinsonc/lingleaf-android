@@ -57,15 +57,28 @@ import org.robolectric.annotation.GraphicsMode
 class FakeSpeaker : Speaker {
     val spoken = mutableListOf<String>()
     override val isSpeaking: StateFlow<Boolean> = MutableStateFlow(false)
+    private var onDone: (() -> Unit)? = null
 
     override fun speak(
         text: String,
         rate: Float,
+        onDone: (() -> Unit)?,
+        onError: (() -> Unit)?,
     ) {
         spoken += text
+        this.onDone = onDone
     }
 
-    override fun stop() = Unit
+    override fun stop() {
+        onDone = null
+    }
+
+    /** The text being spoken ends by itself. */
+    fun finish() {
+        val done = onDone
+        onDone = null
+        done?.invoke()
+    }
 }
 
 private val dictionaryJson =
@@ -534,15 +547,45 @@ class AppTest {
         val paragraph = hasText("The sun is up.", substring = true)
         compose.waitUntil(WAIT_MS) { compose.onAllNodes(paragraph).fetchSemanticsNodes().isNotEmpty() }
 
+        // Read aloud goes on sentence by sentence to the end; the bar at the bottom pauses (issue #32).
         compose.onNodeWithContentDescription("Read aloud").performClick()
-        assertEquals(listOf("The sun is up. All animals are equal."), speaker.spoken)
+        assertEquals(listOf("The sun is up."), speaker.spoken)
+        compose.onNodeWithContentDescription("Pause").assertExists()
+        compose.runOnIdle { speaker.finish() }
+        compose.runOnIdle { speaker.finish() }
+        assertEquals(listOf("The sun is up.", "All animals are equal.", "The end."), speaker.spoken)
+        compose.runOnIdle { speaker.finish() }
+        compose.onNodeWithContentDescription("Read aloud").assertExists()
 
+        // Tapping a word pauses; its sheet speaks the word and the sentence.
+        compose.onNodeWithContentDescription("Read aloud").performClick()
         compose.onAllNodes(paragraph).onFirst().invokeCustomAction("Look up equal")
         compose.waitUntil(WAIT_MS) { compose.onAllNodesWithText("igual").fetchSemanticsNodes().isNotEmpty() }
+        compose.runOnIdle { speaker.finish() }
         compose.onNodeWithContentDescription("Listen to equal").performClick()
         compose.onNodeWithContentDescription("Listen to the sentence").performClick()
+        assertEquals("paused: nothing more read", listOf("The sun is up.", "equal", "All animals are equal."), speaker.spoken.drop(3))
 
-        assertEquals(listOf("The sun is up. All animals are equal.", "equal", "All animals are equal."), speaker.spoken)
+        // Read from here starts at the word's sentence (issue #33).
+        compose.onNodeWithText("Read from here").performClick()
+        compose.waitForIdle()
+        assertEquals("All animals are equal.", speaker.spoken.last())
+
+        // The bar at the bottom repeats the sentence and grows the stretch backwards (issue #33).
+        compose.onNodeWithContentDescription("Repeat sentence").performClick()
+        compose.onNodeWithText("Repeating 1 sentence").assertExists()
+        compose.runOnIdle { speaker.finish() }
+        assertEquals("the sentence again", "All animals are equal.", speaker.spoken.last())
+        compose.onNodeWithContentDescription("Add previous sentence").performClick()
+        compose.onNodeWithText("Repeating 2 sentences").assertExists()
+        assertEquals("the stretch from its new start", "The sun is up.", speaker.spoken.last())
+        compose.runOnIdle { speaker.finish() }
+        compose.runOnIdle { speaker.finish() }
+        assertEquals("then back to the start", listOf("All animals are equal.", "The sun is up."), speaker.spoken.takeLast(2))
+        compose.onNodeWithContentDescription("Repeat sentence").performClick()
+        compose.onNodeWithContentDescription("Previous sentence").assertExists()
+        compose.onNodeWithContentDescription("Pause").performClick()
+        compose.onNodeWithContentDescription("Play").assertExists()
     }
 
     // S9 Discover: a search shows its results above the recommended books.
@@ -553,7 +596,8 @@ class AppTest {
         compose.onNode(hasSetTextAction()).performTextInput("alice")
         compose.onNode(hasSetTextAction()).performImeAction()
         compose.waitUntil(WAIT_MS) { compose.onAllNodesWithText("Results").fetchSemanticsNodes().isNotEmpty() }
-        compose.onAllNodes(hasContentDescription("Get $ALICE_TITLE")).onFirst().assertExists()
+        // The heading and the rows are laid out in separate frames: wait for the row itself.
+        compose.waitUntil(WAIT_MS) { compose.onAllNodes(hasContentDescription("Get $ALICE_TITLE")).fetchSemanticsNodes().isNotEmpty() }
     }
 
     // S9 Discover: recommended books ship with the app; Get shows progress and turns into Read;

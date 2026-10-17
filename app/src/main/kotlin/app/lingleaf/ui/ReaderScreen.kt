@@ -1,28 +1,38 @@
 package app.lingleaf.ui
 
 import android.provider.Settings.Global
+import androidx.compose.foundation.interaction.DragInteraction
 import androidx.compose.foundation.layout.Box
 import androidx.compose.foundation.layout.Column
 import androidx.compose.foundation.layout.PaddingValues
+import androidx.compose.foundation.layout.Spacer
 import androidx.compose.foundation.layout.fillMaxSize
 import androidx.compose.foundation.layout.fillMaxWidth
 import androidx.compose.foundation.layout.navigationBarsPadding
 import androidx.compose.foundation.layout.padding
 import androidx.compose.foundation.layout.widthIn
 import androidx.compose.foundation.lazy.LazyColumn
+import androidx.compose.foundation.lazy.LazyListState
 import androidx.compose.foundation.lazy.itemsIndexed
 import androidx.compose.foundation.lazy.rememberLazyListState
 import androidx.compose.material.icons.Icons
 import androidx.compose.material.icons.automirrored.filled.VolumeUp
 import androidx.compose.material.icons.filled.Add
+import androidx.compose.material.icons.filled.Pause
+import androidx.compose.material.icons.filled.PlayArrow
 import androidx.compose.material.icons.filled.Remove
-import androidx.compose.material.icons.filled.Stop
+import androidx.compose.material.icons.filled.RepeatOne
+import androidx.compose.material.icons.filled.SkipPrevious
+import androidx.compose.material3.BottomAppBar
+import androidx.compose.material3.BottomAppBarDefaults
 import androidx.compose.material3.CircularProgressIndicator
+import androidx.compose.material3.FilledTonalIconToggleButton
 import androidx.compose.material3.Icon
 import androidx.compose.material3.IconButton
 import androidx.compose.material3.LinearProgressIndicator
 import androidx.compose.material3.MaterialTheme
 import androidx.compose.material3.SnackbarHostState
+import androidx.compose.material3.Surface
 import androidx.compose.material3.Text
 import androidx.compose.runtime.Composable
 import androidx.compose.runtime.LaunchedEffect
@@ -30,15 +40,28 @@ import androidx.compose.runtime.getValue
 import androidx.compose.runtime.mutableStateOf
 import androidx.compose.runtime.remember
 import androidx.compose.runtime.rememberCoroutineScope
+import androidx.compose.runtime.rememberUpdatedState
 import androidx.compose.runtime.setValue
 import androidx.compose.runtime.snapshotFlow
 import androidx.compose.ui.Alignment
 import androidx.compose.ui.Modifier
+import androidx.compose.ui.draw.drawBehind
+import androidx.compose.ui.focus.FocusRequester
+import androidx.compose.ui.focus.focusRequester
+import androidx.compose.ui.geometry.Offset
+import androidx.compose.ui.geometry.Size
+import androidx.compose.ui.graphics.Color
+import androidx.compose.ui.graphics.drawscope.DrawScope
 import androidx.compose.ui.platform.LocalContext
+import androidx.compose.ui.res.pluralStringResource
 import androidx.compose.ui.res.stringResource
+import androidx.compose.ui.semantics.LiveRegionMode
 import androidx.compose.ui.semantics.contentDescription
+import androidx.compose.ui.semantics.liveRegion
 import androidx.compose.ui.semantics.semantics
+import androidx.compose.ui.semantics.stateDescription
 import androidx.compose.ui.text.TextStyle
+import androidx.compose.ui.text.style.TextAlign
 import androidx.compose.ui.unit.dp
 import androidx.compose.ui.unit.em
 import androidx.compose.ui.unit.sp
@@ -46,6 +69,8 @@ import androidx.lifecycle.compose.LifecycleResumeEffect
 import androidx.lifecycle.compose.collectAsStateWithLifecycle
 import app.lingleaf.R
 import app.lingleaf.core.FunctionWords
+import app.lingleaf.core.ReadAloud
+import app.lingleaf.core.SentencePosition
 import app.lingleaf.core.TextTools
 import app.lingleaf.core.WordRange
 import kotlinx.coroutines.launch
@@ -62,7 +87,6 @@ fun ReaderScreen(
     val library = container.library
     val state by library.state.collectAsStateWithLifecycle()
     val book = state.books.firstOrNull { it.id == bookId }
-    val speaking by container.speaker.isSpeaking.collectAsStateWithLifecycle()
     var paragraphs by remember { mutableStateOf<List<String>?>(null) }
     var selection by remember { mutableStateOf<Selection?>(null) }
     val fontSize = state.settings.fontSize
@@ -75,6 +99,26 @@ fun ReaderScreen(
     LaunchedEffect(bookId) {
         paragraphs = withContext(container.io) { library.openBook(bookId) }
     }
+    // Reading aloud sentence by sentence (SPEC S6); reading moves the saved position.
+    val reading =
+        remember(bookId) {
+            ReadAloudController(container.speaker, { library.state.value.settings.speechRate }) {
+                library.updateProgress(bookId, it.paragraph)
+            }
+        }
+    // Hoisted so Read aloud starts at the paragraph on screen, not the last saved one.
+    var listState by remember { mutableStateOf<LazyListState?>(null) }
+    var following by remember { mutableStateOf(true) }
+
+    fun readFrom(
+        paragraph: Int,
+        offset: Int,
+    ) {
+        val loaded = paragraphs ?: return
+        val start = ReadAloud.start(loaded, paragraph, offset) ?: return
+        following = true
+        reading.read(loaded, start)
+    }
 
     // Count reading time while the reader is on screen and the app is in front.
     LifecycleResumeEffect(bookId) {
@@ -85,6 +129,8 @@ fun ReaderScreen(
                 library.addReadingTime(seconds)
                 library.flush()
             }
+            // No reading aloud without the text on screen.
+            reading.pause()
             container.speaker.stop()
         }
     }
@@ -93,17 +139,20 @@ fun ReaderScreen(
         title = book?.title.orEmpty(),
         onBack = onBack,
         snackbarHostState = snackbar,
+        // Once reading aloud starts, its controls sit at the bottom, in reach of the thumb (issue #33).
+        bottomBar = {
+            if (reading.current != null) {
+                ReadAloudBar(
+                    reading = reading,
+                    onFollow = { following = true },
+                )
+            }
+        },
         actions = {
-            IconButton(onClick = {
-                if (speaking) {
-                    container.speaker.stop()
-                } else {
-                    paragraphs?.getOrNull(book?.progressParagraph ?: 0)?.let { container.speaker.speak(it, state.settings.speechRate) }
-                }
-            }) {
-                if (speaking) {
-                    Icon(Icons.Filled.Stop, contentDescription = stringResource(R.string.stop_reading))
-                } else {
+            // Starts reading aloud; once started, the bar at the bottom has the controls.
+            if (reading.current == null) {
+                // From the top of the screen (not the last saved paragraph).
+                IconButton(onClick = { readFrom(listState?.firstVisibleItemIndex ?: book?.progressParagraph ?: 0, 0) }) {
                     Icon(Icons.AutoMirrored.Filled.VolumeUp, contentDescription = stringResource(R.string.read_aloud))
                 }
             }
@@ -144,8 +193,17 @@ fun ReaderScreen(
                         fontSize = fontSize,
                         isLearning = state::isLearning,
                         selection = selection,
+                        reading = reading.current,
+                        loop = reading.loop,
+                        following = following,
+                        onFollowingChange = { following = it },
+                        onListState = { listState = it },
                         onScroll = { library.updateProgress(bookId, it) },
-                        onWordTap = { index, word -> selection = Selection(index, word) },
+                        onWordTap = { index, word ->
+                            // Tapping a word pauses reading aloud: its sheet has its own Listen.
+                            reading.pause()
+                            selection = Selection(index, word)
+                        },
                     )
             }
         }
@@ -172,6 +230,10 @@ fun ReaderScreen(
                 }
             },
             onDismiss = { selection = null },
+            onReadFromHere = {
+                selection = null
+                readFrom(current.paragraph, current.word.start)
+            },
         )
     }
 }
@@ -183,10 +245,52 @@ private fun ReaderText(
     fontSize: Float,
     isLearning: (String) -> Boolean,
     selection: Selection?,
+    reading: SentencePosition?,
+    loop: Pair<SentencePosition, SentencePosition>?,
+    following: Boolean,
+    onFollowingChange: (Boolean) -> Unit,
+    onListState: (LazyListState) -> Unit,
     onScroll: (Int) -> Unit,
     onWordTap: (Int, WordRange) -> Unit,
 ) {
     val listState = rememberLazyListState(initialFirstVisibleItemIndex = initialParagraph)
+    LaunchedEffect(listState) { onListState(listState) }
+    // Neutral, like the highlight: yellow marks words being learned.
+    val loopBar = MaterialTheme.colorScheme.onSurfaceVariant
+    val animate = Global.getFloat(LocalContext.current.contentResolver, Global.ANIMATOR_DURATION_SCALE, 1f) > 0f
+
+    // Scrolling by hand while reading aloud: stop following until the sentence is back on screen.
+    LaunchedEffect(listState) {
+        listState.interactionSource.interactions.collect { if (it is DragInteraction.Start) onFollowingChange(false) }
+    }
+    // Follow again as soon as the paragraph being read is back on screen (as on iOS).
+    val currentReading by rememberUpdatedState(reading)
+    val currentFollowing by rememberUpdatedState(following)
+    LaunchedEffect(listState) {
+        snapshotFlow { listState.layoutInfo.visibleItemsInfo.map { it.index } }.collect { visible ->
+            val paragraph = currentReading?.paragraph ?: return@collect
+            if (!currentFollowing && paragraph in visible) onFollowingChange(true)
+        }
+    }
+
+    // Keep the sentence being read on screen: when it starts below 85 % of the reader or above
+    // it, scroll it to the upper third (estimated from its offset, as for a tapped word).
+    LaunchedEffect(reading, following) {
+        val sentence = reading ?: return@LaunchedEffect
+        val info = listState.layoutInfo
+        val item = info.visibleItemsInfo.firstOrNull { it.index == sentence.paragraph }
+        val viewport = info.viewportEndOffset - info.viewportStartOffset
+        val length = paragraphs[sentence.paragraph].length.coerceAtLeast(1)
+        val sentenceY = item?.let { it.offset + it.size * sentence.range.start / length }
+        val onScreen = sentenceY != null && sentenceY in 0..(viewport * 85 / 100)
+        if (!following) {
+            if (onScreen) onFollowingChange(true)
+            return@LaunchedEffect
+        }
+        if (onScreen) return@LaunchedEffect
+        val offset = item?.let { (it.size * sentence.range.start / length - viewport / 3).coerceAtLeast(0) } ?: 0
+        if (animate) listState.animateScrollToItem(sentence.paragraph, offset) else listState.scrollToItem(sentence.paragraph, offset)
+    }
     val context = LocalContext.current
     val words = remember(paragraphs) { paragraphs.map(TextTools::wordRanges) }
     val style =
@@ -230,16 +334,115 @@ private fun ReaderText(
                     .navigationBarsPadding(),
         ) {
             itemsIndexed(paragraphs) { index, paragraph ->
+                // A repeated stretch also gets a bar at the side, not only a fill.
+                val repeated = loop != null && index in loop.first.paragraph..loop.second.paragraph
                 TappableParagraph(
                     text = paragraph,
                     words = words[index],
                     style = style,
                     isLearning = isLearning,
                     selected = selection?.takeIf { it.paragraph == index }?.word,
+                    reading = highlighted(paragraphs, index, reading, loop),
                     onWordTap = { onWordTap(index, it) },
-                    modifier = Modifier.padding(bottom = (fontSize * 0.9f).dp),
+                    modifier =
+                        Modifier
+                            .then(if (repeated) Modifier.drawBehind { sideBar(loopBar) } else Modifier)
+                            .padding(bottom = (fontSize * 0.9f).dp),
                 )
             }
         }
     }
+}
+
+/**
+ * The sentences of paragraph [index] to highlight: the repeated stretch when repeating, else
+ * the sentence being read.
+ */
+private fun highlighted(
+    paragraphs: List<String>,
+    index: Int,
+    reading: SentencePosition?,
+    loop: Pair<SentencePosition, SentencePosition>?,
+): List<WordRange> {
+    if (loop == null) return listOfNotNull(reading?.takeIf { it.paragraph == index }?.range)
+    val (first, last) = loop
+    if (index !in first.paragraph..last.paragraph) return emptyList()
+    return ReadAloud.sentences(paragraphs[index]).filter { range ->
+        (index > first.paragraph || range.start >= first.range.start) && (index < last.paragraph || range.end <= last.range.end)
+    }
+}
+
+/**
+ * Previous sentence · Pause/Play · Repeat sentence, at the bottom while reading aloud or paused
+ * (SPEC S6). While repeating, Previous sentence adds one to the stretch and the bar says how many.
+ */
+@Composable
+private fun ReadAloudBar(
+    reading: ReadAloudController,
+    onFollow: () -> Unit,
+) {
+    val repeating = reading.loop != null
+    // When the bar appears, screen readers move to Pause: the button they were on is gone.
+    val pauseFocus = remember { FocusRequester() }
+    LaunchedEffect(Unit) { runCatching { pauseFocus.requestFocus() } }
+    // One surface for the bar and the line above it, so there is no seam between them.
+    Surface(color = BottomAppBarDefaults.containerColor) {
+        Column {
+            if (repeating) {
+                // Says how long the repeated stretch is, also to screen readers as it grows.
+                Text(
+                    pluralStringResource(R.plurals.repeating_sentences, reading.loopCount, reading.loopCount),
+                    style = MaterialTheme.typography.labelLarge,
+                    textAlign = TextAlign.Center,
+                    modifier =
+                        Modifier
+                            .fillMaxWidth()
+                            .padding(top = 8.dp)
+                            .semantics { liveRegion = LiveRegionMode.Polite },
+                )
+            }
+            BottomAppBar {
+                Spacer(Modifier.weight(1f))
+                IconButton(onClick = {
+                    onFollow()
+                    reading.previous()
+                }) {
+                    val label = stringResource(if (repeating) R.string.add_previous_sentence else R.string.previous_sentence)
+                    Icon(Icons.Filled.SkipPrevious, contentDescription = label)
+                }
+                IconButton(
+                    modifier = Modifier.focusRequester(pauseFocus),
+                    onClick = {
+                        if (reading.isReading) {
+                            reading.pause()
+                        } else {
+                            onFollow()
+                            reading.play()
+                        }
+                    },
+                ) {
+                    if (reading.isReading) {
+                        Icon(Icons.Filled.Pause, contentDescription = stringResource(R.string.pause_reading))
+                    } else {
+                        Icon(Icons.Filled.PlayArrow, contentDescription = stringResource(R.string.play_reading))
+                    }
+                }
+                val repeatingState = stringResource(if (repeating) R.string.repeating else R.string.not_repeating)
+                FilledTonalIconToggleButton(
+                    checked = repeating,
+                    onCheckedChange = { reading.toggleRepeat() },
+                    modifier = Modifier.semantics { stateDescription = repeatingState },
+                ) {
+                    Icon(Icons.Filled.RepeatOne, contentDescription = stringResource(R.string.repeat_sentence))
+                }
+                Spacer(Modifier.weight(1f))
+            }
+        }
+    }
+}
+
+/** A 3 dp bar just left of the paragraph, for a repeated stretch. */
+private fun DrawScope.sideBar(color: Color) {
+    val width = 3.dp.toPx()
+    drawRect(color, topLeft = Offset(-width * 3, 0f), size = Size(width, size.height))
 }

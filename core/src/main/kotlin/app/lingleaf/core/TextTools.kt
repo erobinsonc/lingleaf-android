@@ -161,6 +161,28 @@ object TextTools {
     fun sentenceRangeAt(
         paragraph: String,
         offset: Int,
+    ): WordRange = capped(paragraph, sentenceBounds(paragraph, offset), offset)
+
+    /**
+     * Every sentence of [paragraph] in one pass, trimmed and not capped: the text between
+     * sentence ends, as [sentenceRangeAt] finds them, skipping blank stretches.
+     */
+    internal fun sentenceRanges(paragraph: String): List<WordRange> {
+        val out = mutableListOf<WordRange>()
+        var start = 0
+        for (end in sentenceEnd.findAll(paragraph).map { it.range.last + 1 } + paragraph.length) {
+            if (end <= start) continue
+            val sentence = trimmed(paragraph, start, end)
+            if (sentence.start < sentence.end) out += sentence
+            start = end
+        }
+        return out
+    }
+
+    /** The whole sentence of [paragraph] at [offset], trimmed and not capped. */
+    private fun sentenceBounds(
+        paragraph: String,
+        offset: Int,
     ): WordRange {
         var start = 0
         var end = paragraph.length
@@ -173,8 +195,7 @@ object TextTools {
             start = matchEnd
         }
         val sentence = trimmed(paragraph, start, end)
-        val found = if (sentence.start == sentence.end) trimmed(paragraph, 0, paragraph.length) else sentence
-        return capped(paragraph, found, offset)
+        return if (sentence.start == sentence.end) trimmed(paragraph, 0, paragraph.length) else sentence
     }
 
     /**

@@ -37,7 +37,18 @@
 
     <!-- Reader -->
     <string name="read_aloud">Read aloud</string>
-    <string name="stop_reading">Stop reading</string>
+    <string name="pause_reading">Pause</string>
+    <string name="read_from_here">Read from here</string>
+    <string name="play_reading">Play</string>
+    <string name="previous_sentence">Previous sentence</string>
+    <string name="add_previous_sentence">Add previous sentence</string>
+    <string name="repeat_sentence">Repeat sentence</string>
+    <string name="repeating">Repeating</string>
+    <string name="not_repeating">Not repeating</string>
+    <plurals name="repeating_sentences">
+        <item quantity="one">Repeating %d sentence</item>
+        <item quantity="other">Repeating %d sentences</item>
+    </plurals>
     <string name="smaller_text">Smaller text</string>
     <string name="larger_text">Larger text</string>
     <string name="book_empty">This book is empty.</string>

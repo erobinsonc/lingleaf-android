@@ -76,6 +76,8 @@ private val LightColors =
         surface = Brand.PaperLight,
         surfaceContainer = Color(0xFFF1EEE6),
         surfaceContainerLow = Color(0xFFF5F2EA),
+        // The sentence being read aloud: a warm grey on the paper, not the default lavender.
+        surfaceContainerHighest = Color(0xFFE4DFD3),
     )
 
 private val DarkColors =
@@ -89,6 +91,7 @@ private val DarkColors =
         surface = Brand.PaperDark,
         surfaceContainer = Color(0xFF222826),
         surfaceContainerLow = Color(0xFF1C2120),
+        surfaceContainerHighest = Color(0xFF323A37),
     )
 
 @Composable

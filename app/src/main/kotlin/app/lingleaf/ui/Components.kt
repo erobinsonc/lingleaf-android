@@ -93,10 +93,12 @@ fun ScreenScaffold(
     onBack: (() -> Unit)? = null,
     actions: @Composable RowScope.() -> Unit = {},
     snackbarHostState: SnackbarHostState? = null,
+    bottomBar: @Composable () -> Unit = {},
     content: @Composable (Modifier) -> Unit,
 ) {
     Scaffold(
         contentWindowInsets = WindowInsets(0),
+        bottomBar = bottomBar,
         topBar = {
             TopAppBar(
                 title = { Text(title, maxLines = 1, overflow = TextOverflow.Ellipsis) },
@@ -363,7 +365,14 @@ fun TappableParagraph(
     selected: WordRange?,
     onWordTap: (WordRange) -> Unit,
     modifier: Modifier = Modifier,
+    /**
+     * The sentences being read aloud or repeated, on a neutral fill (yellow marks words being
+     * learned); a repeated stretch of several also gets a bar at the side, not only a colour.
+     */
+    reading: List<WordRange> = emptyList(),
 ) {
+    // Neutral: yellow marks words being learned.
+    val readingBackground = MaterialTheme.colorScheme.surfaceContainerHighest
     var layout by remember { mutableStateOf<TextLayoutResult?>(null) }
     val colors = LocalLingleafColors.current
     val currentOnWordTap by rememberUpdatedState(onWordTap)
@@ -379,9 +388,10 @@ fun TappableParagraph(
                 ),
         )
     val annotated =
-        remember(text, words, selected, colors) {
+        remember(text, words, selected, colors, reading, readingBackground) {
             buildAnnotatedString {
                 append(text)
+                for (sentence in reading) addStyle(SpanStyle(background = readingBackground), sentence.start, sentence.end)
                 for (word in words) {
                     addLink(
                         LinkAnnotation.Clickable(
