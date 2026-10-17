@@ -1,0 +1,175 @@
+<?xml version="1.0" encoding="utf-8"?>
+<resources>
+    <string name="tab_library">Biblioteca</string>
+    <string name="tab_discover">Descubrir</string>
+    <string name="tab_words">Palabras</string>
+    <string name="tab_settings">Ajustes</string>
+    <string name="back">Atrás</string>
+
+    <string name="library_title">Biblioteca</string>
+    <string name="import_txt">Importar un archivo .txt</string>
+    <string name="continue_reading">Continuar leyendo</string>
+    <string name="your_books">Tus libros</string>
+    <string name="library_empty">Tu biblioteca está vacía. Consigue un libro en Descubrir o importa un archivo .txt.</string>
+    <string name="long_press_hint">Mantén presionado un libro para eliminarlo.</string>
+    <string name="delete_book_title">¿Eliminar libro?</string>
+    <string name="delete_book_message">“%1$s” se quitará de tu biblioteca. Tus palabras guardadas se conservan.</string>
+    <string name="delete">Eliminar</string>
+    <string name="cancel">Cancelar</string>
+    <string name="imported">“%1$s” se agregó a tu biblioteca.</string>
+    <string name="import_failed">No se pudo importar. Intenta con un libro en inglés en texto plano (.txt).</string>
+    <string name="import_too_large">Ese archivo es demasiado grande para importarlo (máximo 10 MB).</string>
+    <string name="level">Nivel %1$s</string>
+    <string name="progress_percent">%1$d%%</string>
+
+    <string name="goal_read_daily">Lee %1$d minutos al día</string>
+    <string name="goal_done">¡Meta de hoy cumplida!</string>
+    <string name="goal_minutes_today">%1$d de %2$d min hoy</string>
+    <plurals name="streak_days">
+        <item quantity="one">%d día seguido</item>
+        <item quantity="many">%d días seguidos</item>
+        <item quantity="other">%d días seguidos</item>
+    </plurals>
+
+    <string name="read_aloud">Leer en voz alta</string>
+    <string name="stop_reading">Detener lectura</string>
+    <string name="smaller_text">Letra más pequeña</string>
+    <string name="larger_text">Letra más grande</string>
+    <string name="book_empty">Este libro está vacío.</string>
+    <string name="book_open_failed">No se pudo abrir el libro.</string>
+    <string name="learning_word">%1$s, aprendiendo</string>
+    <string name="look_up_word">Buscar %1$s</string>
+
+    <string name="listen_word">Escuchar %1$s</string>
+    <string name="listen_sentence">Escuchar la frase</string>
+    <string name="in_text">En el texto: %1$s</string>
+    <string name="translation_unavailable">Traducción no disponible. Conéctate a internet una vez para descargar el idioma.</string>
+    <string name="translating">Traduciendo…</string>
+    <string name="downloading_language">Descargando %1$s (unos 30 MB)…</string>
+    <string name="language_needs_wifi">Conéctate a Wi‑Fi una vez para descargar %1$s (unos 30 MB).</string>
+    <string name="translate_into_prompt">Traducir a:</string>
+    <string name="translation_language_label">Idioma de la traducción: %1$s</string>
+    <string name="more_languages">Más idiomas</string>
+    <string name="no_definition">Sin definición disponible.</string>
+    <string name="card_i_know_it">Ya la sé</string>
+    <string name="save_word">Guardar palabra</string>
+    <string name="card_known">Ya la sé</string>
+    <string name="card_saved">Guardada</string>
+    <string name="remove_from_words">Quitar de Palabras</string>
+    <string name="word_saved_message">“%1$s” guardada en Palabras</string>
+    <string name="word_known_message">“%1$s” marcada como conocida</string>
+    <string name="word_removed_message">Se quitó “%1$s” de Palabras</string>
+    <string name="word_deleted_message">“%1$s” eliminada</string>
+    <string name="undo">Deshacer</string>
+
+    <string name="discover_title">Descubrir</string>
+    <string name="search_hint">Título o autor</string>
+    <string name="clear_search">Borrar búsqueda</string>
+    <string name="recommended">Recomendados para aprender</string>
+    <string name="results">Resultados</string>
+    <string name="no_results">No encontramos libros. Prueba con otro título o autor.</string>
+    <string name="level_all">Todos</string>
+    <string name="level_all_description">Todos los niveles</string>
+    <string name="no_books_at_level">No hay libros recomendados en este nivel.</string>
+    <string name="searching_gutenberg">Buscando en Project Gutenberg…</string>
+    <string name="still_searching">Seguimos buscando. Project Gutenberg puede tardar.</string>
+    <string name="search_offline">Sin conexión. Conéctate a internet para buscar.</string>
+    <string name="gutenberg_no_answer">Project Gutenberg no respondió. Inténtalo de nuevo.</string>
+    <string name="read">Leer</string>
+    <string name="read_book">Leer %1$s</string>
+    <string name="retry_book">Reintentar %1$s</string>
+    <string name="downloading_book">Descargando %1$s</string>
+    <string name="cancel_download">Cancelar descarga</string>
+    <string name="book_unavailable">Este libro no está disponible en este momento.</string>
+    <string name="download_offline">Sin conexión. Conéctate a internet para descargarlo.</string>
+    <string name="not_available">No disponible</string>
+    <string name="downloaded">“%1$s” está en tu biblioteca.</string>
+    <string name="retry">Reintentar</string>
+    <string name="get">Obtener</string>
+    <string name="get_book">Obtener %1$s</string>
+    <string name="gutenberg_credit">Clásicos gratuitos de dominio público de Project Gutenberg.</string>
+    <string name="unknown_author">Autor desconocido</string>
+
+    <string name="words_title">Palabras</string>
+    <string name="review_now">Repasar ahora</string>
+    <plurals name="words_due">
+        <item quantity="one">%d palabra por repasar</item>
+        <item quantity="many">%d palabras por repasar</item>
+        <item quantity="other">%d palabras por repasar</item>
+    </plurals>
+    <string name="nothing_due">Nada pendiente. ¡Vuelve mañana!</string>
+    <string name="save_words_hint">Guarda palabras mientras lees.</string>
+    <string name="filter_learning">Aprendiendo</string>
+    <string name="filter_known">Conocidas</string>
+    <string name="words_empty">Aún no hay palabras. Mientras lees, toca una palabra y elige Guardar palabra.</string>
+    <string name="known_empty">Aún no tienes palabras conocidas.</string>
+    <string name="mark_known_word">Marcar %1$s como conocida</string>
+    <string name="review_again_word">Volver a repasar %1$s</string>
+    <string name="delete_word">Eliminar %1$s</string>
+
+    <string name="review_title">Repaso</string>
+    <string name="show_meaning">Mostrar significado</string>
+    <string name="again">Otra vez</string>
+    <string name="got_it">Lo recordé</string>
+    <string name="no_translation">Aún sin traducción. Conéctate a internet una vez para obtenerla.</string>
+    <string name="review_done">Listo por hoy.</string>
+    <plurals name="more_tomorrow">
+        <item quantity="one">Mañana tienes %d palabra.</item>
+        <item quantity="many">Mañana tienes %d palabras.</item>
+        <item quantity="other">Mañana tienes %d palabras.</item>
+    </plurals>
+    <string name="review_done_for_now">Listo por ahora.</string>
+    <plurals name="more_due_today">
+        <item quantity="one">Queda %d para hoy.</item>
+        <item quantity="many">Quedan %d para hoy.</item>
+        <item quantity="other">Quedan %d para hoy.</item>
+    </plurals>
+    <string name="keep_going">Seguir</string>
+    <string name="done">Listo</string>
+
+    <string name="settings_title">Ajustes</string>
+    <string name="daily_goal">Meta diaria</string>
+    <string name="minutes_a_day">%1$d minutos al día</string>
+    <string name="fewer_minutes">Menos minutos</string>
+    <string name="more_minutes">Más minutos</string>
+    <string name="reading">Lectura</string>
+    <string name="text_size">Tamaño de letra</string>
+    <string name="voice">Voz</string>
+    <string name="speech_speed">Velocidad de la voz</string>
+    <string name="speech_speed_value">%1$s×</string>
+    <string name="test_voice">Probar la voz</string>
+    <string name="translation">Traducción</string>
+    <string name="translate_to">Traducir a</string>
+    <string name="translate_ask">Preguntar al tocar una palabra</string>
+    <string name="translation_note">La traducción ocurre en tu teléfono. La primera vez se descarga el idioma (unos 30 MB); después funciona sin internet.</string>
+    <string name="about">Acerca de</string>
+    <string name="source_code">Código fuente</string>
+    <string name="open_source_note">Lingleaf es open source (licencia MIT).</string>
+    <string name="credits">Libros: Project Gutenberg (dominio público). Definiciones: dictionaryapi.dev. Traducción: Google ML Kit, en el teléfono. Sin cuentas, sin anuncios, sin rastreo.</string>
+    <string name="reading_progress">Progreso de lectura</string>
+    <string name="review_progress">Progreso del repaso</string>
+    <string name="review_count">%1$d de %2$d</string>
+    <!-- Helper and modal verbs on the word sheet (SPEC S16) -->
+    <string name="helper_verb">Verbo auxiliar</string>
+    <string name="modal_verb">Verbo modal</string>
+    <string name="note_past_negative_contracted">“%1$s” (= “%2$s”) + verbo en forma base = negación en pasado: “didn\'t go”, no “didn\'t went”.</string>
+    <string name="note_past_negative">“%1$s” + verbo en forma base = negación en pasado: “did not go”, no “did not went”.</string>
+    <string name="note_present_negative_contracted">“%1$s” (= “%2$s”) + verbo en forma base = negación en presente: “%1$s like”, no “%1$s likes”.</string>
+    <string name="note_present_negative">“%1$s” + verbo en forma base = negación en presente: “%1$s like”, no “%1$s likes”.</string>
+    <string name="note_prohibition">“%1$s” + verbo en forma base sirve para prohibir: “Don\'t touch” = no toques.</string>
+    <string name="note_question_tag">“%1$s” + pronombre al final pide que el otro confirme, como “¿verdad?”.</string>
+    <string name="note_modal_not_allowed">“%1$s” + verbo: está prohibido.</string>
+    <string name="note_modal_negative_contracted">“%1$s” (= “%2$s”): la forma negativa de “%3$s” + verbo.</string>
+    <string name="note_modal_negative">“%1$s”: la forma negativa de “%2$s” + verbo.</string>
+    <string name="note_past_question">“%1$s” abre una pregunta sobre el pasado.</string>
+    <string name="note_present_question">“%1$s” abre una pregunta sobre el presente.</string>
+    <string name="note_will">“will” + verbo: el futuro (iré, irás…).</string>
+    <string name="note_would">“would” + verbo: lo que pasaría (iría, haría…) o un pedido amable.</string>
+    <string name="note_can">“can” + verbo: poder (ser capaz o tener permiso).</string>
+    <string name="note_could">“could” + verbo: podía o podría.</string>
+    <string name="note_shall">“shall” + verbo: el futuro, o una propuesta (“Shall we go?” = ¿Vamos?).</string>
+    <string name="note_should">“should” + verbo: un consejo (debería…).</string>
+    <string name="note_must">“must” + verbo: hay que hacerlo, o seguro que es así.</string>
+    <string name="note_may">“may” + verbo: quizás, o permiso.</string>
+    <string name="note_might">“might” + verbo: quizás, puede que…</string>
+</resources>

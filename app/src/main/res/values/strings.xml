@@ -1,0 +1,196 @@
+<?xml version="1.0" encoding="utf-8"?>
+<resources>
+    <string name="app_name" translatable="false">Lingleaf</string>
+
+    <!-- Tabs -->
+    <string name="tab_library">Library</string>
+    <string name="tab_discover">Discover</string>
+    <string name="tab_words">Words</string>
+    <string name="tab_settings">Settings</string>
+    <string name="back">Back</string>
+
+    <!-- Library -->
+    <string name="library_title">Library</string>
+    <string name="import_txt">Import a .txt file</string>
+    <string name="continue_reading">Continue reading</string>
+    <string name="your_books">Your books</string>
+    <string name="library_empty">Your library is empty. Get a book in Discover or import a .txt file.</string>
+    <string name="long_press_hint">Long-press a book to delete it.</string>
+    <string name="delete_book_title">Delete book?</string>
+    <string name="delete_book_message">“%1$s” will be removed from your library. Your saved words stay.</string>
+    <string name="delete">Delete</string>
+    <string name="cancel">Cancel</string>
+    <string name="imported">“%1$s” added to your library.</string>
+    <string name="import_failed">Couldn\'t import that file. Try a plain-text (.txt) English book.</string>
+    <string name="import_too_large">That file is too large to import (10 MB maximum).</string>
+    <string name="level">Level %1$s</string>
+    <string name="progress_percent">%1$d%%</string>
+
+    <!-- Daily goal -->
+    <string name="goal_read_daily">Read %1$d minutes a day</string>
+    <string name="goal_done">Today\'s goal done!</string>
+    <string name="goal_minutes_today">%1$d of %2$d min today</string>
+    <plurals name="streak_days">
+        <item quantity="one">%d day in a row</item>
+        <item quantity="other">%d days in a row</item>
+    </plurals>
+
+    <!-- Reader -->
+    <string name="read_aloud">Read aloud</string>
+    <string name="stop_reading">Stop reading</string>
+    <string name="smaller_text">Smaller text</string>
+    <string name="larger_text">Larger text</string>
+    <string name="book_empty">This book is empty.</string>
+    <string name="book_open_failed">Couldn\'t open the book.</string>
+    <!-- Screen readers: a word in the text that the user is learning. -->
+    <string name="learning_word">%1$s, learning</string>
+    <!-- Screen reader action on a paragraph that opens the card of one word. -->
+    <string name="look_up_word">Look up %1$s</string>
+
+    <!-- Word card -->
+    <string name="listen_word">Listen to %1$s</string>
+    <string name="listen_sentence">Listen to the sentence</string>
+    <string name="in_text">In the text: %1$s</string>
+    <string name="translation_unavailable">Translation unavailable. Connect to the internet once to download the language.</string>
+    <string name="translating">Translating…</string>
+    <!-- %1$s: language name in that language, e.g. "Português". -->
+    <string name="downloading_language">Downloading %1$s (about 30 MB)…</string>
+    <!-- %1$s: language name in that language. Models are only downloaded over Wi-Fi. -->
+    <string name="language_needs_wifi">Connect to Wi‑Fi once to download %1$s (about 30 MB).</string>
+    <!-- Shown on the first word card when no translation language could be picked; language chips follow. -->
+    <string name="translate_into_prompt">Translate into:</string>
+    <!-- Screen-reader label of the language button under the translation. %1$s: language name in that language. -->
+    <string name="translation_language_label">Translation language: %1$s</string>
+    <string name="more_languages">More languages</string>
+    <string name="no_definition">No definition available.</string>
+    <!-- Word card buttons. "Save word" is the primary action. -->
+    <string name="card_i_know_it">I know it</string>
+    <string name="save_word">Save word</string>
+    <!-- Checked state of the card buttons, shown with a check mark; tapping it removes the word from Words. -->
+    <string name="card_known">I know it</string>
+    <string name="card_saved">Saved</string>
+    <!-- What a screen reader says tapping a checked card button does. -->
+    <string name="remove_from_words">Remove from Words</string>
+    <!-- Messages with Undo after a word card action or deleting a word. %1$s: the word. -->
+    <string name="word_saved_message">“%1$s” saved to Words</string>
+    <string name="word_known_message">“%1$s” marked as known</string>
+    <string name="word_removed_message">“%1$s” removed from Words</string>
+    <string name="word_deleted_message">“%1$s” deleted</string>
+    <string name="undo">Undo</string>
+
+    <!-- Discover -->
+    <string name="discover_title">Discover</string>
+    <string name="search_hint">Title or author</string>
+    <string name="clear_search">Clear search</string>
+    <string name="recommended">Recommended for learners</string>
+    <string name="results">Results</string>
+    <string name="no_results">No books found. Try another title or author.</string>
+    <string name="level_all">All</string>
+    <string name="level_all_description">All levels</string>
+    <string name="no_books_at_level">No recommended books at this level.</string>
+    <string name="searching_gutenberg">Searching Project Gutenberg…</string>
+    <string name="still_searching">Still searching. Project Gutenberg can be slow.</string>
+    <string name="search_offline">You\'re offline. Connect to the internet to search.</string>
+    <string name="gutenberg_no_answer">Project Gutenberg didn\'t answer. Try again.</string>
+    <string name="read">Read</string>
+    <string name="read_book">Read %1$s</string>
+    <string name="retry_book">Retry %1$s</string>
+    <string name="downloading_book">Downloading %1$s</string>
+    <string name="cancel_download">Cancel download</string>
+    <string name="book_unavailable">This book isn\'t available right now.</string>
+    <string name="download_offline">You\'re offline. Connect to the internet to download it.</string>
+    <string name="not_available">Not available</string>
+    <string name="downloaded">“%1$s” is in your library.</string>
+    <string name="retry">Retry</string>
+    <string name="get">Get</string>
+    <!-- Screen readers: the Get button with the book it downloads. -->
+    <string name="get_book">Get %1$s</string>
+    <string name="gutenberg_credit">Free public-domain classics from Project Gutenberg.</string>
+    <string name="unknown_author">Unknown author</string>
+
+    <!-- Words -->
+    <string name="words_title">Words</string>
+    <string name="review_now">Review now</string>
+    <plurals name="words_due">
+        <item quantity="one">%d word to review</item>
+        <item quantity="other">%d words to review</item>
+    </plurals>
+    <string name="nothing_due">Nothing to review. Come back tomorrow!</string>
+    <string name="save_words_hint">Save words while you read.</string>
+    <string name="filter_learning">Learning</string>
+    <string name="filter_known">Known</string>
+    <string name="words_empty">No words yet. While reading, tap a word and choose Save word.</string>
+    <string name="known_empty">No known words yet.</string>
+    <string name="mark_known_word">Mark %1$s as known</string>
+    <string name="review_again_word">Review %1$s again</string>
+    <string name="delete_word">Delete %1$s</string>
+
+    <!-- Review -->
+    <string name="review_title">Review</string>
+    <string name="show_meaning">Show meaning</string>
+    <string name="again">Again</string>
+    <string name="got_it">I remembered</string>
+    <string name="no_translation">No translation yet. Connect to the internet once to get it.</string>
+    <string name="review_done">Done for today.</string>
+    <plurals name="more_tomorrow">
+        <item quantity="one">%d word tomorrow.</item>
+        <item quantity="other">%d words tomorrow.</item>
+    </plurals>
+    <string name="review_done_for_now">Done for now.</string>
+    <plurals name="more_due_today">
+        <item quantity="one">%d more due today.</item>
+        <item quantity="many">%d more due today.</item>
+        <item quantity="other">%d more due today.</item>
+    </plurals>
+    <string name="keep_going">Keep going</string>
+    <string name="done">Done</string>
+
+    <!-- Settings -->
+    <string name="settings_title">Settings</string>
+    <string name="daily_goal">Daily goal</string>
+    <string name="minutes_a_day">%1$d minutes a day</string>
+    <string name="fewer_minutes">Fewer minutes</string>
+    <string name="more_minutes">More minutes</string>
+    <string name="reading">Reading</string>
+    <string name="text_size">Text size</string>
+    <string name="voice">Voice</string>
+    <string name="speech_speed">Speech speed</string>
+    <!-- Speech rate as a multiplier, e.g. "0.9×". -->
+    <string name="speech_speed_value">%1$s×</string>
+    <string name="test_voice">Test the voice</string>
+    <string name="translation">Translation</string>
+    <string name="translate_to">Translate into</string>
+    <!-- Value of "Translate into" before a language has been chosen. -->
+    <string name="translate_ask">Ask me when I tap a word</string>
+    <string name="translation_note">Translation happens on your phone. The first time, the language is downloaded (about 30 MB); after that it works offline.</string>
+    <string name="about">About</string>
+    <string name="source_code">Source code</string>
+    <string name="open_source_note">Lingleaf is open source (MIT license).</string>
+    <string name="credits">Books: Project Gutenberg (public domain). Definitions: dictionaryapi.dev. Translation: Google ML Kit, on device. No accounts, no ads, no tracking.</string>
+    <string name="reading_progress">Reading progress</string>
+    <string name="review_progress">Review progress</string>
+    <string name="review_count">%1$d of %2$d</string>
+    <!-- Helper and modal verbs on the word sheet (SPEC S16) -->
+    <string name="helper_verb">Helper verb</string>
+    <string name="modal_verb">Modal verb</string>
+    <string name="note_past_negative_contracted">“%1$s” (= “%2$s”) + base verb = past negative: “didn\'t go”, not “didn\'t went”.</string>
+    <string name="note_past_negative">“%1$s” + base verb = past negative: “did not go”, not “did not went”.</string>
+    <string name="note_present_negative_contracted">“%1$s” (= “%2$s”) + base verb = present negative: “%1$s like”, not “%1$s likes”.</string>
+    <string name="note_present_negative">“%1$s” + base verb = present negative: “%1$s like”, not “%1$s likes”.</string>
+    <string name="note_prohibition">“%1$s” + base verb tells someone not to do it: “Don\'t touch”.</string>
+    <string name="note_question_tag">“%1$s” + pronoun at the end asks the listener to agree, like “right?”.</string>
+    <string name="note_modal_not_allowed">“%1$s” + verb: it is not allowed.</string>
+    <string name="note_modal_negative_contracted">“%1$s” (= “%2$s”): the negative of “%3$s” + verb.</string>
+    <string name="note_modal_negative">“%1$s”: the negative of “%2$s” + verb.</string>
+    <string name="note_past_question">“%1$s” starts a question about the past.</string>
+    <string name="note_present_question">“%1$s” starts a question about the present.</string>
+    <string name="note_will">“will” + verb: the future.</string>
+    <string name="note_would">“would” + verb: what would happen, or a polite request.</string>
+    <string name="note_can">“can” + verb: be able to, or be allowed to.</string>
+    <string name="note_could">“could” + verb: was able to, or it’s possible.</string>
+    <string name="note_shall">“shall” + verb: the future, or an offer (“Shall we go?”).</string>
+    <string name="note_should">“should” + verb: advice, what is right to do.</string>
+    <string name="note_must">“must” + verb: it is necessary, or it is surely true.</string>
+    <string name="note_may">“may” + verb: maybe, or permission.</string>
+    <string name="note_might">“might” + verb: maybe.</string>
+</resources>

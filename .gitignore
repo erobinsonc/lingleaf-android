@@ -9,3 +9,7 @@ captures/
 .cxx/
 *.keystore
 *.jks
+# Signing material never belongs in the repo: it lives only in CI secrets.
+*.p12
+*.pem
+*service-account*.json

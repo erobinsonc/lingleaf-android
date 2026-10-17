@@ -1,0 +1,40 @@
+name: Git Flow
+
+# Enforces the branch model on every pull request:
+#   feat/*, fix/*, hotfix/*  ──PR──▶  develop  ──release PR──▶  main
+# Make "Branch rules (Git Flow)" a required check in the branch rulesets.
+
+on:
+  pull_request:
+    types: [opened, edited, reopened, synchronize]
+
+permissions: {}
+
+jobs:
+  branches:
+    name: Branch rules (Git Flow)
+    runs-on: ubuntu-latest
+    steps:
+      - name: Check source and target branches
+        env:
+          BASE: ${{ github.base_ref }}
+          HEAD: ${{ github.head_ref }}
+          # A fork can name its branch "develop" too: releases come only from this repository.
+          SAME_REPO: ${{ github.event.pull_request.head.repo.full_name == github.repository }}
+        run: |
+          case "$BASE" in
+            main)
+              if [ "$SAME_REPO" != "true" ]; then
+                echo "::error::Pull requests to main come from this repository, not from a fork."; exit 1
+              fi
+              case "$HEAD" in
+                develop|hotfix/*) ;;
+                *) echo "::error::Pull requests to main come from develop (release) or hotfix/*, not '$HEAD'."; exit 1 ;;
+              esac ;;
+            develop)
+              case "$HEAD" in
+                feat/*|fix/*|hotfix/*|dependabot/*) ;;
+                *) echo "::error::Pull requests to develop come from feat/*, fix/*, hotfix/* or dependabot/*, not '$HEAD'."; exit 1 ;;
+              esac ;;
+          esac
+          echo "Git Flow OK: $HEAD -> $BASE"

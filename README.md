@@ -13,10 +13,11 @@ iOS version: [lingleaf-ios](https://github.com/erobinsonc/lingleaf-ios) · Produ
 ## Features
 
 - **Tap a word**: base form, IPA, on-device translation, definition, and the sentence translated.
-- **Learn / Learned**: words you're learning get a yellow underline in every book, inflected forms too.
+- **Save word / I know it**: saved words get a yellow underline in every book, inflected forms too. Every change can be undone.
 - **Review** with spaced repetition (1, 3, 7, 14, 30 days).
 - **Read aloud** a word, a sentence or a paragraph.
 - **Thousands of free books** from Project Gutenberg, plus 3 original graded stories (A1–B1). Import your own `.txt`.
+- **Recommended classics from A2 to C2**, filterable by level in Discover.
 - **Daily goal and streak.**
 - No accounts, no ads, no tracking.
 
@@ -54,9 +55,16 @@ Requirements: Android Studio (recent) with JDK 17.
 
 ## Privacy
 
-Data stays on your device. Network requests go only to `gutendex.com` / `gutenberg.org`
-(books) and `api.dictionaryapi.dev` (definitions), always over HTTPS. Translation
-runs on the device with Google ML Kit.
+Lingleaf has no accounts, ads or analytics, and keeps your books and words on your
+device (and in your Android backup, if you have backup turned on). The app itself
+talks only to `gutendex.com` / `www.gutenberg.org` (books) and `api.dictionaryapi.dev`
+(definitions), always over HTTPS.
+
+Translation runs on the device with Google ML Kit. ML Kit downloads each language
+model (about 30 MB) from Google in the background as soon as the translation language is known, over Wi‑Fi only, and, as Google documents for ML Kit,
+sends Google anonymous usage and diagnostics data
+([ML Kit terms](https://developers.google.com/ml-kit/terms)). The words you look up
+are translated on the device and are not sent.
 
 ## License
 

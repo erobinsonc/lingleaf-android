@@ -1,0 +1,101 @@
+# Walks every main screen and takes a screenshot of each one.
+# CI runs it on an Android emulator and publishes the images to the
+# `screenshots` branch (see .github/workflows/screenshots.yml).
+appId: app.lingleaf
+---
+- launchApp:
+    clearState: true
+    # Debug builds only: a word waiting for review (new words are first due tomorrow).
+    arguments:
+      dueWord: true
+# Dismisses a system "isn't responding" dialog if the emulator shows one.
+- tapOn:
+    text: "Wait"
+    optional: true
+- extendedWaitUntil:
+    visible: "The Red Boat"
+    timeout: 20000
+- takeScreenshot: 01-library
+
+- tapOn: "The Red Boat"
+- extendedWaitUntil:
+    visible: "Tom lives in a small house by the sea.*"
+    timeout: 10000
+- takeScreenshot: 02-reader
+
+# Taps the middle of the first paragraph, which lands on a word.
+- tapOn: "Tom lives in a small house by the sea.*"
+- extendedWaitUntil:
+    visible: "Save word"
+    timeout: 10000
+# With only English in the emulator's language list, the first card asks
+# which language to translate into.
+- tapOn:
+    text: "Español"
+    optional: true
+# The first translation downloads the ML Kit language model (~30 MB) and the
+# definition comes from the network; give both time before the screenshot.
+- extendedWaitUntil:
+    visible: "Definition not expected on screen"
+    timeout: 25000
+    optional: true
+- takeScreenshot: 03-word-card
+- tapOn: "Save word"
+# The card closes and the reader shows "“word” saved to Words" with Undo for 4 s.
+- extendedWaitUntil:
+    visible: "Undo"
+    timeout: 10000
+- takeScreenshot: 04-saved-with-undo
+# Wait for the card and the message to go so `back` leaves the reader.
+- extendedWaitUntil:
+    notVisible: "Save word"
+    timeout: 10000
+- extendedWaitUntil:
+    notVisible: "Undo"
+    timeout: 10000
+- takeScreenshot: 05-reader-with-marked-word
+- back
+# The bottom bar only exists outside the reader. If the first `back` was
+# consumed by something else, press it again.
+- runFlow:
+    when:
+      notVisible: "Discover"
+    commands:
+      - back
+- extendedWaitUntil:
+    visible: "Discover"
+    timeout: 10000
+
+- tapOn: "Words"
+# Screen changes cross-fade; wait for content unique to Words before capturing.
+- extendedWaitUntil:
+    visible: "Review now"
+    timeout: 10000
+- waitForAnimationToEnd
+- takeScreenshot: 06-words
+- tapOn: "Review now"
+- extendedWaitUntil:
+    visible: "Show meaning"
+    timeout: 10000
+- waitForAnimationToEnd
+- takeScreenshot: 07-review
+- tapOn: "Show meaning"
+- waitForAnimationToEnd
+- takeScreenshot: 08-review-meaning
+- tapOn: "I remembered"
+- waitForAnimationToEnd
+- takeScreenshot: 09-review-done
+- back
+
+- tapOn: "Discover"
+# The recommended books ship with the app, so they show at once.
+- extendedWaitUntil:
+    visible: "Get"
+    timeout: 10000
+- takeScreenshot: 10-discover
+- tapOn:
+    id: "level-filter-B1"
+- takeScreenshot: 11-discover-level-filter
+
+- tapOn: "Settings"
+- takeScreenshot: 12-settings

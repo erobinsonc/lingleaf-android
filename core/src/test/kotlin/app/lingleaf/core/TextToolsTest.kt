@@ -1,0 +1,118 @@
+package app.lingleaf.core
+
+import kotlin.test.Test
+import kotlin.test.assertEquals
+import kotlin.test.assertNull
+import kotlin.test.assertTrue
+
+class TextToolsTest {
+    @Test
+    fun `a paragraph the size of a book is cut at sentence ends or spaces`() {
+        val noStops = "word ".repeat(5_000)
+        val pieces = TextTools.splitParagraphs(noStops)
+        assertTrue(pieces.size > 1)
+        assertTrue(pieces.all { it.length <= TextTools.MAX_PARAGRAPH })
+        assertEquals(noStops.trim(), pieces.joinToString(" "), "no word lost or cut")
+        val sentences = TextTools.splitParagraphs("A short sentence here. ".repeat(300))
+        assertTrue(sentences.all { it.endsWith(".") && it.length <= TextTools.MAX_PARAGRAPH })
+        assertEquals(listOf(2_000, 2_000, 500), TextTools.splitParagraphs("a".repeat(4_500)).map { it.length })
+        // A lone high surrogate before a space can't stall the cut.
+        assertTrue(TextTools.splitParagraphs("\uD83D " + "b".repeat(3_000)).isNotEmpty())
+    }
+
+    @Test
+    fun `a 10 MB text without blank lines splits in linear time`() {
+        val book = "word ".repeat(2_000_000)
+        val started = System.nanoTime()
+        val pieces = TextTools.splitParagraphs(book)
+        val seconds = (System.nanoTime() - started) / 1e9
+        assertEquals(5_000, pieces.size, "2,000-unit pieces")
+        assertTrue(seconds < 3, "took $seconds s")
+    }
+
+    @Test
+    fun `a long sentence is capped around the tapped word`() {
+        val paragraph = "word ".repeat(500)
+        val range = TextTools.sentenceRangeAt(paragraph, 1_200)
+        assertTrue(range.end - range.start <= TextTools.MAX_SENTENCE)
+        assertTrue(1_200 in range)
+        assertEquals('w', paragraph[range.start], "starts at a word")
+        assertEquals("Short one.", TextTools.sentenceAt("Short one. Here.", 2), "ordinary sentences are unchanged")
+    }
+
+    @Test
+    fun `labels lose invisible characters and stay short`() {
+        assertEquals("evil title x", TextTools.cleanLabel("\u202Eevil\u200B title\n  x"))
+        assertEquals(TextTools.MAX_LABEL, TextTools.cleanLabel("t".repeat(300)).length)
+        assertEquals("Alice’s Adventures", TextTools.cleanLabel("Alice’s Adventures"))
+        assertEquals("a\u0301\u0301\u0301\u0301", TextTools.cleanLabel("a" + "\u0301".repeat(100_000)), "at most 4 accents on a letter")
+        assertEquals("Fake", TextTools.cleanLabel("\u3164\u115F\u2800Fake"), "blank fillers")
+        assertEquals("Alice x", TextTools.cleanLabel("\u3000\u00A0Alice\u2003 x"), "Unicode spaces")
+        assertEquals("Café", TextTools.cleanLabel("Cafe\u0301").let { java.text.Normalizer.normalize(it, java.text.Normalizer.Form.NFC) })
+    }
+
+    @Test
+    fun `occurrences find the saved word or group in a sentence`() {
+        val sentence = "All animals are equal, but some animal is more equal."
+        assertEquals(listOf("animals", "animal"), TextTools.occurrences("animal", sentence).map { sentence.substring(it.start, it.end) })
+        val group = "He did NOT go home."
+        assertEquals(listOf("did NOT go"), TextTools.occurrences("did not go", group).map { group.substring(it.start, it.end) })
+        assertTrue(TextTools.occurrences("can we fix", group).isEmpty())
+    }
+
+    @Test
+    fun `paragraphs join hard-wrapped lines and handle CRLF`() {
+        assertEquals(
+            listOf("Line one line two.", "Second paragraph."),
+            TextTools.splitParagraphs("Line one\r\nline two.\r\n\r\n   \nSecond paragraph.\n"),
+        )
+    }
+
+    @Test
+    fun `word ranges keep contractions and skip numbers`() {
+        val text = "Don’t stop, it's 10 o'clock!"
+        assertEquals(listOf("Don’t", "stop", "it's", "o'clock"), TextTools.wordRanges(text).map { text.substring(it.start, it.end) })
+    }
+
+    @Test
+    fun `wordAt finds the word including its trailing edge`() {
+        val text = "All animals are equal."
+        assertEquals(WordRange(4, 11), TextTools.wordAt(text, 4))
+        assertEquals(WordRange(4, 11), TextTools.wordAt(text, 11))
+        assertEquals(WordRange(16, 21), TextTools.wordAt(text, 21))
+        assertNull(TextTools.wordAt("  ...  ", 3))
+    }
+
+    @Test
+    fun `sentenceAt returns the containing sentence`() {
+        val p = "All animals are equal. Some are more equal than others! The end"
+        assertEquals("Some are more equal than others!", TextTools.sentenceAt(p, p.indexOf("more")))
+        assertEquals("All animals are equal.", TextTools.sentenceAt(p, 0))
+        assertEquals("The end", TextTools.sentenceAt(p, p.indexOf("end")))
+        assertEquals("Just one.", TextTools.sentenceAt("Just one.", 20))
+    }
+
+    @Test
+    fun `base form candidates`() {
+        assertTrue("animal" in TextTools.baseFormCandidates("animals"))
+        assertTrue("house" in TextTools.baseFormCandidates("houses"))
+        assertEquals(listOf("story"), TextTools.baseFormCandidates("stories"))
+        assertEquals(listOf("try"), TextTools.baseFormCandidates("tried"))
+        assertTrue("walk" in TextTools.baseFormCandidates("walked"))
+        assertEquals("stop", TextTools.baseFormCandidates("stopped").first())
+        assertEquals("run", TextTools.baseFormCandidates("running").first())
+        assertTrue("make" in TextTools.baseFormCandidates("making"))
+        assertEquals(listOf("stand"), TextTools.baseFormCandidates("stood"))
+        assertEquals(listOf("child"), TextTools.baseFormCandidates("Children"))
+        assertEquals(listOf("cat"), TextTools.baseFormCandidates("cat's"))
+        assertTrue(TextTools.baseFormCandidates("thing").isEmpty())
+        assertTrue(TextTools.baseFormCandidates("glass").isEmpty())
+    }
+
+    @Test
+    fun `matchKeys links inflected forms to the base word`() {
+        assertTrue(TextTools.matchKeys("Animals").containsAll(listOf("animals", "animal")))
+        assertTrue("be" in TextTools.matchKeys("was"))
+        assertTrue(5 in WordRange(4, 11))
+    }
+}
