@@ -546,7 +546,7 @@ class AppTest {
         val paragraph = hasText("The sun is up.", substring = true)
         compose.waitUntil(WAIT_MS) { compose.onAllNodes(paragraph).fetchSemanticsNodes().isNotEmpty() }
 
-        // Read aloud goes on sentence by sentence to the end; the same button pauses (issue #32).
+        // Read aloud goes on sentence by sentence to the end; the bar at the bottom pauses (issue #32).
         compose.onNodeWithContentDescription("Read aloud").performClick()
         assertEquals(listOf("The sun is up."), speaker.spoken)
         compose.onNodeWithContentDescription("Pause").assertExists()
@@ -569,7 +569,22 @@ class AppTest {
         compose.onNodeWithText("Read from here").performClick()
         compose.waitForIdle()
         assertEquals("All animals are equal.", speaker.spoken.last())
-        compose.onNodeWithContentDescription("Pause").assertExists()
+
+        // The bar at the bottom repeats the sentence and grows the stretch backwards (issue #33).
+        compose.onNodeWithContentDescription("Repeat sentence").performClick()
+        compose.onNodeWithText("Repeating 1 sentence").assertExists()
+        compose.runOnIdle { speaker.finish() }
+        assertEquals("the sentence again", "All animals are equal.", speaker.spoken.last())
+        compose.onNodeWithContentDescription("Add previous sentence").performClick()
+        compose.onNodeWithText("Repeating 2 sentences").assertExists()
+        assertEquals("the stretch from its new start", "The sun is up.", speaker.spoken.last())
+        compose.runOnIdle { speaker.finish() }
+        compose.runOnIdle { speaker.finish() }
+        assertEquals("then back to the start", listOf("All animals are equal.", "The sun is up."), speaker.spoken.takeLast(2))
+        compose.onNodeWithContentDescription("Repeat sentence").performClick()
+        compose.onNodeWithContentDescription("Previous sentence").assertExists()
+        compose.onNodeWithContentDescription("Pause").performClick()
+        compose.onNodeWithContentDescription("Play").assertExists()
     }
 
     // S9 Discover: a search shows its results above the recommended books.

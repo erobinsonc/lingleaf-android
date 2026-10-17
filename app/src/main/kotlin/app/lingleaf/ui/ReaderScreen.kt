@@ -5,6 +5,7 @@ import androidx.compose.foundation.interaction.DragInteraction
 import androidx.compose.foundation.layout.Box
 import androidx.compose.foundation.layout.Column
 import androidx.compose.foundation.layout.PaddingValues
+import androidx.compose.foundation.layout.Spacer
 import androidx.compose.foundation.layout.fillMaxSize
 import androidx.compose.foundation.layout.fillMaxWidth
 import androidx.compose.foundation.layout.navigationBarsPadding
@@ -18,10 +19,15 @@ import androidx.compose.material.icons.Icons
 import androidx.compose.material.icons.automirrored.filled.VolumeUp
 import androidx.compose.material.icons.filled.Add
 import androidx.compose.material.icons.filled.Pause
+import androidx.compose.material.icons.filled.PlayArrow
 import androidx.compose.material.icons.filled.Remove
+import androidx.compose.material.icons.filled.RepeatOne
+import androidx.compose.material.icons.filled.SkipPrevious
+import androidx.compose.material3.BottomAppBar
 import androidx.compose.material3.CircularProgressIndicator
 import androidx.compose.material3.Icon
 import androidx.compose.material3.IconButton
+import androidx.compose.material3.IconToggleButton
 import androidx.compose.material3.LinearProgressIndicator
 import androidx.compose.material3.MaterialTheme
 import androidx.compose.material3.SnackbarHostState
@@ -36,11 +42,21 @@ import androidx.compose.runtime.setValue
 import androidx.compose.runtime.snapshotFlow
 import androidx.compose.ui.Alignment
 import androidx.compose.ui.Modifier
+import androidx.compose.ui.draw.drawBehind
+import androidx.compose.ui.geometry.Offset
+import androidx.compose.ui.geometry.Size
+import androidx.compose.ui.graphics.Color
+import androidx.compose.ui.graphics.drawscope.DrawScope
 import androidx.compose.ui.platform.LocalContext
+import androidx.compose.ui.res.pluralStringResource
 import androidx.compose.ui.res.stringResource
+import androidx.compose.ui.semantics.LiveRegionMode
 import androidx.compose.ui.semantics.contentDescription
+import androidx.compose.ui.semantics.liveRegion
 import androidx.compose.ui.semantics.semantics
+import androidx.compose.ui.semantics.stateDescription
 import androidx.compose.ui.text.TextStyle
+import androidx.compose.ui.text.style.TextAlign
 import androidx.compose.ui.unit.dp
 import androidx.compose.ui.unit.em
 import androidx.compose.ui.unit.sp
@@ -118,25 +134,20 @@ fun ReaderScreen(
         title = book?.title.orEmpty(),
         onBack = onBack,
         snackbarHostState = snackbar,
+        // Once reading aloud starts, its controls sit at the bottom, in reach of the thumb (issue #33).
+        bottomBar = {
+            if (reading.current != null) {
+                ReadAloudBar(
+                    reading = reading,
+                    onFollow = { following = true },
+                )
+            }
+        },
         actions = {
-            IconButton(onClick = {
-                val loaded = paragraphs
-                val visible = listState?.layoutInfo?.visibleItemsInfo?.map { it.index }.orEmpty()
-                val paused = reading.current
-                when {
-                    reading.isReading -> reading.pause()
-                    loaded.isNullOrEmpty() -> Unit
-                    // From the paused sentence when it is on screen, else from the top of the screen.
-                    paused != null && paused.paragraph in visible -> {
-                        following = true
-                        reading.read(loaded, paused)
-                    }
-                    else -> readFrom(listState?.firstVisibleItemIndex ?: book?.progressParagraph ?: 0, 0)
-                }
-            }) {
-                if (reading.isReading) {
-                    Icon(Icons.Filled.Pause, contentDescription = stringResource(R.string.pause_reading))
-                } else {
+            // Starts reading aloud; once started, the bar at the bottom has the controls.
+            if (reading.current == null) {
+                // From the top of the screen (not the last saved paragraph).
+                IconButton(onClick = { readFrom(listState?.firstVisibleItemIndex ?: book?.progressParagraph ?: 0, 0) }) {
                     Icon(Icons.AutoMirrored.Filled.VolumeUp, contentDescription = stringResource(R.string.read_aloud))
                 }
             }
@@ -178,6 +189,7 @@ fun ReaderScreen(
                         isLearning = state::isLearning,
                         selection = selection,
                         reading = reading.current,
+                        loop = reading.loop,
                         following = following,
                         onFollowingChange = { following = it },
                         onListState = { listState = it },
@@ -229,6 +241,7 @@ private fun ReaderText(
     isLearning: (String) -> Boolean,
     selection: Selection?,
     reading: SentencePosition?,
+    loop: Pair<SentencePosition, SentencePosition>?,
     following: Boolean,
     onFollowingChange: (Boolean) -> Unit,
     onListState: (LazyListState) -> Unit,
@@ -237,6 +250,7 @@ private fun ReaderText(
 ) {
     val listState = rememberLazyListState(initialFirstVisibleItemIndex = initialParagraph)
     LaunchedEffect(listState) { onListState(listState) }
+    val loopBar = MaterialTheme.colorScheme.secondary
     val animate = Global.getFloat(LocalContext.current.contentResolver, Global.ANIMATOR_DURATION_SCALE, 1f) > 0f
 
     // Scrolling by hand while reading aloud: stop following until the sentence is back on screen.
@@ -305,17 +319,106 @@ private fun ReaderText(
                     .navigationBarsPadding(),
         ) {
             itemsIndexed(paragraphs) { index, paragraph ->
+                // A repeated stretch also gets a bar at the side, not only a fill.
+                val repeated = loop != null && index in loop.first.paragraph..loop.second.paragraph
                 TappableParagraph(
                     text = paragraph,
                     words = words[index],
                     style = style,
                     isLearning = isLearning,
                     selected = selection?.takeIf { it.paragraph == index }?.word,
-                    reading = reading?.takeIf { it.paragraph == index }?.range,
+                    reading = highlighted(paragraphs, index, reading, loop),
                     onWordTap = { onWordTap(index, it) },
-                    modifier = Modifier.padding(bottom = (fontSize * 0.9f).dp),
+                    modifier =
+                        Modifier
+                            .then(if (repeated) Modifier.drawBehind { sideBar(loopBar) } else Modifier)
+                            .padding(bottom = (fontSize * 0.9f).dp),
                 )
             }
         }
     }
+}
+
+/**
+ * The sentences of paragraph [index] to highlight: the repeated stretch when repeating, else
+ * the sentence being read.
+ */
+private fun highlighted(
+    paragraphs: List<String>,
+    index: Int,
+    reading: SentencePosition?,
+    loop: Pair<SentencePosition, SentencePosition>?,
+): List<WordRange> {
+    if (loop == null) return listOfNotNull(reading?.takeIf { it.paragraph == index }?.range)
+    val (first, last) = loop
+    if (index !in first.paragraph..last.paragraph) return emptyList()
+    return ReadAloud.sentences(paragraphs[index]).filter { range ->
+        (index > first.paragraph || range.start >= first.range.start) && (index < last.paragraph || range.end <= last.range.end)
+    }
+}
+
+/**
+ * Previous sentence · Pause/Play · Repeat sentence, at the bottom while reading aloud or paused
+ * (SPEC S6). While repeating, Previous sentence adds one to the stretch and the bar says how many.
+ */
+@Composable
+private fun ReadAloudBar(
+    reading: ReadAloudController,
+    onFollow: () -> Unit,
+) {
+    val repeating = reading.loop != null
+    Column {
+        if (repeating) {
+            // Says how long the repeated stretch is, also to screen readers as it grows.
+            Text(
+                pluralStringResource(R.plurals.repeating_sentences, reading.loopCount, reading.loopCount),
+                style = MaterialTheme.typography.labelLarge,
+                textAlign = TextAlign.Center,
+                modifier =
+                    Modifier
+                        .fillMaxWidth()
+                        .padding(top = 8.dp)
+                        .semantics { liveRegion = LiveRegionMode.Polite },
+            )
+        }
+        BottomAppBar {
+            Spacer(Modifier.weight(1f))
+            IconButton(onClick = {
+                onFollow()
+                reading.previous()
+            }) {
+                val label = stringResource(if (repeating) R.string.add_previous_sentence else R.string.previous_sentence)
+                Icon(Icons.Filled.SkipPrevious, contentDescription = label)
+            }
+            IconButton(onClick = {
+                if (reading.isReading) {
+                    reading.pause()
+                } else {
+                    onFollow()
+                    reading.play()
+                }
+            }) {
+                if (reading.isReading) {
+                    Icon(Icons.Filled.Pause, contentDescription = stringResource(R.string.pause_reading))
+                } else {
+                    Icon(Icons.Filled.PlayArrow, contentDescription = stringResource(R.string.play_reading))
+                }
+            }
+            val repeatingState = stringResource(R.string.repeating)
+            IconToggleButton(
+                checked = repeating,
+                onCheckedChange = { reading.toggleRepeat() },
+                modifier = Modifier.semantics { if (repeating) stateDescription = repeatingState },
+            ) {
+                Icon(Icons.Filled.RepeatOne, contentDescription = stringResource(R.string.repeat_sentence))
+            }
+            Spacer(Modifier.weight(1f))
+        }
+    }
+}
+
+/** A 3 dp bar just left of the paragraph, for a repeated stretch. */
+private fun DrawScope.sideBar(color: Color) {
+    val width = 3.dp.toPx()
+    drawRect(color, topLeft = Offset(-width * 3, 0f), size = Size(width, size.height))
 }

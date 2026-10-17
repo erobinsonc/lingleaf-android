@@ -34,6 +34,16 @@
     <string name="read_aloud">Leer en voz alta</string>
     <string name="pause_reading">Pausar</string>
     <string name="read_from_here">Leer desde aquí</string>
+    <string name="play_reading">Reproducir</string>
+    <string name="previous_sentence">Frase anterior</string>
+    <string name="add_previous_sentence">Añadir frase anterior</string>
+    <string name="repeat_sentence">Repetir frase</string>
+    <string name="repeating">Repitiendo</string>
+    <plurals name="repeating_sentences">
+        <item quantity="one">Repitiendo %d frase</item>
+        <item quantity="many">Repitiendo %d frases</item>
+        <item quantity="other">Repitiendo %d frases</item>
+    </plurals>
     <string name="smaller_text">Letra más pequeña</string>
     <string name="larger_text">Letra más grande</string>
     <string name="book_empty">Este libro está vacío.</string>

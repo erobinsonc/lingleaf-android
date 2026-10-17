@@ -41,4 +41,27 @@ class ReadAloudTest {
         assertNull(ReadAloud.start(listOf("", " "), 0))
         assertEquals(first, ReadAloud.start(book, -1), "a negative paragraph starts at the first")
     }
+
+    @Test
+    fun `previous goes back one sentence, across empty paragraphs`() {
+        val book = listOf("One. Two.", "", "Three.")
+        val one = SentencePosition(0, WordRange(0, 4))
+        val two = SentencePosition(0, WordRange(5, 9))
+        val three = SentencePosition(2, WordRange(0, 6))
+        assertEquals(two, ReadAloud.previous(book, three))
+        assertEquals(one, ReadAloud.previous(book, two))
+        assertNull(ReadAloud.previous(book, one), "the book's first sentence")
+        assertEquals(three, ReadAloud.previous(book, SentencePosition(9, WordRange(0, 1))), "past the end: the last sentence")
+    }
+
+    @Test
+    fun `a repeated stretch counts its sentences`() {
+        val book = listOf("One. Two.", "", "Three.")
+        val one = SentencePosition(0, WordRange(0, 4))
+        val three = SentencePosition(2, WordRange(0, 6))
+        assertEquals(1, ReadAloud.count(book, one, one))
+        assertEquals(3, ReadAloud.count(book, one, three))
+        assertEquals(0, ReadAloud.count(book, three, one), "the end before the start")
+        assertEquals(0, ReadAloud.count(book, one, SentencePosition(0, WordRange(1, 2))), "an end that is no sentence")
+    }
 }

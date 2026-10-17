@@ -66,6 +66,40 @@ object ReadAloud {
         return null
     }
 
+    /** The sentence before [current], skipping empty paragraphs, or null when it was the book's first. */
+    fun previous(
+        paragraphs: List<String>,
+        current: SentencePosition,
+    ): SentencePosition? {
+        sentences(paragraphs.getOrElse(current.paragraph) { "" })
+            .lastOrNull { it.end <= current.range.start }
+            ?.let { return SentencePosition(current.paragraph, it) }
+        for (paragraph in minOf(current.paragraph, paragraphs.size) - 1 downTo 0) {
+            sentences(paragraphs[paragraph]).lastOrNull()?.let { return SentencePosition(paragraph, it) }
+        }
+        return null
+    }
+
+    /**
+     * How many sentences there are from [first] to [last], both included (a repeated stretch:
+     * "Repeating 3 sentences"); 0 when [last] comes before [first].
+     */
+    fun count(
+        paragraphs: List<String>,
+        first: SentencePosition,
+        last: SentencePosition,
+    ): Int {
+        var count = 0
+        var at: SentencePosition? = first
+        while (at != null) {
+            count++
+            if (at == last) return count
+            if (at.paragraph > last.paragraph) return 0
+            at = next(paragraphs, at)
+        }
+        return 0
+    }
+
     /** The sentence after [current], or null when it was the book's last. */
     fun next(
         paragraphs: List<String>,
