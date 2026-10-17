@@ -193,4 +193,16 @@
     <string name="note_must">“must” + verb: it is necessary, or it is surely true.</string>
     <string name="note_may">“may” + verb: maybe, or permission.</string>
     <string name="note_might">“might” + verb: maybe.</string>
+    <string name="note_present_perfect">“%1$s” + past participle: before now, still relevant: “has seen”, not “has saw”.</string>
+    <string name="note_past_perfect">“%1$s” + past participle: before another past moment: “had left”.</string>
+    <string name="note_had_better">“had better” + verb: strong advice: “You\'d better go”.</string>
+    <string name="note_contraction">“%1$s” = “%2$s”.</string>
+    <string name="note_present_perfect_contracted">“%1$s” (= “%2$s”) + past participle: before now, still relevant: “has seen”, not “has saw”.</string>
+    <string name="note_past_perfect_contracted">“%1$s” (= “%2$s”) + past participle: before another past moment: “had left”.</string>
+    <string name="note_had_better_contracted">“\'d better” (= “had better”) + verb: strong advice: “You\'d better go”.</string>
+    <string name="note_will_contracted">“%1$s” (= “%2$s”) + verb: the future.</string>
+    <string name="note_would_contracted">“%1$s” (= “%2$s”) + verb: what would happen, or a polite request.</string>
+    <string name="note_lets">“let\'s” (= “let us”) + verb: a suggestion for us: “Let\'s go”.</string>
+    <string name="note_its">“it\'s” = “%1$s”; “its” (no apostrophe) = belonging to it.</string>
+    <string name="note_whos">“who\'s” = “%1$s”; “whose” asks who owns it: “Whose book?”</string>
 </resources>

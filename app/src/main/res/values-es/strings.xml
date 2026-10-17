@@ -172,4 +172,16 @@
     <string name="note_must">“must” + verbo: hay que hacerlo, o seguro que es así.</string>
     <string name="note_may">“may” + verbo: quizás, o permiso.</string>
     <string name="note_might">“might” + verbo: quizás, puede que…</string>
+    <string name="note_present_perfect">“%1$s” + participio: antes de ahora y sigue importando: “has seen”, no “has saw”.</string>
+    <string name="note_past_perfect">“%1$s” + participio: antes de otro momento del pasado: “had left”.</string>
+    <string name="note_had_better">“had better” + verbo: un consejo fuerte: “You\'d better go”.</string>
+    <string name="note_contraction">“%1$s” = “%2$s”.</string>
+    <string name="note_present_perfect_contracted">“%1$s” (= “%2$s”) + participio: antes de ahora y sigue importando: “has seen”, no “has saw”.</string>
+    <string name="note_past_perfect_contracted">“%1$s” (= “%2$s”) + participio: antes de otro momento del pasado: “had left”.</string>
+    <string name="note_had_better_contracted">“\'d better” (= “had better”) + verbo: un consejo fuerte: “You\'d better go”.</string>
+    <string name="note_will_contracted">“%1$s” (= “%2$s”) + verbo: el futuro.</string>
+    <string name="note_would_contracted">“%1$s” (= “%2$s”) + verbo: lo que pasaría, o una petición amable.</string>
+    <string name="note_lets">“let\'s” (= “let us”) + verbo: una propuesta para hacer juntos: “Let\'s go”.</string>
+    <string name="note_its">“it\'s” = “%1$s”; “its” (sin apóstrofo) = su, de una cosa o un animal.</string>
+    <string name="note_whos">“who\'s” = “%1$s”; “whose” pregunta de quién es: “Whose book?”</string>
 </resources>

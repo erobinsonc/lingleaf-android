@@ -267,9 +267,9 @@ fun WordSheet(
                 if (function == null && headword != word) {
                     Text(stringResource(R.string.in_text, word), color = MaterialTheme.colorScheme.onSurfaceVariant)
                 }
-                function?.let {
+                function?.kind?.label?.let {
                     Text(
-                        stringResource(it.kind.label),
+                        stringResource(it),
                         style = MaterialTheme.typography.titleSmall,
                         color = MaterialTheme.colorScheme.onSurfaceVariant,
                     )
@@ -370,12 +370,14 @@ private fun markedSentence(
     word?.let { addStyle(SpanStyle(fontWeight = FontWeight.Bold), it.start, it.end) }
 }
 
+/** Null for a contraction: the card's headword ("it is") already says what it is. */
 @get:StringRes
-val FunctionWord.Kind.label: Int
+val FunctionWord.Kind.label: Int?
     get() =
         when (this) {
             FunctionWord.Kind.HELPER -> R.string.helper_verb
             FunctionWord.Kind.MODAL -> R.string.modal_verb
+            FunctionWord.Kind.CONTRACTION -> null
         }
 
 private val expandedNegatives = mapOf("didn't" to "did not", "don't" to "do not", "doesn't" to "does not")
@@ -386,10 +388,14 @@ private fun functionNote(
     function: FunctionWord,
     form: String,
 ): String {
-    val word = form.lowercase()
+    // "I'll" keeps its capital I; other words are shown in lower case.
+    val word = if (form.startsWith("I'") || form.startsWith("I’")) form else form.lowercase()
+    function.expansion?.let { return contractionNote(function.use, word, it) }
     val contracted = TextTools.normalize(word).endsWith("n't")
     val negative = if (contracted) word else "$word not"
     val expanded = expandedNegatives[TextTools.normalize(word)] ?: negative
+    // A perfect's helper as tapped, with "not" when it follows: "has not" for "has not seen".
+    val shown = if (function.negative && !contracted) "$word not" else word
     return when (val use = function.use) {
         FunctionWord.Use.PastNegative ->
             if (contracted) {
@@ -425,8 +431,32 @@ private fun functionNote(
         FunctionWord.Use.QuestionTag -> stringResource(R.string.note_question_tag, word)
         FunctionWord.Use.PastQuestion -> stringResource(R.string.note_past_question, word)
         FunctionWord.Use.PresentQuestion -> stringResource(R.string.note_present_question, word)
+        FunctionWord.Use.PresentPerfect -> stringResource(R.string.note_present_perfect, shown)
+        FunctionWord.Use.PastPerfect -> stringResource(R.string.note_past_perfect, shown)
+        FunctionWord.Use.HadBetter -> stringResource(R.string.note_had_better)
+        FunctionWord.Use.Contraction -> stringResource(R.string.note_contraction, word, function.base)
     }
 }
+
+/** A pronoun contraction: what it stands for, and what it does when it is a helper here. */
+@Composable
+private fun contractionNote(
+    use: FunctionWord.Use,
+    word: String,
+    expansion: String,
+): String =
+    when {
+        use == FunctionWord.Use.PresentPerfect -> stringResource(R.string.note_present_perfect_contracted, word, expansion)
+        use == FunctionWord.Use.PastPerfect -> stringResource(R.string.note_past_perfect_contracted, word, expansion)
+        use == FunctionWord.Use.HadBetter -> stringResource(R.string.note_had_better_contracted)
+        use == FunctionWord.Use.Modal("will") -> stringResource(R.string.note_will_contracted, word, expansion)
+        use is FunctionWord.Use.Modal -> stringResource(R.string.note_would_contracted, word, expansion)
+        TextTools.normalize(word) == "let's" -> stringResource(R.string.note_lets)
+        // The lookalikes learners mix up.
+        TextTools.normalize(word) == "it's" -> stringResource(R.string.note_its, expansion)
+        TextTools.normalize(word) == "who's" -> stringResource(R.string.note_whos, expansion)
+        else -> stringResource(R.string.note_contraction, word, expansion)
+    }
 
 private val modalNotes =
     mapOf(
