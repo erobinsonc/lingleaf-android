@@ -26,5 +26,10 @@ for mode in light dark; do
     cp "$png" "screenshots/$mode-$(basename "$png")"
   done
 done
+# On a failure, the app's own log (and any crash) goes with the screenshots.
+if [ "$status" != 0 ]; then
+  adb logcat -d -v brief Lingleaf:V AndroidRuntime:E '*:S' > screenshots/logcat.txt || true
+  echo "::group::App log"; cat screenshots/logcat.txt; echo "::endgroup::"
+fi
 ls -l screenshots
 exit $status

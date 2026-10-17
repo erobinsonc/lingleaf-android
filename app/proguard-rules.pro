@@ -11,13 +11,6 @@
 }
 -keep,includedescriptorclasses class app.lingleaf.**$$serializer { *; }
 
-# No log output in shrunk builds: nothing about the learner's reading reaches logcat.
--assumenosideeffects class android.util.Log {
-    public static int v(...);
-    public static int d(...);
-    public static int i(...);
-    public static int w(...);
-    public static int e(...);
-    public static int wtf(...);
-    public static int println(...);
-}
+# Shrinking only: renaming hides nothing in open-source code and would make crash
+# reports unreadable.
+-dontobfuscate

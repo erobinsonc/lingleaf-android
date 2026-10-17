@@ -25,10 +25,10 @@ android {
         release {
             isMinifyEnabled = true
             isShrinkResources = true
-            proguardFiles(getDefaultProguardFile("proguard-android-optimize.txt"), "proguard-rules.pro")
+            proguardFiles(getDefaultProguardFile("proguard-android-optimize.txt"), "proguard-rules.pro", "proguard-release.pro")
         }
-        // The release code path (R8 on) with the debug key and test hooks, so CI's emulator
-        // tour proves the shrunk app still saves, reads and shows everything.
+        // The release code path (R8 on) with the debug key, test hooks and logs, so CI's
+        // emulator tour proves the shrunk app still saves, reads and shows everything.
         create("minified") {
             initWith(getByName("debug"))
             isMinifyEnabled = true
