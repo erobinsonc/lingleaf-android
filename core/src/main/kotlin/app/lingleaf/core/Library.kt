@@ -71,7 +71,18 @@ data class Settings(
     val fontSize: Float = 20f,
     val speechRate: Float = 0.9f,
     val targetLanguage: String? = null,
-)
+) {
+    /**
+     * Within the ranges Settings offers: a restored or edited settings file can't make the
+     * streak count forever (a goal of 0) or the reader unreadable.
+     */
+    fun bounded(): Settings =
+        copy(
+            dailyGoalMinutes = dailyGoalMinutes.coerceIn(5, 60),
+            fontSize = if (fontSize.isFinite()) fontSize.coerceIn(14f, 34f) else Settings().fontSize,
+            speechRate = if (speechRate.isFinite()) speechRate.coerceIn(0.5f, 1.3f) else Settings().speechRate,
+        )
+}
 
 data class BundledStory(val title: String, val level: String, val text: String)
 
@@ -128,18 +139,44 @@ class Library(
 
     private fun now() = LocalDateTime.now(clock)
 
+    private fun isDate(text: String) = runCatching { LocalDateTime.parse(text) }.isSuccess
+
+    private fun withReadableDates(word: VocabWord): VocabWord =
+        if (isDate(word.nextReview) && isDate(word.createdAt)) {
+            word
+        } else {
+            word.copy(nextReview = now().toString(), createdAt = now().toString())
+        }
+
+    /** Milliseconds until the next word being learned falls due; null when none is waiting. */
+    fun millisUntilNextDue(): Long? {
+        val now = now()
+        return _state.value.words
+            .filter { !it.learned }
+            .map { LocalDateTime.parse(it.nextReview) }
+            .filter { it.isAfter(now) }
+            .minOrNull()
+            ?.let { java.time.Duration.between(now, it).toMillis() }
+    }
+
     @Synchronized
     fun load() {
         _state.value =
             LibraryState(
-                books = decode(BOOKS, ListSerializer(Book.serializer())) ?: emptyList(),
+                // Progress stays inside the book, whatever a restored file says.
+                books =
+                    decode(BOOKS, ListSerializer(Book.serializer()))
+                        ?.map { it.copy(progressParagraph = it.progressParagraph.coerceIn(0, maxOf(it.paragraphCount - 1, 0))) }
+                        ?: emptyList(),
                 // Saved before contexts were capped, or restored from a backup: cut to size.
                 words =
                     decode(WORDS, ListSerializer(VocabWord.serializer()))
                         ?.map { it.copy(context = TextTools.truncated(it.context, TextTools.MAX_SENTENCE)) }
+                        // A date that can't be read is due now rather than a crash on every screen.
+                        ?.map(::withReadableDates)
                         ?: emptyList(),
                 readingLog = decode(READING_LOG, readingLogSerializer) ?: emptyMap(),
-                settings = decode(SETTINGS, Settings.serializer()) ?: Settings(),
+                settings = (decode(SETTINGS, Settings.serializer()) ?: Settings()).bounded(),
             )
     }
 

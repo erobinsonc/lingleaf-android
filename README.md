@@ -57,7 +57,7 @@ Requirements: Android Studio (recent) with JDK 17.
 
 Lingleaf has no accounts, ads or analytics, and keeps your books and words on your
 device (and in your Android backup, if you have backup turned on). The app itself
-talks only to `gutendex.com` / `gutenberg.org` (books) and `api.dictionaryapi.dev`
+talks only to `gutendex.com` / `www.gutenberg.org` (books) and `api.dictionaryapi.dev`
 (definitions), always over HTTPS.
 
 Translation runs on the device with Google ML Kit. ML Kit downloads each language

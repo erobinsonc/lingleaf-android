@@ -73,6 +73,8 @@ class DictionaryClient(private val http: HttpFetcher) {
         val response =
             try {
                 http.get("https://api.dictionaryapi.dev/api/v2/entries/en/${URLEncoder.encode(word, "UTF-8")}")
+            } catch (e: kotlin.coroutines.cancellation.CancellationException) {
+                throw e
             } catch (e: Exception) {
                 return null
             }

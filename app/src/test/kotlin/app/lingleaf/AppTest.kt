@@ -480,7 +480,7 @@ class AppTest {
         compose.onNodeWithText("Show meaning").performClick()
         compose.onNodeWithText("I remembered").performClick()
         compose.onNodeWithText("Done for today.").assertExists()
-        compose.onNodeWithText("1 more tomorrow.").assertExists()
+        compose.onNodeWithText("1 word tomorrow.").assertExists()
         assertEquals(1, container.library.state.value.word("bay")!!.box)
     }
 

@@ -14,6 +14,7 @@ import androidx.compose.foundation.layout.heightIn
 import androidx.compose.foundation.layout.navigationBarsPadding
 import androidx.compose.foundation.layout.padding
 import androidx.compose.foundation.layout.size
+import androidx.compose.foundation.layout.width
 import androidx.compose.foundation.rememberScrollState
 import androidx.compose.foundation.verticalScroll
 import androidx.compose.material.icons.Icons
@@ -44,9 +45,13 @@ import androidx.compose.ui.Modifier
 import androidx.compose.ui.res.pluralStringResource
 import androidx.compose.ui.res.stringResource
 import androidx.compose.ui.semantics.LiveRegionMode
+import androidx.compose.ui.semantics.ProgressBarRangeInfo
+import androidx.compose.ui.semantics.clearAndSetSemantics
 import androidx.compose.ui.semantics.contentDescription
 import androidx.compose.ui.semantics.liveRegion
+import androidx.compose.ui.semantics.progressBarRangeInfo
 import androidx.compose.ui.semantics.semantics
+import androidx.compose.ui.semantics.stateDescription
 import androidx.compose.ui.text.SpanStyle
 import androidx.compose.ui.text.buildAnnotatedString
 import androidx.compose.ui.text.font.FontStyle
@@ -103,7 +108,8 @@ fun ReviewScreen(onBack: () -> Unit) {
                 // The saved word, so a translation filled in meanwhile shows up.
                 word = state.word(current.word) ?: current,
                 target = target,
-                progress = if (total == 0) 0f else reviewed / total.toFloat(),
+                reviewed = reviewed,
+                total = total,
                 revealed = revealed,
                 onReveal = { revealed = true },
                 onAnswer = ::answer,
@@ -134,7 +140,7 @@ private fun ReviewDone(
                 tint = MaterialTheme.colorScheme.primary,
                 modifier = Modifier.size(64.dp),
             )
-            // "Done for today. 12 more tomorrow.", or, when more words are due now than one
+            // "Done for today. 12 words tomorrow.", or, when more words are due now than one
             // session holds, "Done for now. 15 more due today." with Keep going.
             if (dueNow > 0) {
                 Text(stringResource(R.string.review_done_for_now), style = MaterialTheme.typography.headlineMedium)
@@ -153,7 +159,8 @@ private fun ReviewDone(
 private fun ReviewCard(
     word: VocabWord,
     target: String?,
-    progress: Float,
+    reviewed: Int,
+    total: Int,
     revealed: Boolean,
     onReveal: () -> Unit,
     onAnswer: (Boolean) -> Unit,
@@ -167,12 +174,27 @@ private fun ReviewCard(
             .padding(20.dp),
     ) {
         val progressLabel = stringResource(R.string.review_progress)
-        LinearProgressIndicator(
-            progress = { progress },
-            modifier = Modifier.fillMaxWidth().semantics { contentDescription = progressLabel },
-            // The default lavender track is ≈1.2:1 on paper; the outline colour stays visible at 0%.
-            trackColor = MaterialTheme.colorScheme.outline,
-        )
+        val count = stringResource(R.string.review_count, reviewed, total)
+        // The count beside the bar: at the start a dark full-width track alone read as "done".
+        Row(
+            Modifier.fillMaxWidth().clearAndSetSemantics {
+                contentDescription = progressLabel
+                stateDescription = count
+                // Still a progress bar to TalkBack, as on iOS.
+                progressBarRangeInfo = ProgressBarRangeInfo(reviewed.toFloat(), 0f..maxOf(total, 1).toFloat())
+            },
+            verticalAlignment = Alignment.CenterVertically,
+        ) {
+            LinearProgressIndicator(
+                progress = { if (total == 0) 0f else reviewed / total.toFloat() },
+                modifier = Modifier.weight(1f),
+                // A light track and no end dot: only the filled part looks like progress.
+                trackColor = MaterialTheme.colorScheme.outlineVariant,
+                drawStopIndicator = {},
+            )
+            Spacer(Modifier.width(12.dp))
+            Text(count, style = MaterialTheme.typography.bodyMedium, color = MaterialTheme.colorScheme.onSurfaceVariant)
+        }
         // The card scrolls (large text, landscape) while the answer buttons stay at the bottom.
         BoxWithConstraints(
             Modifier
