@@ -2,11 +2,16 @@ package app.lingleaf
 
 import android.content.Context
 import android.content.res.Resources
+import android.graphics.Bitmap
+import android.graphics.BitmapFactory
 import android.net.ConnectivityManager
 import android.net.NetworkCapabilities
 import android.speech.tts.TextToSpeech
 import android.speech.tts.UtteranceProgressListener
 import android.util.Log
+import android.util.LruCache
+import androidx.compose.ui.graphics.ImageBitmap
+import androidx.compose.ui.graphics.asImageBitmap
 import app.lingleaf.core.BundledStory
 import app.lingleaf.core.DictionaryClient
 import app.lingleaf.core.GutenbergBook
@@ -98,6 +103,8 @@ class AppContainer(
     /** The phone's region (ISO 3166, e.g. "BR"), used to suggest a translation language. */
     val region: () -> String? = ::systemRegion,
     val io: CoroutineDispatcher = Dispatchers.IO,
+    /** Loads a book cover; null loads none (UI tests, so they never depend on the network). */
+    val covers: (suspend (String) -> ImageBitmap?)? = null,
 ) {
     /**
      * Outlives screens, for work that must finish after one closes (saving progress,
@@ -217,6 +224,7 @@ class AppContainer(
                 library = Library(FileStorage(context.filesDir)),
                 dictionary = DictionaryClient(http),
                 gutenberg = GutenbergClient(http),
+                covers = CoverLoader(HttpsFetcher(maxBytes = MAX_COVER_BYTES))::load,
                 translator = MlKitTranslator(context.applicationContext),
                 speaker = AndroidSpeaker(context.applicationContext),
                 bundledStories = {
@@ -469,9 +477,16 @@ class FileStorage(
     ) {
         val target = File(dir, name)
         val temp = File(dir, "$name.tmp")
-        temp.writeText(content)
-        // rename(2) replaces the target atomically; if it fails, keep the old file rather than half-write it.
-        if (!temp.renameTo(target)) {
+        // rename(2) replaces the target atomically. If writing or renaming fails (a full disk, a
+        // missing folder), keep the old file rather than half-write it or crash, as iOS does.
+        val saved =
+            try {
+                temp.writeText(content)
+                temp.renameTo(target)
+            } catch (_: IOException) {
+                false
+            }
+        if (!saved) {
             temp.delete()
             Log.w("Lingleaf", "Could not save $name")
         }
@@ -492,4 +507,62 @@ sealed interface BookDownload {
     data class Failed(
         val reason: GutenbergException.Reason,
     ) : BookDownload
+}
+
+/** Largest cover image accepted; Gutenberg's medium covers are about 20–60 KB. */
+const val MAX_COVER_BYTES = 2 * 1024 * 1024
+
+/**
+ * Book covers over HTTPS (through [HttpsFetcher], so HTTPS only and size-capped),
+ * decoded as small thumbnails on the IO dispatcher and kept in memory for the session. Any failure
+ * returns null and the drawn cover stays.
+ */
+class CoverLoader(
+    private val http: HttpFetcher,
+) {
+    // Sized by bytes, not entries: a few dozen small thumbnails at most.
+    private val cache =
+        object : LruCache<String, ImageBitmap>(COVER_CACHE_BYTES) {
+            override fun sizeOf(
+                key: String,
+                value: ImageBitmap,
+            ) = value.width * value.height * 4
+        }
+
+    suspend fun load(url: String): ImageBitmap? {
+        cache.get(url)?.let { return it }
+        val image =
+            withContext(Dispatchers.IO) {
+                val response = runCatching { http.get(url) }.getOrNull()
+                if (response == null || response.status != 200) return@withContext null
+                decodeThumbnail(response.body)?.asImageBitmap()
+            } ?: return null
+        cache.put(url, image)
+        return image
+    }
+
+    companion object {
+        const val COVER_CACHE_BYTES = 8 * 1024 * 1024
+
+        /**
+         * Only JPEG, by its first bytes and by what the decoder reads. Reads the size first,
+         * refuses huge images and decodes a downsampled copy, so a small file that claims enormous
+         * dimensions can't exhaust memory. Null when it isn't a JPEG image.
+         */
+        fun decodeThumbnail(bytes: ByteArray): Bitmap? {
+            if (!GutenbergClient.isJpeg(bytes)) return null
+            val bounds = BitmapFactory.Options().apply { inJustDecodeBounds = true }
+            BitmapFactory.decodeByteArray(bytes, 0, bytes.size, bounds)
+            if (bounds.outMimeType != "image/jpeg") return null
+            val sample = GutenbergClient.coverSample(bounds.outWidth, bounds.outHeight) ?: return null
+            val options = BitmapFactory.Options().apply { inSampleSize = sample }
+            return try {
+                BitmapFactory.decodeByteArray(bytes, 0, bytes.size, options)
+            } catch (_: OutOfMemoryError) {
+                null
+            } catch (_: IllegalArgumentException) {
+                null
+            }
+        }
+    }
 }

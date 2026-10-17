@@ -4,6 +4,7 @@ import kotlinx.coroutines.test.runTest
 import kotlin.test.Test
 import kotlin.test.assertEquals
 import kotlin.test.assertFailsWith
+import kotlin.test.assertFalse
 import kotlin.test.assertNull
 import kotlin.test.assertTrue
 
@@ -54,7 +55,7 @@ class GutenbergTest {
         assertEquals("Alice's Adventures in Wonderland", alice.displayTitle)
         assertEquals("Lewis Carroll", alice.authorName)
         assertEquals("https://www.gutenberg.org/cache/epub/11/pg11.txt", alice.textUrl)
-        assertNull(alice.coverUrl, "the app draws the cover")
+        assertEquals("https://www.gutenberg.org/cache/epub/11/pg11.cover.medium.jpg", alice.coverUrl)
         assertEquals("B2", GutenbergClient.levelFor(11))
     }
 
@@ -65,6 +66,30 @@ class GutenbergTest {
             assertEquals("https://www.gutenberg.org/cache/epub/11/pg11.txt", book.textUrl, "not the catalog's redirecting link")
             assertNull(GutenbergBook(id = 2, title = "No text", formats = mapOf("application/zip" to "https://example.com/2.zip")).textUrl)
         }
+
+    @Test
+    fun `covers load only from the Gutenberg file cache`() {
+        val elsewhere = GutenbergBook(id = 3, title = "x", formats = mapOf("image/jpeg" to "http://example.com/huge.jpg"))
+        assertEquals("https://www.gutenberg.org/cache/epub/3/pg3.cover.medium.jpg", elsewhere.coverUrl, "not the catalog's link")
+        assertNull(GutenbergBook(id = 4, title = "No cover", formats = emptyMap()).coverUrl)
+    }
+
+    @Test
+    fun `covers decode downsampled and huge images are refused`() {
+        assertEquals(1, GutenbergClient.coverSample(350, 500), "a medium cover stays sharp")
+        assertEquals(4, GutenbergClient.coverSample(1000, 1400))
+        assertNull(GutenbergClient.coverSample(5000, 10), "a side over 4096 px")
+        assertNull(GutenbergClient.coverSample(4096, 4096), "over 4 megapixels")
+        assertNull(GutenbergClient.coverSample(-1, -1), "not an image")
+    }
+
+    @Test
+    fun `only JPEG covers reach the image decoder`() {
+        assertTrue(GutenbergClient.isJpeg(byteArrayOf(0xFF.toByte(), 0xD8.toByte(), 0xFF.toByte(), 0xE0.toByte())))
+        assertFalse(GutenbergClient.isJpeg("RIFF....WEBP".toByteArray()), "WebP")
+        assertFalse(GutenbergClient.isJpeg(byteArrayOf(0xFF.toByte(), 0xD8.toByte())), "too short")
+        assertFalse(GutenbergClient.isJpeg(ByteArray(0)))
+    }
 
     @Test
     fun `filter by level keeps order and null keeps everything`() {
