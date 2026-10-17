@@ -59,12 +59,20 @@ class FakeSpeaker : Speaker {
     override val isSpeaking: StateFlow<Boolean> = MutableStateFlow(false)
     private var onDone: (() -> Unit)? = null
 
+    /** A phone with no English voice: every request fails at once. */
+    var voiceMissing = false
+    override val noVoice: Boolean get() = voiceMissing
+
     override fun speak(
         text: String,
         rate: Float,
         onDone: (() -> Unit)?,
         onError: (() -> Unit)?,
     ) {
+        if (voiceMissing) {
+            onError?.invoke()
+            return
+        }
         spoken += text
         this.onDone = onDone
     }
@@ -586,6 +594,24 @@ class AppTest {
         compose.onNodeWithContentDescription("Previous sentence").assertExists()
         compose.onNodeWithContentDescription("Pause").performClick()
         compose.onNodeWithContentDescription("Play").assertExists()
+    }
+
+    // S6 Listen: with no English voice, reading aloud stops and says why, with a way to the settings.
+    @Test
+    fun withNoEnglishVoiceReadingAloudSaysSo() {
+        speaker.voiceMissing = true
+        container.library.addBook("Listening Practice", "Lingleaf", "The sun is up. All animals are equal.\n\nThe end.")
+        compose.onAllNodesWithText("Listening Practice").onFirst().performClick()
+        val paragraph = hasText("The sun is up.", substring = true)
+        compose.waitUntil(WAIT_MS) { compose.onAllNodes(paragraph).fetchSemanticsNodes().isNotEmpty() }
+        compose.onNodeWithContentDescription("Read aloud").performClick()
+        compose.waitUntil(WAIT_MS) {
+            compose.onAllNodesWithText("Can't read aloud: this device has no English voice.").fetchSemanticsNodes().isNotEmpty()
+        }
+        compose.onNodeWithText("Settings").assertExists()
+        compose.onNodeWithContentDescription("Pause").assertDoesNotExist()
+        compose.onNodeWithContentDescription("Read aloud").assertExists()
+        assertTrue("nothing spoken", speaker.spoken.isEmpty())
     }
 
     // S9 Discover: a search shows its results above the recommended books.

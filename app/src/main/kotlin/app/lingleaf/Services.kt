@@ -98,6 +98,9 @@ interface Speaker {
     )
 
     fun stop()
+
+    /** No English voice can be used (no engine, or its English data is missing): say so. */
+    val noVoice: Boolean get() = false
 }
 
 /** Everything the UI needs. The app builds the real one; tests pass fakes. */
@@ -344,6 +347,11 @@ class AndroidSpeaker(
     private val speaking = MutableStateFlow(false)
     override val isSpeaking: StateFlow<Boolean> = speaking.asStateFlow()
     private var ready = false
+
+    // No voice engine could start, or it has no English: every request fails at once
+    // instead of waiting forever.
+    private var broken = false
+    override val noVoice: Boolean get() = broken
     private var pending: (() -> Unit)? = null
     private val tts = TextToSpeech(context, this)
     private val main = Handler(Looper.getMainLooper())
@@ -375,14 +383,7 @@ class AndroidSpeaker(
                 override fun onError(utteranceId: String?) {
                     speaking.value = false
                     // The engine failed: reading aloud stops instead of looking busy without sound.
-                    main.post {
-                        val failed = onError
-                        if (utteranceId == "lingleaf-$utterance" && failed != null) {
-                            onDone = null
-                            onError = null
-                            failed()
-                        }
-                    }
+                    main.post { failed(utteranceId) }
                 }
 
                 override fun onStop(
@@ -390,18 +391,35 @@ class AndroidSpeaker(
                     interrupted: Boolean,
                 ) {
                     speaking.value = false
+                    // Our own stops change the utterance first; a stop of the current one came from
+                    // elsewhere (another app, the system), so reading aloud pauses.
+                    main.post { failed(utteranceId) }
                 }
             },
         )
     }
 
+    /** Runs the error callback of [utteranceId] if it is still the current one. */
+    private fun failed(utteranceId: String?) {
+        val failed = onError
+        if (utteranceId == "lingleaf-$utterance" && failed != null) {
+            onDone = null
+            onError = null
+            failed()
+        }
+    }
+
     override fun onInit(status: Int) {
         ready = status == TextToSpeech.SUCCESS
+        broken = !ready
         if (ready) {
-            tts.language = Locale.US
-            pending?.invoke()
+            val language = tts.setLanguage(Locale.US)
+            broken = language == TextToSpeech.LANG_MISSING_DATA || language == TextToSpeech.LANG_NOT_SUPPORTED
+            ready = !broken
         }
+        val waiting = pending
         pending = null
+        waiting?.invoke()
     }
 
     override fun speak(
@@ -410,6 +428,10 @@ class AndroidSpeaker(
         onDone: (() -> Unit)?,
         onError: (() -> Unit)?,
     ) {
+        if (broken) {
+            onError?.let { callback -> main.post { callback() } }
+            return
+        }
         if (!ready) {
             pending = { speak(text, rate, onDone, onError) }
             return
@@ -418,7 +440,12 @@ class AndroidSpeaker(
         this.onDone = onDone
         this.onError = onError
         tts.setSpeechRate(rate)
-        tts.speak(text, TextToSpeech.QUEUE_FLUSH, null, "lingleaf-$utterance")
+        if (tts.speak(text, TextToSpeech.QUEUE_FLUSH, null, "lingleaf-$utterance") != TextToSpeech.SUCCESS) {
+            // Refused (the engine died or was unbound): no callback will come, so fail now.
+            speaking.value = false
+            val id = "lingleaf-$utterance"
+            main.post { failed(id) }
+        }
     }
 
     override fun stop() {

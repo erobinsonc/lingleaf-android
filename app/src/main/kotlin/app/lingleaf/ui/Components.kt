@@ -3,6 +3,10 @@
 package app.lingleaf.ui
 
 import android.accessibilityservice.AccessibilityServiceInfo
+import android.content.ActivityNotFoundException
+import android.content.Context
+import android.content.Intent
+import android.speech.tts.TextToSpeech
 import android.view.accessibility.AccessibilityManager
 import androidx.compose.foundation.background
 import androidx.compose.foundation.layout.Arrangement
@@ -39,6 +43,7 @@ import androidx.compose.material3.SnackbarHost
 import androidx.compose.material3.SnackbarHostState
 import androidx.compose.material3.SnackbarResult
 import androidx.compose.material3.Text
+import androidx.compose.material3.TextButton
 import androidx.compose.material3.TopAppBar
 import androidx.compose.material3.TopAppBarDefaults
 import androidx.compose.runtime.Composable
@@ -61,10 +66,12 @@ import androidx.compose.ui.platform.LocalDensity
 import androidx.compose.ui.res.pluralStringResource
 import androidx.compose.ui.res.stringResource
 import androidx.compose.ui.semantics.CustomAccessibilityAction
+import androidx.compose.ui.semantics.LiveRegionMode
 import androidx.compose.ui.semantics.clearAndSetSemantics
 import androidx.compose.ui.semantics.contentDescription
 import androidx.compose.ui.semantics.customActions
 import androidx.compose.ui.semantics.heading
+import androidx.compose.ui.semantics.liveRegion
 import androidx.compose.ui.semantics.semantics
 import androidx.compose.ui.text.LinkAnnotation
 import androidx.compose.ui.text.LinkInteractionListener
@@ -74,6 +81,7 @@ import androidx.compose.ui.text.TextLinkStyles
 import androidx.compose.ui.text.TextStyle
 import androidx.compose.ui.text.buildAnnotatedString
 import androidx.compose.ui.text.font.FontWeight
+import androidx.compose.ui.text.style.TextAlign
 import androidx.compose.ui.text.style.TextDecoration
 import androidx.compose.ui.text.style.TextOverflow
 import androidx.compose.ui.unit.dp
@@ -192,6 +200,50 @@ suspend fun SnackbarHostState.showUndo(
             }
         }
     if (result == SnackbarResult.ActionPerformed) onUndo()
+}
+
+/**
+ * Says the phone has no English voice, with an action to the voice settings (SPEC S6).
+ * The snackbar is a polite live region, so TalkBack announces it.
+ */
+suspend fun SnackbarHostState.showNoVoice(context: Context) {
+    currentSnackbarData?.dismiss()
+    val result =
+        showSnackbar(
+            context.getString(R.string.no_voice),
+            actionLabel = context.getString(R.string.voice_settings),
+            withDismissAction = true,
+            duration = SnackbarDuration.Long,
+        )
+    if (result == SnackbarResult.ActionPerformed) openVoiceSettings(context)
+}
+
+/** The same message inside a sheet, where a snackbar would be hidden. */
+@Composable
+fun NoVoiceNotice() {
+    val context = LocalContext.current
+    Column(horizontalAlignment = Alignment.CenterHorizontally) {
+        Text(
+            stringResource(R.string.no_voice),
+            style = MaterialTheme.typography.bodyMedium,
+            textAlign = TextAlign.Center,
+            modifier = Modifier.semantics { liveRegion = LiveRegionMode.Polite },
+        )
+        TextButton(onClick = { openVoiceSettings(context) }) { Text(stringResource(R.string.voice_settings)) }
+    }
+}
+
+/** Opens the screen that installs voice data, or the text-to-speech settings; nothing if neither exists. */
+fun openVoiceSettings(context: Context) {
+    val screens = listOf(TextToSpeech.Engine.ACTION_INSTALL_TTS_DATA, "com.android.settings.TTS_SETTINGS")
+    for (action in screens) {
+        try {
+            context.startActivity(Intent(action).addFlags(Intent.FLAG_ACTIVITY_NEW_TASK))
+            return
+        } catch (_: ActivityNotFoundException) {
+            // Try the next screen.
+        }
+    }
 }
 
 /** Every translation language, each named in its own language. */

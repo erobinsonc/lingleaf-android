@@ -34,6 +34,8 @@
     <string name="read_aloud">Leer en voz alta</string>
     <string name="pause_reading">Pausar</string>
     <string name="read_from_here">Leer desde aquí</string>
+    <string name="no_voice">No se puede leer en voz alta: este dispositivo no tiene voz en inglés.</string>
+    <string name="voice_settings">Ajustes</string>
     <string name="play_reading">Reproducir</string>
     <string name="previous_sentence">Frase anterior</string>
     <string name="add_previous_sentence">Agregar frase anterior</string>

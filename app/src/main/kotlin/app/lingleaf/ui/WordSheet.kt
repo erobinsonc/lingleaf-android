@@ -126,6 +126,11 @@ fun WordSheet(
     val container = LocalContainer.current
     val library = container.library
     val state by library.state.collectAsStateWithLifecycle()
+    // Listen found no English voice: the sheet says so (SPEC S6).
+    var noVoice by remember { mutableStateOf(false) }
+    val listenFailed = { if (container.speaker.noVoice) noVoice = true }
+
+    fun listen(text: String) = container.speaker.speak(text, state.settings.speechRate, onError = listenFailed)
     val sheetState = rememberModalBottomSheetState(skipPartiallyExpanded = true)
     val scope = rememberCoroutineScope()
     var entry by remember(word) { mutableStateOf<DictionaryEntry?>(null) }
@@ -255,10 +260,11 @@ fun WordSheet(
                 horizontalAlignment = Alignment.CenterHorizontally,
                 verticalArrangement = Arrangement.spacedBy(6.dp),
             ) {
+                if (noVoice) NoVoiceNotice()
                 Row(verticalAlignment = Alignment.CenterVertically) {
                     // A helper or modal verb: how the verb group sounds ("didn't go", not "do").
                     val spoken = if (function == null) headword else chunk ?: word
-                    FilledTonalIconButton(onClick = { container.speaker.speak(spoken, state.settings.speechRate) }) {
+                    FilledTonalIconButton(onClick = { listen(spoken) }) {
                         Icon(Icons.AutoMirrored.Filled.VolumeUp, contentDescription = stringResource(R.string.listen_word, spoken))
                     }
                     Spacer(Modifier.width(12.dp))
@@ -340,7 +346,7 @@ fun WordSheet(
                             }
                         }
                     }
-                    IconButton(onClick = { container.speaker.speak(sentence, state.settings.speechRate) }) {
+                    IconButton(onClick = { listen(sentence) }) {
                         Icon(Icons.Filled.RecordVoiceOver, contentDescription = stringResource(R.string.listen_sentence))
                     }
                 }
