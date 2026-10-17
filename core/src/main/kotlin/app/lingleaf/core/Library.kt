@@ -91,6 +91,16 @@ data class LibraryState(
     val lastOpened: Book? get() = books.filter { it.lastOpenedAt != null }.maxByOrNull { it.lastOpenedAt!! }
 }
 
+/**
+ * Names a [Storage] accepts: the plain names the app makes ("books.json", "book-<id>.txt").
+ * A name read back from a restored backup can't reach outside the app's folder.
+ */
+object StorageNames {
+    private val safe = Regex("^[A-Za-z0-9][A-Za-z0-9._-]{0,127}$")
+
+    fun isSafe(name: String): Boolean = ".." !in name && safe.matches(name)
+}
+
 /** Where files live. The app maps it to internal storage; tests to a temp dir. */
 interface Storage {
     fun read(name: String): String?
@@ -123,7 +133,11 @@ class Library(
         _state.value =
             LibraryState(
                 books = decode(BOOKS, ListSerializer(Book.serializer())) ?: emptyList(),
-                words = decode(WORDS, ListSerializer(VocabWord.serializer())) ?: emptyList(),
+                // Saved before contexts were capped, or restored from a backup: cut to size.
+                words =
+                    decode(WORDS, ListSerializer(VocabWord.serializer()))
+                        ?.map { if (it.context.length > MAX_CONTEXT) it.copy(context = it.context.take(MAX_CONTEXT)) else it }
+                        ?: emptyList(),
                 readingLog = decode(READING_LOG, readingLogSerializer) ?: emptyMap(),
                 settings = decode(SETTINGS, Settings.serializer()) ?: Settings(),
             )
@@ -151,8 +165,8 @@ class Library(
         val book =
             Book(
                 id = id,
-                title = title,
-                author = author,
+                title = TextTools.cleanLabel(title),
+                author = TextTools.cleanLabel(author),
                 fileName = "book-$id.txt",
                 paragraphCount = TextTools.splitParagraphs(text).size,
                 level = level,
@@ -401,6 +415,7 @@ class Library(
     ): T? =
         storage.read(name)?.let {
             try {
+                require(JsonGuard.isShallow(it)) { "Nested too deeply" }
                 json.decodeFromString(serializer, it)
             } catch (e: Exception) {
                 storage.write("$name.corrupt", it)
@@ -417,6 +432,7 @@ class Library(
         private const val MAX_SESSION_SECONDS = 3600L
         private const val IMPORTED_AUTHOR = "—"
         private const val DEFAULT_TITLE = "Book"
+        private const val MAX_CONTEXT = TextTools.MAX_SENTENCE
 
         /** "Alice.txt" → "Alice", "my.story.TXT" → "my.story"; an empty name becomes "Book". */
         fun importTitle(fileName: String): String {

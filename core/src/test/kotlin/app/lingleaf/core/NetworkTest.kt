@@ -236,3 +236,29 @@ class HostsTest {
         assertFalse(Hosts.isAllowed(null))
     }
 }
+
+class HostileAnswersTest {
+    private val deep = "[".repeat(10_000) + "]".repeat(10_000)
+
+    @Test
+    fun `deeply nested JSON is refused before parsing`() =
+        runTest {
+            assertFalse(JsonGuard.isShallow(deep))
+            assertTrue(JsonGuard.isShallow("""{"results": [{"id": 1, "title": "[[[[[[[[[[\\"]]"}]}"""), "brackets in strings")
+            val search = assertFailsWith<GutenbergException> { GutenbergClient { ok(deep) }.search("x") }
+            assertEquals(GutenbergException.Reason.FAILED, search.reason)
+            assertNull(DictionaryClient { ok(deep) }.lookup("x"))
+        }
+
+    @Test
+    fun `search shows each book once and recommended books as shipped`() =
+        runTest {
+            val fake = """{"id": 21, "title": "\u202eFake", "formats": {"text/plain": "x"}}"""
+            val other = """{"id": 99, "title": "Other", "formats": {"text/plain": "x"}}"""
+            val many = (1000 until 1100).joinToString(",") { """{"id": $it, "title": "B"}""" }
+            val found = GutenbergClient { ok("""{"results": [$fake, $other, $fake, $many]}""") }.search("x")
+            assertEquals(listOf(21, 99), found.take(2).map { it.id }, "the duplicate is dropped")
+            assertEquals(GutenbergClient.RECOMMENDED_BOOKS.first { it.id == 21 }.title, found.first().title)
+            assertEquals(GutenbergClient.MAX_RESULTS, found.size)
+        }
+}

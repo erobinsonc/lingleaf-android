@@ -24,6 +24,7 @@ import app.lingleaf.core.Library
 import app.lingleaf.core.NetworkException
 import app.lingleaf.core.Settings
 import app.lingleaf.core.Storage
+import app.lingleaf.core.StorageNames
 import app.lingleaf.core.TranslationLanguages
 import com.google.android.gms.tasks.Task
 import com.google.mlkit.common.model.DownloadConditions
@@ -494,12 +495,13 @@ fun InputStream.readCapped(
 class FileStorage(
     private val dir: File,
 ) : Storage {
-    override fun read(name: String): String? = File(dir, name).takeIf { it.exists() }?.readText()
+    override fun read(name: String): String? = if (StorageNames.isSafe(name)) File(dir, name).takeIf { it.exists() }?.readText() else null
 
     override fun write(
         name: String,
         content: String,
     ) {
+        if (!StorageNames.isSafe(name)) return
         val target = File(dir, name)
         val temp = File(dir, "$name.tmp")
         // rename(2) replaces the target atomically. If writing or renaming fails (a full disk, a
@@ -518,7 +520,7 @@ class FileStorage(
     }
 
     override fun delete(name: String) {
-        File(dir, name).delete()
+        if (StorageNames.isSafe(name)) File(dir, name).delete()
     }
 }
 

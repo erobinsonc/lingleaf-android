@@ -399,4 +399,20 @@ class LibraryTest {
         assertFalse(reloaded.isLearning("did"), "a verb group doesn't underline the helper everywhere")
         assertEquals(listOf("doesn't like"), library.wordsNeedingTranslation("es").map { it.word })
     }
+
+    @Test
+    fun `storage accepts only the app's own file names`() {
+        for (name in listOf("books.json", "book-1760000000000-0.txt", "words.json.corrupt", "seeded")) {
+            assertTrue(StorageNames.isSafe(name), name)
+        }
+        for (name in listOf("../secret", "a/b", ".hidden", "", "book-..txt", "a".repeat(200))) {
+            assertFalse(StorageNames.isSafe(name), name)
+        }
+    }
+
+    @Test
+    fun `a huge saved context is cut when loaded`() {
+        library().saveWord("sea", learned = false, context = "sea ".repeat(5_000))
+        assertEquals(TextTools.MAX_SENTENCE, library().state.value.word("sea")!!.context.length)
+    }
 }

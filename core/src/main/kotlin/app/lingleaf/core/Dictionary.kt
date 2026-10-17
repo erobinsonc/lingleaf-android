@@ -77,7 +77,7 @@ class DictionaryClient(private val http: HttpFetcher) {
                 return null
             }
         if (response.status == 404) cache[word] = null
-        if (response.status != 200) return null
+        if (response.status != 200 || !JsonGuard.isShallow(response.text)) return null
         val entry =
             try {
                 Json.parseToJsonElement(response.text).jsonArray.firstOrNull()?.jsonObject?.let(DictionaryEntry::parse)
