@@ -114,9 +114,9 @@
     <string name="no_translation">Aún sin traducción. Conéctate a internet una vez para obtenerla.</string>
     <string name="review_done">Listo por hoy.</string>
     <plurals name="more_tomorrow">
-        <item quantity="one">%d más mañana.</item>
-        <item quantity="many">%d más mañana.</item>
-        <item quantity="other">%d más mañana.</item>
+        <item quantity="one">Mañana tienes %d palabra.</item>
+        <item quantity="many">Mañana tienes %d palabras.</item>
+        <item quantity="other">Mañana tienes %d palabras.</item>
     </plurals>
     <string name="review_done_for_now">Listo por ahora.</string>
     <plurals name="more_due_today">
@@ -148,6 +148,7 @@
     <string name="credits">Libros: Project Gutenberg (dominio público). Definiciones: dictionaryapi.dev. Traducción: Google ML Kit, en el teléfono. Sin cuentas, sin anuncios, sin rastreo.</string>
     <string name="reading_progress">Progreso de lectura</string>
     <string name="review_progress">Progreso del repaso</string>
+    <string name="review_count">%1$d de %2$d</string>
     <!-- Helper and modal verbs on the word sheet (SPEC S16) -->
     <string name="helper_verb">Verbo auxiliar</string>
     <string name="modal_verb">Verbo modal</string>

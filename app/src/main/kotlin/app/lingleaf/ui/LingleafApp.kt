@@ -19,7 +19,9 @@ import androidx.compose.runtime.Composable
 import androidx.compose.runtime.CompositionLocalProvider
 import androidx.compose.runtime.LaunchedEffect
 import androidx.compose.runtime.getValue
+import androidx.compose.runtime.mutableIntStateOf
 import androidx.compose.runtime.remember
+import androidx.compose.runtime.setValue
 import androidx.compose.runtime.staticCompositionLocalOf
 import androidx.compose.ui.ExperimentalComposeUiApi
 import androidx.compose.ui.Modifier
@@ -29,13 +31,16 @@ import androidx.compose.ui.res.stringResource
 import androidx.compose.ui.semantics.contentDescription
 import androidx.compose.ui.semantics.semantics
 import androidx.compose.ui.semantics.testTagsAsResourceId
+import androidx.lifecycle.compose.LocalLifecycleOwner
 import androidx.lifecycle.compose.collectAsStateWithLifecycle
+import androidx.lifecycle.compose.currentStateAsState
 import androidx.navigation.compose.NavHost
 import androidx.navigation.compose.composable
 import androidx.navigation.compose.currentBackStackEntryAsState
 import androidx.navigation.compose.rememberNavController
 import app.lingleaf.AppContainer
 import app.lingleaf.R
+import kotlinx.coroutines.delay
 
 val LocalContainer = staticCompositionLocalOf<AppContainer> { error("No AppContainer provided") }
 
@@ -59,7 +64,16 @@ fun LingleafApp(container: AppContainer) {
             val backStack by navController.currentBackStackEntryAsState()
             val route = backStack?.destination?.route
             val state by container.library.state.collectAsStateWithLifecycle()
-            val due = remember(state.words) { container.library.dueWords().size }
+            // Counted again on every change, when the app comes back and when the next word
+            // falls due (a new review day), so the badge never shows yesterday's count.
+            val lifecycle by LocalLifecycleOwner.current.lifecycle.currentStateAsState()
+            var tick by remember { mutableIntStateOf(0) }
+            val due = remember(state.words, lifecycle, tick) { container.library.dueWords().size }
+            LaunchedEffect(state.words, tick) {
+                val wait = container.library.millisUntilNextDue() ?: return@LaunchedEffect
+                delay(wait + 1_000)
+                tick++
+            }
             val target = container.targetLanguage(state.settings)
 
             // Once the language is known, download its model in the background (over Wi‑Fi only).

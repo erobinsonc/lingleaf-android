@@ -73,6 +73,9 @@ object Srs {
 
 fun dayKey(date: LocalDate): String = date.toString()
 
+/** Longest reading streak counted, in days. */
+const val MAX_STREAK_DAYS = 3650
+
 /**
  * Consecutive days meeting the goal. Today only counts once it's met, so an
  * unfinished today doesn't break yesterday's streak.
@@ -85,7 +88,8 @@ fun readingStreak(
     fun met(day: LocalDate) = (secondsByDay[dayKey(day)] ?: 0) >= goalSeconds
     var day = if (met(today)) today else today.minusDays(1)
     var count = 0
-    while (met(day)) {
+    // Ten years at most: no saved data can make this loop run on.
+    while (count < MAX_STREAK_DAYS && met(day)) {
         count++
         day = day.minusDays(1)
     }

@@ -424,4 +424,26 @@ class LibraryTest {
         library().saveWord("sea", learned = false, context = "sea ".repeat(5_000))
         assertEquals(TextTools.MAX_SENTENCE, library().state.value.word("sea")!!.context.length)
     }
+
+    @Test
+    fun `restored settings and books are brought back into range`() {
+        storage.write("settings.json", """{"dailyGoalMinutes": 0, "fontSize": 900.0, "speechRate": -3.0}""")
+        val settings = library().state.value.settings
+        assertEquals(5, settings.dailyGoalMinutes, "a goal of 0 would make every day count")
+        assertEquals(34f, settings.fontSize)
+        assertEquals(0.5f, settings.speechRate)
+        assertTrue(library().streak() < MAX_STREAK_DAYS + 1, "the streak always ends")
+    }
+
+    @Test
+    fun `a saved word with an unreadable date is due now instead of crashing`() {
+        library().saveWord("sea", learned = false)
+        storage.write(
+            "words.json",
+            storage.read("words.json")!!.replace(Regex("\"nextReview\":\"[^\"]*\""), "\"nextReview\":\"not-a-date\""),
+        )
+        val library = library()
+        assertEquals(listOf("sea"), library.dueWords().map { it.word })
+        assertNull(library.millisUntilNextDue())
+    }
 }
