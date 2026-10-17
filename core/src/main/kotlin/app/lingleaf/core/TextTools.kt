@@ -104,8 +104,20 @@ object TextTools {
                 else -> out.appendCodePoint(codePoint)
             }
         }
-        // (?U): every Unicode space (no-break, ideographic…) counts, as on iOS.
-        return truncated(out.split(Regex("(?U)\\s+")).filter { it.isNotEmpty() }.joinToString(" "), MAX_LABEL)
+        // Every Unicode space (no-break, ideographic…) counts, as on iOS. A loop, not a regex:
+        // Android's regex engine rejects the (?U) flag that the JVM accepts.
+        val single = StringBuilder()
+        var space = false
+        for (c in out) {
+            if (c.isWhitespace()) {
+                space = single.isNotEmpty()
+            } else {
+                if (space) single.append(' ')
+                single.append(c)
+                space = false
+            }
+        }
+        return truncated(single.toString(), MAX_LABEL)
     }
 
     /** Accents kept on one letter: real text needs two or three; "Zalgo" text piles up thousands. */
