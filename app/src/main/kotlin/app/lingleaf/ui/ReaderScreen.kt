@@ -104,7 +104,7 @@ fun ReaderScreen(
         remember(bookId) {
             ReadAloudController(container.speaker, { library.state.value.settings.speechRate }) {
                 library.updateProgress(bookId, it.paragraph)
-            }.apply { onNoVoice = { scope.launch { snackbar.showNoVoice(context) } } }
+            }
         }
     // Hoisted so Read aloud starts at the paragraph on screen, not the last saved one.
     var listState by remember { mutableStateOf<LazyListState?>(null) }

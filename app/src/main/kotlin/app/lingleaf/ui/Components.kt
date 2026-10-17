@@ -6,6 +6,7 @@ import android.accessibilityservice.AccessibilityServiceInfo
 import android.content.ActivityNotFoundException
 import android.content.Context
 import android.content.Intent
+import android.provider.Settings
 import android.speech.tts.TextToSpeech
 import android.view.accessibility.AccessibilityManager
 import androidx.compose.foundation.background
@@ -25,6 +26,7 @@ import androidx.compose.foundation.text.BasicText
 import androidx.compose.material.icons.Icons
 import androidx.compose.material.icons.automirrored.filled.ArrowBack
 import androidx.compose.material.icons.filled.Whatshot
+import androidx.compose.material3.AlertDialog
 import androidx.compose.material3.Card
 import androidx.compose.material3.CardDefaults
 import androidx.compose.material3.CircularProgressIndicator
@@ -66,12 +68,10 @@ import androidx.compose.ui.platform.LocalDensity
 import androidx.compose.ui.res.pluralStringResource
 import androidx.compose.ui.res.stringResource
 import androidx.compose.ui.semantics.CustomAccessibilityAction
-import androidx.compose.ui.semantics.LiveRegionMode
 import androidx.compose.ui.semantics.clearAndSetSemantics
 import androidx.compose.ui.semantics.contentDescription
 import androidx.compose.ui.semantics.customActions
 import androidx.compose.ui.semantics.heading
-import androidx.compose.ui.semantics.liveRegion
 import androidx.compose.ui.semantics.semantics
 import androidx.compose.ui.text.LinkAnnotation
 import androidx.compose.ui.text.LinkInteractionListener
@@ -81,13 +81,13 @@ import androidx.compose.ui.text.TextLinkStyles
 import androidx.compose.ui.text.TextStyle
 import androidx.compose.ui.text.buildAnnotatedString
 import androidx.compose.ui.text.font.FontWeight
-import androidx.compose.ui.text.style.TextAlign
 import androidx.compose.ui.text.style.TextDecoration
 import androidx.compose.ui.text.style.TextOverflow
 import androidx.compose.ui.unit.dp
 import androidx.compose.ui.unit.sp
 import androidx.lifecycle.compose.collectAsStateWithLifecycle
 import app.lingleaf.R
+import app.lingleaf.Speaker
 import app.lingleaf.TRANSLATION_LANGUAGES
 import app.lingleaf.core.Book
 import app.lingleaf.core.WordRange
@@ -203,45 +203,48 @@ suspend fun SnackbarHostState.showUndo(
 }
 
 /**
- * Says the phone has no English voice, with an action to the voice settings (SPEC S6).
- * The snackbar is a polite live region, so TalkBack announces it.
+ * Says the device has no English voice, with a way to the voice settings (SPEC S6). A dialog,
+ * so it shows over the word sheet too.
  */
-suspend fun SnackbarHostState.showNoVoice(context: Context) {
-    currentSnackbarData?.dismiss()
-    val result =
-        showSnackbar(
-            context.getString(R.string.no_voice),
-            actionLabel = context.getString(R.string.voice_settings),
-            withDismissAction = true,
-            duration = SnackbarDuration.Long,
-        )
-    if (result == SnackbarResult.ActionPerformed) openVoiceSettings(context)
-}
-
-/** The same message inside a sheet, where a snackbar would be hidden. */
 @Composable
-fun NoVoiceNotice() {
+fun NoVoiceDialog(speaker: Speaker) {
     val context = LocalContext.current
-    Column(horizontalAlignment = Alignment.CenterHorizontally) {
-        Text(
-            stringResource(R.string.no_voice),
-            style = MaterialTheme.typography.bodyMedium,
-            textAlign = TextAlign.Center,
-            modifier = Modifier.semantics { liveRegion = LiveRegionMode.Polite },
-        )
-        TextButton(onClick = { openVoiceSettings(context) }) { Text(stringResource(R.string.voice_settings)) }
-    }
+    AlertDialog(
+        onDismissRequest = speaker::dismissMissedVoice,
+        title = { Text(stringResource(R.string.no_voice_title)) },
+        text = { Text(stringResource(R.string.no_voice)) },
+        confirmButton = {
+            TextButton(onClick = {
+                speaker.dismissMissedVoice()
+                openVoiceSettings(context, speaker.engine)
+            }) { Text(stringResource(R.string.voice_settings)) }
+        },
+        dismissButton = { TextButton(onClick = speaker::dismissMissedVoice) { Text(stringResource(R.string.ok)) } },
+    )
 }
 
-/** Opens the screen that installs voice data, or the text-to-speech settings; nothing if neither exists. */
-fun openVoiceSettings(context: Context) {
-    val screens = listOf(TextToSpeech.Engine.ACTION_INSTALL_TTS_DATA, "com.android.settings.TTS_SETTINGS")
-    for (action in screens) {
+/**
+ * Opens the voice engine's install-voice screen, else the text-to-speech settings, else the
+ * system settings. Each intent names its app, so no other app can answer it.
+ */
+fun openVoiceSettings(
+    context: Context,
+    engine: String?,
+) {
+    val screens =
+        listOfNotNull(
+            engine?.let { Intent(TextToSpeech.Engine.ACTION_INSTALL_TTS_DATA).setPackage(it) },
+            Intent("com.android.settings.TTS_SETTINGS").setPackage("com.android.settings"),
+            Intent(Settings.ACTION_SETTINGS).setPackage("com.android.settings"),
+        )
+    for (screen in screens) {
         try {
-            context.startActivity(Intent(action).addFlags(Intent.FLAG_ACTIVITY_NEW_TASK))
+            context.startActivity(screen.addFlags(Intent.FLAG_ACTIVITY_NEW_TASK))
             return
         } catch (_: ActivityNotFoundException) {
             // Try the next screen.
+        } catch (_: SecurityException) {
+            // Not ours to open: try the next screen.
         }
     }
 }

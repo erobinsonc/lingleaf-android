@@ -28,9 +28,6 @@ class ReadAloudController(
         private set
     private var paragraphs = emptyList<String>()
 
-    /** The phone has no English voice: reading aloud stopped, and the reader says why. */
-    var onNoVoice: () -> Unit = {}
-
     /** How many sentences are repeated: "Repeating 3 sentences"; counted when the stretch changes. */
     var loopCount by mutableStateOf(0)
         private set
@@ -93,13 +90,15 @@ class ReadAloudController(
         speaker.speak(text, rate(), onDone = { if (isReading) advance(position) }, onError = ::failed)
     }
 
-    /** The voice failed or was cut off: pause on the sentence; with no English voice, stop and say so. */
+    /**
+     * The voice failed or was cut off: pause on the sentence. With no English voice, close the
+     * bar; the app says why.
+     */
     private fun failed() {
         pause()
         if (speaker.noVoice) {
             current = null
             changeLoop(null)
-            onNoVoice()
         }
     }
 

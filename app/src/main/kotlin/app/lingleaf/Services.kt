@@ -4,8 +4,12 @@ import android.content.Context
 import android.content.res.Resources
 import android.graphics.Bitmap
 import android.graphics.BitmapFactory
+import android.media.AudioAttributes
+import android.media.AudioFocusRequest
+import android.media.AudioManager
 import android.net.ConnectivityManager
 import android.net.NetworkCapabilities
+import android.os.Build
 import android.os.Handler
 import android.os.Looper
 import android.speech.tts.TextToSpeech
@@ -99,9 +103,19 @@ interface Speaker {
 
     fun stop()
 
-    /** No English voice can be used (no engine, or its English data is missing): say so. */
+    /** No English voice can be used (no engine, or its English data is missing). */
     val noVoice: Boolean get() = false
+
+    /** True after a request found no English voice, until dismissed: the app says so (SPEC S6). */
+    val missedVoice: StateFlow<Boolean> get() = NEVER_MISSED
+
+    fun dismissMissedVoice() {}
+
+    /** The voice engine's package, so its install-voice screen is opened directly; null if unknown. */
+    val engine: String? get() = null
 }
+
+private val NEVER_MISSED: StateFlow<Boolean> = MutableStateFlow(false)
 
 /** Everything the UI needs. The app builds the real one; tests pass fakes. */
 class AppContainer(
@@ -341,27 +355,67 @@ private suspend fun <T> Task<T>.await(): T =
 
 /** English text-to-speech with the system engine. */
 class AndroidSpeaker(
-    context: Context,
+    private val context: Context,
 ) : Speaker,
     TextToSpeech.OnInitListener {
     private val speaking = MutableStateFlow(false)
     override val isSpeaking: StateFlow<Boolean> = speaking.asStateFlow()
-    private var ready = false
-
-    // No voice engine could start, or it has no English: every request fails at once
-    // instead of waiting forever.
-    private var broken = false
-    override val noVoice: Boolean get() = broken
-    private var pending: (() -> Unit)? = null
-    private val tts = TextToSpeech(context, this)
+    private val missed = MutableStateFlow(false)
+    override val missedVoice: StateFlow<Boolean> = missed.asStateFlow()
     private val main = Handler(Looper.getMainLooper())
+    private val audio = context.getSystemService(Context.AUDIO_SERVICE) as AudioManager
+    private val attributes =
+        AudioAttributes
+            .Builder()
+            .setUsage(AudioAttributes.USAGE_MEDIA)
+            .setContentType(AudioAttributes.CONTENT_TYPE_SPEECH)
+            .build()
+
+    // Losing the audio focus (a call, an alarm, another app playing) pauses: spoken content
+    // pauses instead of being ducked, so nothing is read unheard.
+    private val focusListener =
+        AudioManager.OnAudioFocusChangeListener { change ->
+            if (change < 0) {
+                main.post {
+                    failed("lingleaf-$utterance")
+                    stop()
+                }
+            }
+        }
+    private val focusRequest =
+        if (Build.VERSION.SDK_INT >= Build.VERSION_CODES.O) {
+            AudioFocusRequest
+                .Builder(AudioManager.AUDIOFOCUS_GAIN_TRANSIENT_MAY_DUCK)
+                .setAudioAttributes(attributes)
+                .setWillPauseWhenDucked(true)
+                .setOnAudioFocusChangeListener(focusListener, main)
+                .build()
+        } else {
+            null
+        }
+
+    // The engine's state; only touched on the main thread. With no engine, or no English in it,
+    // a request fails at once, and the next one tries again (a voice may have been installed).
+    private var ready = false
+    private var initFailed = false
+    private var languageMissing = false
+    private var pending: (() -> Unit)? = null
+    private var tts = TextToSpeech(context, this)
 
     // The utterance being spoken and what to run when it ends by itself; only touched on the main thread.
     private var utterance = 0
     private var onDone: (() -> Unit)? = null
     private var onError: (() -> Unit)? = null
 
+    override val noVoice: Boolean get() = initFailed || languageMissing
+    override val engine: String? get() = tts.defaultEngine?.takeIf { it.isNotEmpty() }
+
     init {
+        listen()
+    }
+
+    private fun listen() {
+        tts.setAudioAttributes(attributes)
         tts.setOnUtteranceProgressListener(
             object : UtteranceProgressListener() {
                 override fun onStart(utteranceId: String?) {
@@ -375,6 +429,10 @@ class AndroidSpeaker(
                         if (utteranceId == "lingleaf-$utterance" && done != null) {
                             onDone = null
                             done()
+                            // Nothing more to say (no next sentence was started): give the audio back.
+                            if (utteranceId == "lingleaf-$utterance") abandonFocus()
+                        } else if (utteranceId == "lingleaf-$utterance") {
+                            abandonFocus()
                         }
                     }
                 }
@@ -392,7 +450,7 @@ class AndroidSpeaker(
                 ) {
                     speaking.value = false
                     // Our own stops change the utterance first; a stop of the current one came from
-                    // elsewhere (another app, the system), so reading aloud pauses.
+                    // elsewhere, so reading aloud pauses.
                     main.post { failed(utteranceId) }
                 }
             },
@@ -410,16 +468,20 @@ class AndroidSpeaker(
     }
 
     override fun onInit(status: Int) {
-        ready = status == TextToSpeech.SUCCESS
-        broken = !ready
-        if (ready) {
-            val language = tts.setLanguage(Locale.US)
-            broken = language == TextToSpeech.LANG_MISSING_DATA || language == TextToSpeech.LANG_NOT_SUPPORTED
-            ready = !broken
+        // Posted: with a synchronous failure this runs inside the constructor, before `tts` is set.
+        main.post {
+            initFailed = status != TextToSpeech.SUCCESS
+            ready = !initFailed
+            if (ready) checkLanguage()
+            val waiting = pending
+            pending = null
+            waiting?.invoke()
         }
-        val waiting = pending
-        pending = null
-        waiting?.invoke()
+    }
+
+    private fun checkLanguage() {
+        val result = tts.setLanguage(Locale.US)
+        languageMissing = result == TextToSpeech.LANG_MISSING_DATA || result == TextToSpeech.LANG_NOT_SUPPORTED
     }
 
     override fun speak(
@@ -428,23 +490,77 @@ class AndroidSpeaker(
         onDone: (() -> Unit)?,
         onError: (() -> Unit)?,
     ) {
-        if (broken) {
-            onError?.let { callback -> main.post { callback() } }
+        if (initFailed) {
+            // Try a new engine: one may have been installed or enabled since.
+            initFailed = false
+            ready = false
+            tts.shutdown()
+            pending = { speakNow(text, rate, onDone, onError) }
+            tts = TextToSpeech(context, this)
+            listen()
             return
         }
         if (!ready) {
-            pending = { speak(text, rate, onDone, onError) }
+            pending = { speakNow(text, rate, onDone, onError) }
             return
         }
+        if (languageMissing) checkLanguage()
+        speakNow(text, rate, onDone, onError)
+    }
+
+    private fun speakNow(
+        text: String,
+        rate: Float,
+        onDone: (() -> Unit)?,
+        onError: (() -> Unit)?,
+    ) {
+        if (noVoice) return refuse(onError)
+        missed.value = false
         utterance++
         this.onDone = onDone
         this.onError = onError
+        if (!requestFocus()) {
+            val id = "lingleaf-$utterance"
+            main.post { failed(id) }
+            return
+        }
         tts.setSpeechRate(rate)
         if (tts.speak(text, TextToSpeech.QUEUE_FLUSH, null, "lingleaf-$utterance") != TextToSpeech.SUCCESS) {
             // Refused (the engine died or was unbound): no callback will come, so fail now.
             speaking.value = false
             val id = "lingleaf-$utterance"
             main.post { failed(id) }
+        }
+    }
+
+    /** No English voice: say so (the app shows [missedVoice]) and fail the request. */
+    private fun refuse(onError: (() -> Unit)?) {
+        missed.value = true
+        onError?.let { callback -> main.post { callback() } }
+    }
+
+    override fun dismissMissedVoice() {
+        missed.value = false
+    }
+
+    private fun requestFocus(): Boolean {
+        val granted =
+            if (focusRequest != null && Build.VERSION.SDK_INT >= Build.VERSION_CODES.O) {
+                audio.requestAudioFocus(focusRequest)
+            } else {
+                @Suppress("DEPRECATION")
+                audio.requestAudioFocus(focusListener, AudioManager.STREAM_MUSIC, AudioManager.AUDIOFOCUS_GAIN_TRANSIENT_MAY_DUCK)
+            }
+        return granted == AudioManager.AUDIOFOCUS_REQUEST_GRANTED
+    }
+
+    /** Gives the audio focus back, so other apps return to full volume. */
+    private fun abandonFocus() {
+        if (focusRequest != null && Build.VERSION.SDK_INT >= Build.VERSION_CODES.O) {
+            audio.abandonAudioFocusRequest(focusRequest)
+        } else {
+            @Suppress("DEPRECATION")
+            audio.abandonAudioFocus(focusListener)
         }
     }
 
@@ -455,6 +571,7 @@ class AndroidSpeaker(
         pending = null
         tts.stop()
         speaking.value = false
+        abandonFocus()
     }
 }
 
