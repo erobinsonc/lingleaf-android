@@ -76,4 +76,23 @@ class ReadAloudTest {
         assertEquals(1000, ReadAloud.sentences(hostile).size)
         assertTrue((System.nanoTime() - started) / 1_000_000 < 500, "one pass, not one per sentence")
     }
+
+    @Test
+    fun `a long repeated stretch is counted in one pass per paragraph`() {
+        val book = List(20) { "a. ".repeat(600) }
+        val first = ReadAloud.start(book, 0)!!
+        val last = ReadAloud.previous(book, SentencePosition(20, WordRange(0, 1)))!!
+        val started = System.nanoTime()
+        assertEquals(12_000, ReadAloud.count(book, first, last))
+        assertTrue((System.nanoTime() - started) / 1e9 < 2, "one split per paragraph, not one per sentence")
+    }
+
+    @Test
+    fun `a hard cut keeps an emoji whole`() {
+        // 599 letters, then an emoji (2 UTF-16 units) across the 600-unit cut, with no space.
+        val text = "a".repeat(599) + "😀" + "b".repeat(10)
+        val pieces = ReadAloud.sentences(text)
+        assertEquals(WordRange(0, 599), pieces.first(), "the cut moves before the emoji")
+        assertEquals(text.length, pieces.last().end, "nothing skipped")
+    }
 }

@@ -6,7 +6,10 @@ data class WordRange(val start: Int, val end: Int) {
 }
 
 private val wordPattern = Regex("[A-Za-z]+(?:['’][A-Za-z]+)*")
-private val sentenceEnd = Regex("[.!?]+[\"”’)\\]]*(?=\\s|$)")
+
+// Starts only at the first mark of a run and never backtracks into it, so a long run of
+// marks ("!!!!…x") is matched in one pass, not once per mark.
+private val sentenceEnd = Regex("(?<![.!?])[.!?]++[\"”’)\\]]*+(?=\\s|$)")
 
 object TextTools {
     /**

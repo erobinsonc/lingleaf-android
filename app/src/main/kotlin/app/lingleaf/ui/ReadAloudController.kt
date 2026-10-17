@@ -87,7 +87,19 @@ class ReadAloudController(
         onSentence(position)
         val text = paragraphs[position.paragraph].substring(position.range.start, position.range.end)
         // The speed setting applies from the next sentence on.
-        speaker.speak(text, rate(), onDone = { if (isReading) advance(position) }, onError = ::pause)
+        speaker.speak(text, rate(), onDone = { if (isReading) advance(position) }, onError = ::failed)
+    }
+
+    /**
+     * The voice failed or was cut off: pause on the sentence. With no English voice, close the
+     * bar; the app says why.
+     */
+    private fun failed() {
+        pause()
+        if (speaker.noVoice) {
+            current = null
+            changeLoop(null)
+        }
     }
 
     private fun advance(after: SentencePosition) {

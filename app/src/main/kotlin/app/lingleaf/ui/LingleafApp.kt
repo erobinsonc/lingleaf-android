@@ -79,6 +79,10 @@ fun LingleafApp(container: AppContainer) {
             // Once the language is known, download its model in the background (over Wi‑Fi only).
             LaunchedEffect(target) { target?.let(container.translator::prepare) }
 
+            // Any Listen or Read aloud that found no English voice says so, on every screen (SPEC S6).
+            val missedVoice by container.speaker.missedVoice.collectAsStateWithLifecycle()
+            if (missedVoice) NoVoiceDialog(container.speaker)
+
             Scaffold(
                 // Exposes Compose test tags as resource ids so UI automation (Maestro) can find them.
                 modifier = Modifier.semantics { testTagsAsResourceId = true },

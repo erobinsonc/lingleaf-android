@@ -59,12 +59,27 @@ class FakeSpeaker : Speaker {
     override val isSpeaking: StateFlow<Boolean> = MutableStateFlow(false)
     private var onDone: (() -> Unit)? = null
 
+    /** A phone with no English voice: every request fails at once. */
+    var voiceMissing = false
+    override val noVoice: Boolean get() = voiceMissing
+    private val missed = MutableStateFlow(false)
+    override val missedVoice: StateFlow<Boolean> = missed
+
+    override fun dismissMissedVoice() {
+        missed.value = false
+    }
+
     override fun speak(
         text: String,
         rate: Float,
         onDone: (() -> Unit)?,
         onError: (() -> Unit)?,
     ) {
+        if (voiceMissing) {
+            missed.value = true
+            onError?.invoke()
+            return
+        }
         spoken += text
         this.onDone = onDone
     }
@@ -588,6 +603,38 @@ class AppTest {
         compose.onNodeWithContentDescription("Play").assertExists()
     }
 
+    // S6 Listen: with no English voice, reading aloud and Listen stop and say why, with a way
+    // to the voice settings; once a voice is installed, reading aloud works.
+    @Test
+    fun withNoEnglishVoiceReadingAloudSaysSoUntilOneIsInstalled() {
+        speaker.voiceMissing = true
+        container.library.addBook("Listening Practice", "Lingleaf", "The sun is up. All animals are equal.\n\nThe end.")
+        compose.onAllNodesWithText("Listening Practice").onFirst().performClick()
+        val paragraph = hasText("The sun is up.", substring = true)
+        compose.waitUntil(WAIT_MS) { compose.onAllNodes(paragraph).fetchSemanticsNodes().isNotEmpty() }
+        compose.onNodeWithContentDescription("Read aloud").performClick()
+        compose.onNodeWithText("Can't read aloud").assertExists()
+        compose.onNodeWithText("This device has no English voice.").assertExists()
+        compose.onNodeWithText("Voice settings").assertExists()
+        compose.onNodeWithContentDescription("Pause").assertDoesNotExist()
+        compose.onNodeWithText("OK").performClick()
+        compose.onNodeWithText("Can't read aloud").assertDoesNotExist()
+
+        // Listen on the word sheet says so too, over the sheet.
+        compose.onAllNodes(paragraph).onFirst().invokeCustomAction("Look up equal")
+        compose.waitUntil(WAIT_MS) { compose.onAllNodesWithText("igual").fetchSemanticsNodes().isNotEmpty() }
+        compose.onNodeWithContentDescription("Listen to equal").performClick()
+        compose.onNodeWithText("Can't read aloud").assertExists()
+        compose.onNodeWithText("OK").performClick()
+        assertTrue("nothing spoken", speaker.spoken.isEmpty())
+
+        // A voice was installed: the next request speaks.
+        speaker.voiceMissing = false
+        compose.onNodeWithContentDescription("Listen to equal").performClick()
+        compose.onNodeWithText("Can't read aloud").assertDoesNotExist()
+        assertEquals(listOf("equal"), speaker.spoken)
+    }
+
     // S9 Discover: a search shows its results above the recommended books.
     @Test
     fun searchShowsResults() {
@@ -596,8 +643,10 @@ class AppTest {
         compose.onNode(hasSetTextAction()).performTextInput("alice")
         compose.onNode(hasSetTextAction()).performImeAction()
         compose.waitUntil(WAIT_MS) { compose.onAllNodesWithText("Results").fetchSemanticsNodes().isNotEmpty() }
-        // The heading and the rows are laid out in separate frames: wait for the row itself.
-        compose.waitUntil(WAIT_MS) { compose.onAllNodes(hasContentDescription("Get $ALICE_TITLE")).fetchSemanticsNodes().isNotEmpty() }
+        // The row can be below the screen, where a lazy list doesn't compose it: scroll to it.
+        compose.onNode(hasScrollToIndexAction()).performScrollToNode(hasContentDescription("Get $ALICE_TITLE"))
+        // The result row, above the recommended one with the same book.
+        compose.onAllNodes(hasContentDescription("Get $ALICE_TITLE")).onFirst().assertExists()
     }
 
     // S9 Discover: recommended books ship with the app; Get shows progress and turns into Read;

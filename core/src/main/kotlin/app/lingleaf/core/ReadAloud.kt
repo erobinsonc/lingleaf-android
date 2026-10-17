@@ -30,7 +30,11 @@ object ReadAloud {
         while (range.end - start > TextTools.MAX_SENTENCE) {
             var end = start + TextTools.MAX_SENTENCE
             while (end > start && !text[end].isWhitespace()) end--
-            if (end == start) end = start + TextTools.MAX_SENTENCE
+            if (end == start) {
+                end = start + TextTools.MAX_SENTENCE
+                // No space to cut at: keep a surrogate pair (an emoji) whole.
+                if (text[end].isLowSurrogate()) end--
+            }
             out += WordRange(start, end)
             start = end
             while (start < range.end && text[start].isWhitespace()) start++
@@ -78,15 +82,15 @@ object ReadAloud {
         first: SentencePosition,
         last: SentencePosition,
     ): Int {
-        var count = 0
-        var at: SentencePosition? = first
-        while (at != null) {
-            count++
-            if (at == last) return count
-            if (at.paragraph > last.paragraph) return 0
-            at = next(paragraphs, at)
+        if (first.paragraph < 0 || last.paragraph >= paragraphs.size || first.paragraph > last.paragraph) return 0
+        if (last.range !in sentences(paragraphs[last.paragraph])) return 0
+        // One split per paragraph of the stretch, not one per sentence.
+        return (first.paragraph..last.paragraph).sumOf { paragraph ->
+            sentences(paragraphs[paragraph]).count {
+                (paragraph > first.paragraph || it.start >= first.range.start) &&
+                    (paragraph < last.paragraph || it.end <= last.range.end)
+            }
         }
-        return 0
     }
 
     /** The sentence after [current], or null when it was the book's last. */
