@@ -75,7 +75,7 @@ private val dictionaryJson =
 /** Generous: CI runners are slow on the first test, and lookups run on real background threads. */
 private const val WAIT_MS = 15_000L
 
-private const val STORY = "All animals are equal, but some are more equal.\n\nCan we fix it?\n\nThe end."
+private const val STORY = "All animals are equal, but some are more equal.\n\nCan we fix it?\n\nIt's late. He had gone.\n\nThe end."
 
 private const val ALICE_TITLE = "Alice's Adventures in Wonderland"
 private const val ALICE_TEXT_URL = "https://www.gutenberg.org/cache/epub/11/pg11.txt"
@@ -246,6 +246,45 @@ class AppTest {
         assertEquals(FunctionWord.Kind.MODAL, saved.kind)
         assertEquals("can", saved.base)
         assertEquals("[es] Can we fix", saved.translation)
+    }
+
+    /** Opens the story and taps the character at [offset] of the paragraph [text]. */
+    private fun tapInParagraph(
+        text: String,
+        offset: Int,
+    ) {
+        compose.onAllNodesWithText("The Red Boat").onFirst().performClick()
+        val paragraph = hasText(text)
+        compose.waitUntil(WAIT_MS) { compose.onAllNodes(paragraph).fetchSemanticsNodes().isNotEmpty() }
+        val node = compose.onAllNodes(paragraph).onFirst()
+        val layouts = mutableListOf<TextLayoutResult>()
+        node.fetchSemanticsNode().config[SemanticsActions.GetTextLayoutResult].action!!.invoke(layouts)
+        val box = layouts.first().getBoundingBox(offset)
+        node.performTouchInput { click(Offset(box.center.x, box.center.y)) }
+    }
+
+    @Test
+    fun aPerfectSaysWhatItDoes() {
+        tapInParagraph("It's late. He had gone.", "It's late. He had".indexOf("had") + 1)
+        compose.waitUntil(WAIT_MS) { compose.onAllNodesWithText("[es] had gone").fetchSemanticsNodes().isNotEmpty() }
+        compose.onNodeWithText("Helper verb").assertExists()
+        compose.onNodeWithText("have").assertExists()
+        compose.onNodeWithText("“had” + past participle: it happened before another past moment: “had left”.").assertExists()
+    }
+
+    @Test
+    fun aContractionSaysWhatItStandsFor() {
+        tapInParagraph("It's late. He had gone.", 1)
+        compose.waitUntil(WAIT_MS) { compose.onAllNodesWithText("it is").fetchSemanticsNodes().isNotEmpty() }
+        compose.onNodeWithText("“it's” = “it is”; “its” (no apostrophe) = belonging to it.").assertExists()
+        compose.onNodeWithText("Helper verb").assertDoesNotExist()
+        compose.onNodeWithText("Modal verb").assertDoesNotExist()
+
+        compose.onNodeWithText("Save word").performClick()
+        compose.waitUntil(WAIT_MS) { container.library.state.value.word("it's") != null }
+        val saved = container.library.state.value.word("it's")!!
+        assertEquals(FunctionWord.Kind.CONTRACTION, saved.kind)
+        assertEquals("it is", saved.base)
     }
 
     @Test
