@@ -32,7 +32,12 @@ data class GutenbergBook(
     val displayTitle: String
         get() = title.split(" : ", ";", "\$b", "\n", "\r").first().trim().ifEmpty { title.trim() }
 
-    val coverUrl: String? get() = formats["image/jpeg"]
+    /**
+     * The medium cover from Project Gutenberg's file cache, never a link taken from the
+     * catalog: covers load only from www.gutenberg.org. Null when the catalog lists none.
+     */
+    val coverUrl: String?
+        get() = if (formats.containsKey("image/jpeg")) GutenbergClient.coverUrl(id) else null
 
     /**
      * The plain-text edition, straight from Project Gutenberg's file cache: the catalog's
@@ -117,8 +122,40 @@ class GutenbergClient(private val http: HttpFetcher) {
         private const val BASE = "https://gutendex.com/books"
         private val json = Json { ignoreUnknownKeys = true }
 
-        /** The plain-text edition in Project Gutenberg's file cache. */
+        /** Project Gutenberg's file cache: the plain-text edition and the medium cover. */
         fun textUrl(id: Int) = "https://www.gutenberg.org/cache/epub/$id/pg$id.txt"
+
+        fun coverUrl(id: Int) = "https://www.gutenberg.org/cache/epub/$id/pg$id.cover.medium.jpg"
+
+        /** A real cover is under 1000 px a side; anything far larger is refused before decoding. */
+        const val COVER_MAX_SIDE = 4096
+        const val COVER_MAX_PIXELS = 4_000_000
+
+        /** Twice the 44×62 dp shown at the densest screens: sharp, yet a few hundred KB at most. */
+        const val COVER_THUMBNAIL_WIDTH = 176
+        const val COVER_THUMBNAIL_HEIGHT = 248
+
+        /**
+         * Whether [bytes] start like a JPEG file (FF D8 FF). Only JPEG covers reach the system's
+         * image decoder: formats with a history of decoder exploits (WebP, HEIC…) never do.
+         */
+        fun isJpeg(bytes: ByteArray): Boolean =
+            bytes.size >= 3 && bytes[0] == 0xFF.toByte() && bytes[1] == 0xD8.toByte() && bytes[2] == 0xFF.toByte()
+
+        /**
+         * The power-of-two downsampling that keeps a cover of [width]×[height] px at least
+         * thumbnail-sized, or null when the image is empty or too large to decode safely.
+         */
+        fun coverSample(
+            width: Int,
+            height: Int,
+        ): Int? {
+            if (width <= 0 || height <= 0 || width > COVER_MAX_SIDE || height > COVER_MAX_SIDE) return null
+            if (width.toLong() * height > COVER_MAX_PIXELS) return null
+            var sample = 1
+            while (width / (sample * 2) >= COVER_THUMBNAIL_WIDTH && height / (sample * 2) >= COVER_THUMBNAIL_HEIGHT) sample *= 2
+            return sample
+        }
 
         /**
          * The recommended classics, shipped with the app (title, author, level), so Discover
@@ -147,7 +184,7 @@ class GutenbergClient(private val http: HttpFetcher) {
                     id = id,
                     title = title,
                     authors = listOf(GutenbergBook.Person(author)),
-                    formats = mapOf("text/plain; charset=utf-8" to textUrl(id)),
+                    formats = mapOf("text/plain; charset=utf-8" to textUrl(id), "image/jpeg" to coverUrl(id)),
                 )
             }
         }

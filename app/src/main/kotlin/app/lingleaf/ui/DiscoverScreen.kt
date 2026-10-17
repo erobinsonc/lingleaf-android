@@ -1,6 +1,7 @@
 package app.lingleaf.ui
 
 import androidx.annotation.StringRes
+import androidx.compose.foundation.Image
 import androidx.compose.foundation.horizontalScroll
 import androidx.compose.foundation.layout.Arrangement
 import androidx.compose.foundation.layout.Box
@@ -14,6 +15,7 @@ import androidx.compose.foundation.layout.width
 import androidx.compose.foundation.lazy.LazyColumn
 import androidx.compose.foundation.lazy.items
 import androidx.compose.foundation.rememberScrollState
+import androidx.compose.foundation.shape.RoundedCornerShape
 import androidx.compose.foundation.text.KeyboardActions
 import androidx.compose.foundation.text.KeyboardOptions
 import androidx.compose.material.icons.Icons
@@ -42,11 +44,15 @@ import androidx.compose.runtime.saveable.rememberSaveable
 import androidx.compose.runtime.setValue
 import androidx.compose.ui.Alignment
 import androidx.compose.ui.Modifier
+import androidx.compose.ui.draw.clip
 import androidx.compose.ui.graphics.Color
+import androidx.compose.ui.graphics.ImageBitmap
+import androidx.compose.ui.layout.ContentScale
 import androidx.compose.ui.platform.LocalContext
 import androidx.compose.ui.platform.testTag
 import androidx.compose.ui.res.stringResource
 import androidx.compose.ui.semantics.LiveRegionMode
+import androidx.compose.ui.semantics.clearAndSetSemantics
 import androidx.compose.ui.semantics.contentDescription
 import androidx.compose.ui.semantics.liveRegion
 import androidx.compose.ui.semantics.onClick
@@ -277,7 +283,7 @@ private fun BookItem(
     val failure = (download as? BookDownload.Failed)?.reason
     ListItem(
         colors = ListItemDefaults.colors(containerColor = Color.Transparent),
-        leadingContent = { BookCover(book.displayTitle) },
+        leadingContent = { Cover(book) },
         headlineContent = { Text(book.displayTitle, maxLines = 2, overflow = TextOverflow.Ellipsis) },
         supportingContent = {
             Column {
@@ -362,5 +368,37 @@ private fun LevelFilter(
                         .testTag("level-filter-${level ?: "all"}"),
             )
         }
+    }
+}
+
+/**
+ * The book's cover from Project Gutenberg, decorative (the row says the title and author);
+ * the drawn cover shows while it loads, offline, or when the container loads none.
+ */
+@Composable
+private fun Cover(book: GutenbergBook) {
+    val container = LocalContainer.current
+    val url = book.coverUrl
+    // What produceState does, written out: its lint check doesn't see this assignment.
+    var image by remember(url) { mutableStateOf<ImageBitmap?>(null) }
+    LaunchedEffect(url) {
+        val load = container.covers
+        // Null (the drawn cover) without a cover, in UI tests or when loading fails.
+        image = if (url != null && load != null) load(url) else null
+    }
+    val loaded = image
+    if (loaded == null) {
+        BookCover(book.displayTitle)
+    } else {
+        Image(
+            loaded,
+            contentDescription = null,
+            contentScale = ContentScale.Crop,
+            modifier =
+                Modifier
+                    .size(width = 44.dp, height = 62.dp)
+                    .clip(RoundedCornerShape(6.dp))
+                    .clearAndSetSemantics {},
+        )
     }
 }
