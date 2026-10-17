@@ -405,7 +405,7 @@ class LibraryTest {
         for (name in listOf("books.json", "book-1760000000000-0.txt", "words.json.corrupt", "seeded")) {
             assertTrue(StorageNames.isSafe(name), name)
         }
-        for (name in listOf("../secret", "a/b", ".hidden", "", "book-..txt", "a".repeat(200))) {
+        for (name in listOf("../secret", "a/b", ".hidden", "", "book-..txt", "books.json\n", "a".repeat(200))) {
             assertFalse(StorageNames.isSafe(name), name)
         }
     }
