@@ -28,15 +28,21 @@ class ReadAloudController(
         private set
     private var paragraphs = emptyList<String>()
 
-    /** How many sentences are repeated: "Repeating 3 sentences". */
-    val loopCount: Int get() = loop?.let { (first, last) -> ReadAloud.count(paragraphs, first, last) } ?: 0
+    /** How many sentences are repeated: "Repeating 3 sentences"; counted when the stretch changes. */
+    var loopCount by mutableStateOf(0)
+        private set
+
+    private fun setLoop(stretch: Pair<SentencePosition, SentencePosition>?) {
+        loop = stretch
+        loopCount = stretch?.let { (first, last) -> ReadAloud.count(paragraphs, first, last) } ?: 0
+    }
 
     fun read(
         paragraphs: List<String>,
         from: SentencePosition,
     ) {
         this.paragraphs = paragraphs
-        loop = null
+        setLoop(null)
         isReading = true
         speak(from)
     }
@@ -58,7 +64,7 @@ class ReadAloudController(
         val back = ReadAloud.previous(paragraphs, repeated?.first ?: now)
         if (repeated != null) {
             if (back == null) return
-            loop = back to repeated.second
+            setLoop(back to repeated.second)
         }
         isReading = true
         speak(back ?: now)
@@ -67,7 +73,7 @@ class ReadAloudController(
     /** Repeats the sentence being read until turned off; then reading goes on forward. */
     fun toggleRepeat() {
         val now = current ?: return
-        loop = if (loop == null) now to now else null
+        setLoop(if (loop == null) now to now else null)
     }
 
     fun pause() {
@@ -81,7 +87,7 @@ class ReadAloudController(
         onSentence(position)
         val text = paragraphs[position.paragraph].substring(position.range.start, position.range.end)
         // The speed setting applies from the next sentence on.
-        speaker.speak(text, rate()) { if (isReading) advance(position) }
+        speaker.speak(text, rate(), onDone = { if (isReading) advance(position) }, onError = ::pause)
     }
 
     private fun advance(after: SentencePosition) {

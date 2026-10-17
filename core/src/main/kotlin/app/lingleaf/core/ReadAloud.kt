@@ -16,20 +16,9 @@ object ReadAloud {
      * finds them; a very long one comes in consecutive pieces of at most
      * [TextTools.MAX_SENTENCE] units, cut at spaces, so nothing is read twice or skipped.
      */
-    fun sentences(paragraph: String): List<WordRange> {
-        val out = mutableListOf<WordRange>()
-        var at = 0
-        while (true) {
-            while (at < paragraph.length && paragraph[at].isWhitespace()) at++
-            if (at >= paragraph.length) break
-            val sentence = TextTools.sentenceBounds(paragraph, at)
-            // Each sentence ends after the last one; anything else would read a sentence twice.
-            if (sentence.end <= at) break
-            out += pieces(paragraph, WordRange(maxOf(at, sentence.start), sentence.end))
-            at = sentence.end
-        }
-        return out
-    }
+    fun sentences(paragraph: String): List<WordRange> =
+        // One pass over the paragraph: a hostile one ("a.a.a.…") stays linear.
+        TextTools.sentenceRanges(paragraph).flatMap { pieces(paragraph, it) }
 
     /** [range] in pieces of at most [TextTools.MAX_SENTENCE] units, cut before a space when there is one. */
     private fun pieces(

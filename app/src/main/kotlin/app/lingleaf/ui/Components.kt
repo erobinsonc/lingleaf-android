@@ -371,7 +371,8 @@ fun TappableParagraph(
      */
     reading: List<WordRange> = emptyList(),
 ) {
-    val readingBackground = MaterialTheme.colorScheme.secondaryContainer
+    // Neutral: yellow marks words being learned.
+    val readingBackground = MaterialTheme.colorScheme.surfaceContainerHighest
     var layout by remember { mutableStateOf<TextLayoutResult?>(null) }
     val colors = LocalLingleafColors.current
     val currentOnWordTap by rememberUpdatedState(onWordTap)

@@ -44,6 +44,7 @@
     <string name="add_previous_sentence">Add previous sentence</string>
     <string name="repeat_sentence">Repeat sentence</string>
     <string name="repeating">Repeating</string>
+    <string name="not_repeating">Not repeating</string>
     <plurals name="repeating_sentences">
         <item quantity="one">Repeating %d sentence</item>
         <item quantity="other">Repeating %d sentences</item>

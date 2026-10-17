@@ -24,13 +24,15 @@ import androidx.compose.material.icons.filled.Remove
 import androidx.compose.material.icons.filled.RepeatOne
 import androidx.compose.material.icons.filled.SkipPrevious
 import androidx.compose.material3.BottomAppBar
+import androidx.compose.material3.BottomAppBarDefaults
 import androidx.compose.material3.CircularProgressIndicator
+import androidx.compose.material3.FilledTonalIconToggleButton
 import androidx.compose.material3.Icon
 import androidx.compose.material3.IconButton
-import androidx.compose.material3.IconToggleButton
 import androidx.compose.material3.LinearProgressIndicator
 import androidx.compose.material3.MaterialTheme
 import androidx.compose.material3.SnackbarHostState
+import androidx.compose.material3.Surface
 import androidx.compose.material3.Text
 import androidx.compose.runtime.Composable
 import androidx.compose.runtime.LaunchedEffect
@@ -38,11 +40,14 @@ import androidx.compose.runtime.getValue
 import androidx.compose.runtime.mutableStateOf
 import androidx.compose.runtime.remember
 import androidx.compose.runtime.rememberCoroutineScope
+import androidx.compose.runtime.rememberUpdatedState
 import androidx.compose.runtime.setValue
 import androidx.compose.runtime.snapshotFlow
 import androidx.compose.ui.Alignment
 import androidx.compose.ui.Modifier
 import androidx.compose.ui.draw.drawBehind
+import androidx.compose.ui.focus.FocusRequester
+import androidx.compose.ui.focus.focusRequester
 import androidx.compose.ui.geometry.Offset
 import androidx.compose.ui.geometry.Size
 import androidx.compose.ui.graphics.Color
@@ -250,12 +255,22 @@ private fun ReaderText(
 ) {
     val listState = rememberLazyListState(initialFirstVisibleItemIndex = initialParagraph)
     LaunchedEffect(listState) { onListState(listState) }
-    val loopBar = MaterialTheme.colorScheme.secondary
+    // Neutral, like the highlight: yellow marks words being learned.
+    val loopBar = MaterialTheme.colorScheme.onSurfaceVariant
     val animate = Global.getFloat(LocalContext.current.contentResolver, Global.ANIMATOR_DURATION_SCALE, 1f) > 0f
 
     // Scrolling by hand while reading aloud: stop following until the sentence is back on screen.
     LaunchedEffect(listState) {
         listState.interactionSource.interactions.collect { if (it is DragInteraction.Start) onFollowingChange(false) }
+    }
+    // Follow again as soon as the paragraph being read is back on screen (as on iOS).
+    val currentReading by rememberUpdatedState(reading)
+    val currentFollowing by rememberUpdatedState(following)
+    LaunchedEffect(listState) {
+        snapshotFlow { listState.layoutInfo.visibleItemsInfo.map { it.index } }.collect { visible ->
+            val paragraph = currentReading?.paragraph ?: return@collect
+            if (!currentFollowing && paragraph in visible) onFollowingChange(true)
+        }
     }
 
     // Keep the sentence being read on screen: when it starts below 85 % of the reader or above
@@ -367,52 +382,61 @@ private fun ReadAloudBar(
     onFollow: () -> Unit,
 ) {
     val repeating = reading.loop != null
-    Column {
-        if (repeating) {
-            // Says how long the repeated stretch is, also to screen readers as it grows.
-            Text(
-                pluralStringResource(R.plurals.repeating_sentences, reading.loopCount, reading.loopCount),
-                style = MaterialTheme.typography.labelLarge,
-                textAlign = TextAlign.Center,
-                modifier =
-                    Modifier
-                        .fillMaxWidth()
-                        .padding(top = 8.dp)
-                        .semantics { liveRegion = LiveRegionMode.Polite },
-            )
-        }
-        BottomAppBar {
-            Spacer(Modifier.weight(1f))
-            IconButton(onClick = {
-                onFollow()
-                reading.previous()
-            }) {
-                val label = stringResource(if (repeating) R.string.add_previous_sentence else R.string.previous_sentence)
-                Icon(Icons.Filled.SkipPrevious, contentDescription = label)
+    // When the bar appears, screen readers move to Pause: the button they were on is gone.
+    val pauseFocus = remember { FocusRequester() }
+    LaunchedEffect(Unit) { runCatching { pauseFocus.requestFocus() } }
+    // One surface for the bar and the line above it, so there is no seam between them.
+    Surface(color = BottomAppBarDefaults.containerColor) {
+        Column {
+            if (repeating) {
+                // Says how long the repeated stretch is, also to screen readers as it grows.
+                Text(
+                    pluralStringResource(R.plurals.repeating_sentences, reading.loopCount, reading.loopCount),
+                    style = MaterialTheme.typography.labelLarge,
+                    textAlign = TextAlign.Center,
+                    modifier =
+                        Modifier
+                            .fillMaxWidth()
+                            .padding(top = 8.dp)
+                            .semantics { liveRegion = LiveRegionMode.Polite },
+                )
             }
-            IconButton(onClick = {
-                if (reading.isReading) {
-                    reading.pause()
-                } else {
+            BottomAppBar {
+                Spacer(Modifier.weight(1f))
+                IconButton(onClick = {
                     onFollow()
-                    reading.play()
+                    reading.previous()
+                }) {
+                    val label = stringResource(if (repeating) R.string.add_previous_sentence else R.string.previous_sentence)
+                    Icon(Icons.Filled.SkipPrevious, contentDescription = label)
                 }
-            }) {
-                if (reading.isReading) {
-                    Icon(Icons.Filled.Pause, contentDescription = stringResource(R.string.pause_reading))
-                } else {
-                    Icon(Icons.Filled.PlayArrow, contentDescription = stringResource(R.string.play_reading))
+                IconButton(
+                    modifier = Modifier.focusRequester(pauseFocus),
+                    onClick = {
+                        if (reading.isReading) {
+                            reading.pause()
+                        } else {
+                            onFollow()
+                            reading.play()
+                        }
+                    },
+                ) {
+                    if (reading.isReading) {
+                        Icon(Icons.Filled.Pause, contentDescription = stringResource(R.string.pause_reading))
+                    } else {
+                        Icon(Icons.Filled.PlayArrow, contentDescription = stringResource(R.string.play_reading))
+                    }
                 }
+                val repeatingState = stringResource(if (repeating) R.string.repeating else R.string.not_repeating)
+                FilledTonalIconToggleButton(
+                    checked = repeating,
+                    onCheckedChange = { reading.toggleRepeat() },
+                    modifier = Modifier.semantics { stateDescription = repeatingState },
+                ) {
+                    Icon(Icons.Filled.RepeatOne, contentDescription = stringResource(R.string.repeat_sentence))
+                }
+                Spacer(Modifier.weight(1f))
             }
-            val repeatingState = stringResource(R.string.repeating)
-            IconToggleButton(
-                checked = repeating,
-                onCheckedChange = { reading.toggleRepeat() },
-                modifier = Modifier.semantics { if (repeating) stateDescription = repeatingState },
-            ) {
-                Icon(Icons.Filled.RepeatOne, contentDescription = stringResource(R.string.repeat_sentence))
-            }
-            Spacer(Modifier.weight(1f))
         }
     }
 }

@@ -64,4 +64,16 @@ class ReadAloudTest {
         assertEquals(0, ReadAloud.count(book, three, one), "the end before the start")
         assertEquals(0, ReadAloud.count(book, one, SentencePosition(0, WordRange(1, 2))), "an end that is no sentence")
     }
+
+    @Test
+    fun `sentences match the sentence of each word and stay linear on hostile text`() {
+        val text = "Tom has a boat. It is red!  Is it new? “Yes,” he said. No end"
+        for (sentence in ReadAloud.sentences(text)) {
+            assertEquals(sentence, TextTools.sentenceRangeAt(text, sentence.start), "same rule as the sentence of a word")
+        }
+        val hostile = "a. ".repeat(1000)
+        val started = System.nanoTime()
+        assertEquals(1000, ReadAloud.sentences(hostile).size)
+        assertTrue((System.nanoTime() - started) / 1_000_000 < 500, "one pass, not one per sentence")
+    }
 }

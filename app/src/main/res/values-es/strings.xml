@@ -39,6 +39,7 @@
     <string name="add_previous_sentence">Agregar frase anterior</string>
     <string name="repeat_sentence">Repetir frase</string>
     <string name="repeating">Repitiendo</string>
+    <string name="not_repeating">Sin repetir</string>
     <plurals name="repeating_sentences">
         <item quantity="one">Repitiendo %d frase</item>
         <item quantity="many">Repitiendo %d frases</item>

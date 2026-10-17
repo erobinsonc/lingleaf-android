@@ -63,6 +63,7 @@ class FakeSpeaker : Speaker {
         text: String,
         rate: Float,
         onDone: (() -> Unit)?,
+        onError: (() -> Unit)?,
     ) {
         spoken += text
         this.onDone = onDone

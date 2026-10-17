@@ -94,6 +94,7 @@ interface Speaker {
         text: String,
         rate: Float,
         onDone: (() -> Unit)? = null,
+        onError: (() -> Unit)? = null,
     )
 
     fun stop()
@@ -343,13 +344,14 @@ class AndroidSpeaker(
     private val speaking = MutableStateFlow(false)
     override val isSpeaking: StateFlow<Boolean> = speaking.asStateFlow()
     private var ready = false
-    private var pending: Triple<String, Float, (() -> Unit)?>? = null
+    private var pending: (() -> Unit)? = null
     private val tts = TextToSpeech(context, this)
     private val main = Handler(Looper.getMainLooper())
 
     // The utterance being spoken and what to run when it ends by itself; only touched on the main thread.
     private var utterance = 0
     private var onDone: (() -> Unit)? = null
+    private var onError: (() -> Unit)? = null
 
     init {
         tts.setOnUtteranceProgressListener(
@@ -372,6 +374,15 @@ class AndroidSpeaker(
                 @Deprecated("Required override for older Android versions")
                 override fun onError(utteranceId: String?) {
                     speaking.value = false
+                    // The engine failed: reading aloud stops instead of looking busy without sound.
+                    main.post {
+                        val failed = onError
+                        if (utteranceId == "lingleaf-$utterance" && failed != null) {
+                            onDone = null
+                            onError = null
+                            failed()
+                        }
+                    }
                 }
 
                 override fun onStop(
@@ -388,7 +399,7 @@ class AndroidSpeaker(
         ready = status == TextToSpeech.SUCCESS
         if (ready) {
             tts.language = Locale.US
-            pending?.let { (text, rate, done) -> speak(text, rate, done) }
+            pending?.invoke()
         }
         pending = null
     }
@@ -397,13 +408,15 @@ class AndroidSpeaker(
         text: String,
         rate: Float,
         onDone: (() -> Unit)?,
+        onError: (() -> Unit)?,
     ) {
         if (!ready) {
-            pending = Triple(text, rate, onDone)
+            pending = { speak(text, rate, onDone, onError) }
             return
         }
         utterance++
         this.onDone = onDone
+        this.onError = onError
         tts.setSpeechRate(rate)
         tts.speak(text, TextToSpeech.QUEUE_FLUSH, null, "lingleaf-$utterance")
     }
@@ -411,6 +424,7 @@ class AndroidSpeaker(
     override fun stop() {
         utterance++
         onDone = null
+        onError = null
         pending = null
         tts.stop()
         speaking.value = false
