@@ -31,14 +31,14 @@ data class DictionaryEntry(
                         ?: (json["phonetics"] as? JsonArray)
                             ?.mapNotNull { it.jsonObject["text"]?.jsonPrimitive?.contentOrNull }
                             ?.firstOrNull { it.isNotEmpty() }
-                )?.take(MAX_SHORT_FIELD)
+                )?.let { TextTools.truncated(it, MAX_SHORT_FIELD) }
             val meaning = (json["meanings"] as? JsonArray)?.firstOrNull()?.jsonObject
             val definition = (meaning?.get("definitions") as? JsonArray)?.firstOrNull()?.jsonObject
             return DictionaryEntry(
-                word = json["word"]!!.jsonPrimitive.content.take(MAX_SHORT_FIELD),
+                word = TextTools.truncated(json["word"]!!.jsonPrimitive.content, MAX_SHORT_FIELD),
                 phonetic = phonetic,
-                partOfSpeech = meaning?.get("partOfSpeech")?.jsonPrimitive?.contentOrNull?.take(MAX_SHORT_FIELD),
-                definition = definition?.get("definition")?.jsonPrimitive?.contentOrNull?.take(MAX_DEFINITION),
+                partOfSpeech = meaning?.get("partOfSpeech")?.jsonPrimitive?.contentOrNull?.let { TextTools.truncated(it, MAX_SHORT_FIELD) },
+                definition = definition?.get("definition")?.jsonPrimitive?.contentOrNull?.let { TextTools.truncated(it, MAX_DEFINITION) },
             )
         }
     }

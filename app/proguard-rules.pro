@@ -4,6 +4,9 @@
 -keepattributes *Annotation*, InnerClasses
 -keepclassmembers @kotlinx.serialization.Serializable class app.lingleaf.** {
     *** Companion;
+}
+-if @kotlinx.serialization.Serializable class app.lingleaf.**
+-keepclassmembers class <1>$Companion {
     kotlinx.serialization.KSerializer serializer(...);
 }
 -keep,includedescriptorclasses class app.lingleaf.**$$serializer { *; }
@@ -15,4 +18,6 @@
     public static int i(...);
     public static int w(...);
     public static int e(...);
+    public static int wtf(...);
+    public static int println(...);
 }

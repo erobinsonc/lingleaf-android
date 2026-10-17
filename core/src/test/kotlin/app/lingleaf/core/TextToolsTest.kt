@@ -47,6 +47,7 @@ class TextToolsTest {
         assertEquals("Alice’s Adventures", TextTools.cleanLabel("Alice’s Adventures"))
         assertEquals("a\u0301\u0301\u0301\u0301", TextTools.cleanLabel("a" + "\u0301".repeat(100_000)), "at most 4 accents on a letter")
         assertEquals("Fake", TextTools.cleanLabel("\u3164\u115F\u2800Fake"), "blank fillers")
+        assertEquals("Alice x", TextTools.cleanLabel("\u3000\u00A0Alice\u2003 x"), "Unicode spaces")
         assertEquals("Café", TextTools.cleanLabel("Cafe\u0301").let { java.text.Normalizer.normalize(it, java.text.Normalizer.Form.NFC) })
     }
 

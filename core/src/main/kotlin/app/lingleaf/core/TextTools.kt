@@ -62,7 +62,7 @@ object TextTools {
             // One unit past the limit, so the sentence-end lookahead can see what follows.
             val window = paragraph.substring(start, start + MAX_PARAGRAPH + 1)
             var cut = sentenceEnd.findAll(window).map { it.range.last + 1 }.lastOrNull { it <= MAX_PARAGRAPH } ?: 0
-            if (cut == 0) cut = (MAX_PARAGRAPH - 1 downTo 1).firstOrNull { window[it] == ' ' || window[it] == '\t' } ?: MAX_PARAGRAPH
+            if (cut == 0) cut = (MAX_PARAGRAPH - 1 downTo 1).firstOrNull { window[it].isWhitespace() } ?: MAX_PARAGRAPH
             // Never between the halves of a surrogate pair, and always forward.
             if (cut > 1 && Character.isHighSurrogate(window[cut - 1])) cut--
             window.substring(0, cut).trim().takeIf { it.isNotEmpty() }?.let { pieces += it }
@@ -104,7 +104,8 @@ object TextTools {
                 else -> out.appendCodePoint(codePoint)
             }
         }
-        return truncated(out.split(Regex("\\s+")).filter { it.isNotEmpty() }.joinToString(" "), MAX_LABEL)
+        // (?U): every Unicode space (no-break, ideographic…) counts, as on iOS.
+        return truncated(out.split(Regex("(?U)\\s+")).filter { it.isNotEmpty() }.joinToString(" "), MAX_LABEL)
     }
 
     /** Accents kept on one letter: real text needs two or three; "Zalgo" text piles up thousands. */
