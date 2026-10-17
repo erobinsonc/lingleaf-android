@@ -22,7 +22,7 @@ data class GutenbergBook(
             // "Baum, L. Frank (Lyman Frank)" → "Baum, L. Frank": drop the catalog's full-name note.
             val name = raw.replace(Regex("""\s*\([^)]*\)"""), "").trim()
             val parts = name.split(",", limit = 2)
-            return if (parts.size == 2) "${parts[1].trim()} ${parts[0].trim()}" else name
+            return TextTools.cleanLabel(if (parts.size == 2) "${parts[1].trim()} ${parts[0].trim()}" else name)
         }
 
     /**
@@ -30,7 +30,7 @@ data class GutenbergBook(
      * ("Peter Pan : $b [Peter and Wendy]", "Moby-Dick; Or, The Whale").
      */
     val displayTitle: String
-        get() = title.split(" : ", ";", "\$b", "\n", "\r").first().trim().ifEmpty { title.trim() }
+        get() = TextTools.cleanLabel(title.split(" : ", ";", "\$b", "\n", "\r").first()).ifEmpty { TextTools.cleanLabel(title) }
 
     /**
      * The medium cover from Project Gutenberg's file cache, never a link taken from the
@@ -89,8 +89,9 @@ class GutenbergClient(private val http: HttpFetcher) {
     suspend fun search(query: String): List<GutenbergBook> {
         val response = call { http.get("$BASE?languages=en&search=${URLEncoder.encode(query, "UTF-8")}") }
         if (response.status != 200) throw GutenbergException.of(response.status)
+        if (!JsonGuard.isShallow(response.text)) throw GutenbergException(GutenbergException.Reason.FAILED)
         return try {
-            json.decodeFromString<GutendexResponse>(response.text).results
+            cleanResults(json.decodeFromString<GutendexResponse>(response.text).results)
         } catch (_: IllegalArgumentException) {
             throw GutenbergException(GutenbergException.Reason.FAILED)
         }
@@ -230,6 +231,16 @@ class GutenbergClient(private val http: HttpFetcher) {
         val LEVELS = listOf("A1", "A2", "B1", "B2", "C1", "C2")
 
         fun levelFor(id: Int): String? = RECOMMENDED[id]
+
+        /** Most results shown for one search (one page of the catalog). */
+        const val MAX_RESULTS = 32
+
+        /**
+         * One row per book, at most [MAX_RESULTS]. A recommended book always shows as shipped
+         * with the app, so a catalog answer can't put another title under its level badge.
+         */
+        internal fun cleanResults(books: List<GutenbergBook>): List<GutenbergBook> =
+            books.distinctBy { it.id }.take(MAX_RESULTS).map { book -> RECOMMENDED_BOOKS.firstOrNull { it.id == book.id } ?: book }
 
         /** Books at [level], in their original order; a null level keeps every book. */
         fun filter(

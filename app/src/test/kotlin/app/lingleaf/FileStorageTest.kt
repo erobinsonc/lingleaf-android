@@ -22,6 +22,13 @@ class FileStorageTest {
     }
 
     @Test
+    fun aNameOutsideTheFolderIsNeverRead() {
+        val inside = folder.newFolder("app")
+        folder.root.resolve("outside.txt").writeText("outside")
+        assertNull(FileStorage(inside).read("../outside.txt"))
+    }
+
+    @Test
     fun aFailedWriteDoesNotCrash() {
         val missing = folder.root.resolve("gone")
         // A folder that no longer exists, like a full disk, makes the write fail.

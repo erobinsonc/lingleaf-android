@@ -91,6 +91,16 @@ data class LibraryState(
     val lastOpened: Book? get() = books.filter { it.lastOpenedAt != null }.maxByOrNull { it.lastOpenedAt!! }
 }
 
+/**
+ * Names a [Storage] accepts: the plain names the app makes ("books.json", "book-<id>.txt").
+ * A name read back from a restored backup can't reach outside the app's folder.
+ */
+object StorageNames {
+    private val safe = Regex("^[A-Za-z0-9][A-Za-z0-9._-]{0,127}$")
+
+    fun isSafe(name: String): Boolean = ".." !in name && safe.matches(name)
+}
+
 /** Where files live. The app maps it to internal storage; tests to a temp dir. */
 interface Storage {
     fun read(name: String): String?
@@ -123,7 +133,11 @@ class Library(
         _state.value =
             LibraryState(
                 books = decode(BOOKS, ListSerializer(Book.serializer())) ?: emptyList(),
-                words = decode(WORDS, ListSerializer(VocabWord.serializer())) ?: emptyList(),
+                // Saved before contexts were capped, or restored from a backup: cut to size.
+                words =
+                    decode(WORDS, ListSerializer(VocabWord.serializer()))
+                        ?.map { it.copy(context = TextTools.truncated(it.context, TextTools.MAX_SENTENCE)) }
+                        ?: emptyList(),
                 readingLog = decode(READING_LOG, readingLogSerializer) ?: emptyMap(),
                 settings = decode(SETTINGS, Settings.serializer()) ?: Settings(),
             )
@@ -151,8 +165,8 @@ class Library(
         val book =
             Book(
                 id = id,
-                title = title,
-                author = author,
+                title = TextTools.cleanLabel(title),
+                author = TextTools.cleanLabel(author),
                 fileName = "book-$id.txt",
                 paragraphCount = TextTools.splitParagraphs(text).size,
                 level = level,
@@ -359,9 +373,15 @@ class Library(
         key: String,
         entry: VocabWord,
     ) {
+        // Every saved word passes here: whatever a caller hands in, nothing huge is kept.
+        val bounded =
+            entry.copy(
+                context = TextTools.truncated(entry.context, TextTools.MAX_SENTENCE),
+                contextTranslation = entry.contextTranslation?.let { TextTools.truncated(it, MAX_CONTEXT_TRANSLATION) },
+            )
         _state.update { s ->
             val others = s.words.filterNot { it.word == key }
-            s.copy(words = (others + entry).sortedByDescending { it.createdAt })
+            s.copy(words = (others + bounded).sortedByDescending { it.createdAt })
         }
         saveWords()
     }
@@ -401,6 +421,7 @@ class Library(
     ): T? =
         storage.read(name)?.let {
             try {
+                require(JsonGuard.isShallow(it)) { "Nested too deeply" }
                 json.decodeFromString(serializer, it)
             } catch (e: Exception) {
                 storage.write("$name.corrupt", it)
@@ -417,6 +438,9 @@ class Library(
         private const val MAX_SESSION_SECONDS = 3600L
         private const val IMPORTED_AUTHOR = "—"
         private const val DEFAULT_TITLE = "Book"
+
+        /** A translation can be longer than its sentence; twice the sentence's limit. */
+        private const val MAX_CONTEXT_TRANSLATION = 2 * TextTools.MAX_SENTENCE
 
         /** "Alice.txt" → "Alice", "my.story.TXT" → "my.story"; an empty name becomes "Book". */
         fun importTitle(fileName: String): String {

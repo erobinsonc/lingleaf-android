@@ -17,12 +17,14 @@ import app.lingleaf.core.DictionaryClient
 import app.lingleaf.core.GutenbergBook
 import app.lingleaf.core.GutenbergClient
 import app.lingleaf.core.GutenbergException
+import app.lingleaf.core.Hosts
 import app.lingleaf.core.HttpFetcher
 import app.lingleaf.core.HttpResponse
 import app.lingleaf.core.Library
 import app.lingleaf.core.NetworkException
 import app.lingleaf.core.Settings
 import app.lingleaf.core.Storage
+import app.lingleaf.core.StorageNames
 import app.lingleaf.core.TranslationLanguages
 import com.google.android.gms.tasks.Task
 import com.google.mlkit.common.model.DownloadConditions
@@ -396,11 +398,14 @@ class AndroidSpeaker(
  */
 class HttpsFetcher(
     private val maxBytes: Int = MAX_BYTES,
+    private val allowedHosts: Set<String> = Hosts.ALLOWED,
 ) : HttpFetcher {
     override suspend fun get(url: String): HttpResponse = get(url, null)
 
     /**
      * Reads the body in buffered chunks, reporting progress when the length is known.
+     * Only HTTPS to the allowed hosts; redirects are followed by hand, at most
+     * [Hosts.MAX_REDIRECTS], and only to the allowed hosts (a refused one returns the 3xx).
      * No connection, a timeout or other failures become [NetworkException] kinds;
      * cancelling the coroutine stops the read between chunks.
      */
@@ -409,13 +414,20 @@ class HttpsFetcher(
         progress: ((Double) -> Unit)?,
     ): HttpResponse =
         withContext(Dispatchers.IO) {
-            if (!url.startsWith("https://")) throw NetworkException("Only HTTPS is allowed")
-            val connection = URL(url).openConnection() as HttpURLConnection
-            connection.connectTimeout = 15_000
-            connection.readTimeout = 30_000
-            connection.setRequestProperty("User-Agent", "Lingleaf/0.1 (+https://github.com/erobinsonc/lingleaf-android)")
+            if (!Hosts.isAllowed(url, allowedHosts)) throw NetworkException("Only HTTPS to the app's hosts is allowed")
+            var connection = open(URL(url))
             try {
-                val status = connection.responseCode
+                var status = connection.responseCode
+                var redirects = 0
+                while (status in REDIRECTS && redirects < Hosts.MAX_REDIRECTS) {
+                    val location = connection.getHeaderField("Location") ?: break
+                    val next = runCatching { URL(connection.url, location) }.getOrNull()
+                    if (next == null || !Hosts.isAllowed(next.toString(), allowedHosts)) break
+                    connection.disconnect()
+                    connection = open(next)
+                    status = connection.responseCode
+                    redirects++
+                }
                 val length = connection.contentLengthLong
                 if (length > maxBytes) throw NetworkException("Response too large")
                 val stream = if (status in 200..299) connection.inputStream else connection.errorStream
@@ -440,6 +452,20 @@ class HttpsFetcher(
                 connection.disconnect()
             }
         }
+
+    private fun open(url: URL): HttpURLConnection =
+        (url.openConnection() as HttpURLConnection).apply {
+            // Followed by hand above, so every hop is checked against the allowed hosts.
+            instanceFollowRedirects = false
+            connectTimeout = 15_000
+            readTimeout = 30_000
+            useCaches = false
+            setRequestProperty("User-Agent", "Lingleaf/0.1 (+https://github.com/erobinsonc/lingleaf-android)")
+        }
+
+    private companion object {
+        val REDIRECTS = setOf(301, 302, 303, 307, 308)
+    }
 }
 
 /** Largest download or imported file accepted. The longest recommended book (Middlemarch) is under 2 MB. */
@@ -469,12 +495,13 @@ fun InputStream.readCapped(
 class FileStorage(
     private val dir: File,
 ) : Storage {
-    override fun read(name: String): String? = File(dir, name).takeIf { it.exists() }?.readText()
+    override fun read(name: String): String? = if (StorageNames.isSafe(name)) File(dir, name).takeIf { it.exists() }?.readText() else null
 
     override fun write(
         name: String,
         content: String,
     ) {
+        if (!StorageNames.isSafe(name)) return
         val target = File(dir, name)
         val temp = File(dir, "$name.tmp")
         // rename(2) replaces the target atomically. If writing or renaming fails (a full disk, a
@@ -493,7 +520,7 @@ class FileStorage(
     }
 
     override fun delete(name: String) {
-        File(dir, name).delete()
+        if (StorageNames.isSafe(name)) File(dir, name).delete()
     }
 }
 

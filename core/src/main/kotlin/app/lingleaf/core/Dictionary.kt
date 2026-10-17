@@ -17,19 +17,28 @@ data class DictionaryEntry(
     val definition: String?,
 ) {
     companion object {
+        /**
+         * Longest field kept from an answer. Real definitions are a sentence or two; a hostile
+         * answer can't make the card or the inflection search work through megabytes of text.
+         */
+        const val MAX_DEFINITION = 500
+        const val MAX_SHORT_FIELD = 100
+
         fun parse(json: JsonObject): DictionaryEntry {
             val phonetic =
-                json["phonetic"]?.jsonPrimitive?.contentOrNull?.takeIf { it.isNotEmpty() }
-                    ?: (json["phonetics"] as? JsonArray)
-                        ?.mapNotNull { it.jsonObject["text"]?.jsonPrimitive?.contentOrNull }
-                        ?.firstOrNull { it.isNotEmpty() }
+                (
+                    json["phonetic"]?.jsonPrimitive?.contentOrNull?.takeIf { it.isNotEmpty() }
+                        ?: (json["phonetics"] as? JsonArray)
+                            ?.mapNotNull { it.jsonObject["text"]?.jsonPrimitive?.contentOrNull }
+                            ?.firstOrNull { it.isNotEmpty() }
+                )?.let { TextTools.truncated(it, MAX_SHORT_FIELD) }
             val meaning = (json["meanings"] as? JsonArray)?.firstOrNull()?.jsonObject
             val definition = (meaning?.get("definitions") as? JsonArray)?.firstOrNull()?.jsonObject
             return DictionaryEntry(
-                word = json["word"]!!.jsonPrimitive.content,
+                word = TextTools.truncated(json["word"]!!.jsonPrimitive.content, MAX_SHORT_FIELD),
                 phonetic = phonetic,
-                partOfSpeech = meaning?.get("partOfSpeech")?.jsonPrimitive?.contentOrNull,
-                definition = definition?.get("definition")?.jsonPrimitive?.contentOrNull,
+                partOfSpeech = meaning?.get("partOfSpeech")?.jsonPrimitive?.contentOrNull?.let { TextTools.truncated(it, MAX_SHORT_FIELD) },
+                definition = definition?.get("definition")?.jsonPrimitive?.contentOrNull?.let { TextTools.truncated(it, MAX_DEFINITION) },
             )
         }
     }
@@ -68,7 +77,7 @@ class DictionaryClient(private val http: HttpFetcher) {
                 return null
             }
         if (response.status == 404) cache[word] = null
-        if (response.status != 200) return null
+        if (response.status != 200 || !JsonGuard.isShallow(response.text)) return null
         val entry =
             try {
                 Json.parseToJsonElement(response.text).jsonArray.firstOrNull()?.jsonObject?.let(DictionaryEntry::parse)
