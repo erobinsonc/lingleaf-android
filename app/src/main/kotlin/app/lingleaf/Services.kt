@@ -376,9 +376,13 @@ class AndroidSpeaker(
     private val focusListener =
         AudioManager.OnAudioFocusChangeListener { change ->
             if (change < 0) {
+                // The utterance playing when the focus was lost, not one started after.
+                val id = "lingleaf-$utterance"
                 main.post {
-                    failed("lingleaf-$utterance")
-                    stop()
+                    if (id == "lingleaf-$utterance") {
+                        failed(id)
+                        stop()
+                    }
                 }
             }
         }
@@ -457,14 +461,15 @@ class AndroidSpeaker(
         )
     }
 
-    /** Runs the error callback of [utteranceId] if it is still the current one. */
+    /** If [utteranceId] is still the current one: gives the audio back and runs its error callback. */
     private fun failed(utteranceId: String?) {
+        if (utteranceId != "lingleaf-$utterance") return
         val failed = onError
-        if (utteranceId == "lingleaf-$utterance" && failed != null) {
-            onDone = null
-            onError = null
-            failed()
-        }
+        onDone = null
+        onError = null
+        // Nothing is said any more: give the audio back, with or without a callback.
+        abandonFocus()
+        failed?.invoke()
     }
 
     override fun onInit(status: Int) {
