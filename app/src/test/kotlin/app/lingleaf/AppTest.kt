@@ -269,7 +269,7 @@ class AppTest {
         compose.waitUntil(WAIT_MS) { compose.onAllNodesWithText("[es] had gone").fetchSemanticsNodes().isNotEmpty() }
         compose.onNodeWithText("Helper verb").assertExists()
         compose.onNodeWithText("have").assertExists()
-        compose.onNodeWithText("“had” + past participle: before another past moment: “had left”.").assertExists()
+        compose.onNodeWithText("“had” + past participle: it happened before another past moment: “had left”.").assertExists()
     }
 
     @Test
