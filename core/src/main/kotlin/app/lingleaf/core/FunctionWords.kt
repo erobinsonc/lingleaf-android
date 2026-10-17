@@ -362,15 +362,10 @@ object FunctionWords {
             verb == "would" && betterVerb != null -> word(FunctionWord.Kind.HELPER, "had", FunctionWord.Use.HadBetter, through(betterVerb))
             verb == "would" && participle(false, false) != null ->
                 word(FunctionWord.Kind.HELPER, "had", FunctionWord.Use.PastPerfect, through(participle(false, false)!!))
-            // "He'd put", "she'd run": had or would, only the context tells; the card says both.
+            // "He'd put", "she'd run": had or would, only the sentence tells. The card says both
+            // and, without a verb group, translates the whole sentence, which settles it.
             verb == "would" && participle(false, true) != null ->
-                word(
-                    FunctionWord.Kind.CONTRACTION,
-                    verb,
-                    FunctionWord.Use.Contraction,
-                    through(participle(false, true)!!),
-                    expansion = "$pronoun had / $pronoun would",
-                )
+                word(FunctionWord.Kind.CONTRACTION, verb, FunctionWord.Use.Contraction, null, expansion = "$pronoun had / $pronoun would")
             // Up to the sentence's end if it comes first: "…, she'll."
             verb == "would" || verb == "will" ->
                 word(FunctionWord.Kind.MODAL, verb, FunctionWord.Use.Modal(verb), group ?: range, negative = next == "not")
