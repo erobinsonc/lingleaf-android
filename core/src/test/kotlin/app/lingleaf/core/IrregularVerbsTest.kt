@@ -298,4 +298,58 @@ class IrregularVerbsTest {
         assertEquals("put", spoken("She had put it.", "put"), "no respelling")
         assertNull(verbs.spokenAt("She had read it", WordRange(0, 2)), "not a word of the text")
     }
+
+    /** Reads every word of [text] the way the reader does: underline, card base, voice. */
+    private fun readAll(text: String): Int {
+        val words = TextTools.wordRanges(text)
+        val marked = TextTools.marked(text, words, setOf("leave", "see", "rise"))
+        for (index in words.indices) {
+            verbs.baseAt(text, words, index)
+            verbs.spokenAt(text, words, index)
+        }
+        return marked.size
+    }
+
+    private fun bestNanos(text: String): Long =
+        (1..5).minOf {
+            val start = System.nanoTime()
+            readAll(text)
+            System.nanoTime() - start
+        }
+
+    @Test
+    fun `reading every word stays linear in the paragraph's length`() {
+        // Homographs, capitalised forms and names everywhere: the worst case for the rule.
+        val unit = "Left left Rose saw Drew leaves, the Lay wound; Tom Read read. She left. "
+        val small = unit.repeat(TextTools.MAX_PARAGRAPH / unit.length)
+        val large = unit.repeat(10 * TextTools.MAX_PARAGRAPH / unit.length)
+        assertTrue(readAll(small) > 0)
+        repeat(3) { readAll(large) } // warm up the JIT
+        val tSmall = bestNanos(small)
+        val tLarge = bestNanos(large)
+        println("read every word: ${small.length} chars ${tSmall / 1000} µs, ${large.length} chars ${tLarge / 1000} µs")
+        // 10× the text: about 10× the time when linear, 100× when quadratic.
+        assertTrue(tLarge <= 30 * tSmall + 20_000_000, "10× the text took ${tLarge / tSmall.coerceAtLeast(1)}× the time")
+        assertTrue(tLarge < 2_000_000_000, "20 000 characters took ${tLarge / 1_000_000} ms")
+    }
+
+    @Test
+    fun `the word-list overloads agree with the range ones`() {
+        val text = "Turn left. She left; Uncle Drew had read it, and the wound bled."
+        val words = TextTools.wordRanges(text)
+        for ((index, range) in words.withIndex()) {
+            assertEquals(verbs.resolve(text, range), verbs.resolve(text, words, index))
+            assertEquals(verbs.isName(text, range), verbs.isName(text, words, index))
+            assertEquals(verbs.baseAt(text, range), verbs.baseAt(text, words, index))
+            assertEquals(verbs.spokenAt(text, range), verbs.spokenAt(text, words, index))
+            assertEquals(TextTools.matchKeys(text, range), TextTools.matchKeys(text, words, index))
+        }
+        val absent = WordRange(1, 3)
+        assertNull(verbs.baseAt(text, absent))
+        assertNull(verbs.spokenAt("I read.", WordRange(3, 5)), "not a word of the text")
+        assertEquals(TextTools.matchKeys("ur"), TextTools.matchKeys(text, absent))
+        assertEquals(TextTools.baseFormCandidates("ur"), TextTools.baseFormCandidates(text, absent))
+        assertEquals(listOf("left"), TextTools.marked(text, words, setOf("leave")).map { text.substring(it.start, it.end) })
+        assertEquals(emptyList(), TextTools.marked(text, words, emptySet()))
+    }
 }

@@ -104,6 +104,12 @@ data class LibraryState(
         range: WordRange,
     ) = learningWords.isNotEmpty() && TextTools.matchKeys(text, range).any { it in learningWords }
 
+    /** The words of [text] ([words], its word ranges) that are forms of words being learned. */
+    fun learning(
+        text: String,
+        words: List<WordRange>,
+    ): List<WordRange> = TextTools.marked(text, words, learningWords)
+
     fun word(base: String) = words.firstOrNull { it.word == TextTools.normalize(base) }
 
     val lastOpened: Book? get() = books.filter { it.lastOpenedAt != null }.maxByOrNull { it.lastOpenedAt!! }

@@ -82,11 +82,43 @@ class IrregularVerbs private constructor(table: Table) {
         range: WordRange,
     ): Boolean {
         val surface = text.substring(range.start, range.end)
+        if (!isTitlecase(surface) || TextTools.normalize(surface) !in formToBase) return false
+        return at(text, range) { words, index -> isName(text, words, index) }
+    }
+
+    /** [isName] of word [index] of [words], the word ranges of [text]. */
+    fun isName(
+        text: String,
+        words: List<WordRange>,
+        index: Int,
+    ): Boolean {
+        val range = words[index]
+        val surface = text.substring(range.start, range.end)
         if (!isTitlecase(surface) || surface == surface.uppercase() || TextTools.normalize(surface) !in formToBase) return false
-        val words = TextTools.wordRanges(text)
-        val index = words.indexOf(range)
         return index > 0 && !sentenceStart.containsMatchIn(text.substring(words[index - 1].end, range.start))
     }
+
+    /**
+     * Runs [block] with the word ranges of [text] and the index of [range] in them; false or
+     * null when [range] is not a word of [text]. Callers that look at every word of a text
+     * tokenize it once and use the overloads that take the words and an index instead.
+     */
+    private inline fun <T> at(
+        text: String,
+        range: WordRange,
+        missing: T,
+        block: (List<WordRange>, Int) -> T,
+    ): T {
+        val words = TextTools.wordRanges(text)
+        val index = words.indexOf(range)
+        return if (index < 0) missing else block(words, index)
+    }
+
+    private inline fun at(
+        text: String,
+        range: WordRange,
+        block: (List<WordRange>, Int) -> Boolean,
+    ): Boolean = at(text, range, false, block)
 
     /**
      * The base the table gives the word at [range] of [text], when it differs from the word:
@@ -96,10 +128,18 @@ class IrregularVerbs private constructor(table: Table) {
     fun baseAt(
         text: String,
         range: WordRange,
+    ): String? = at(text, range, null) { words, index -> baseAt(text, words, index) }
+
+    /** [baseAt] of word [index] of [words], the word ranges of [text]. */
+    fun baseAt(
+        text: String,
+        words: List<WordRange>,
+        index: Int,
     ): String? {
+        val range = words[index]
         val word = TextTools.normalize(text.substring(range.start, range.end))
-        if (isHomograph(word)) return resolve(text, range)?.takeIf { it.kind != Reading.Kind.UNSURE && it.base != word }?.base
-        return formToBase[word]?.takeUnless { isName(text, range) }
+        if (isHomograph(word)) return resolve(text, words, index)?.takeIf { it.kind != Reading.Kind.UNSURE && it.base != word }?.base
+        return formToBase[word]?.takeUnless { isName(text, words, index) }
     }
 
     /**
@@ -115,8 +155,20 @@ class IrregularVerbs private constructor(table: Table) {
         range: WordRange,
     ): String? {
         val form = TextTools.normalize(text.substring(range.start, range.end))
+        if (!isHomograph(form) && verbsByBase[formToBase[form] ?: form]?.spokenAs == null) return null
+        return at(text, range, null) { words, index -> spokenAt(text, words, index) }
+    }
+
+    /** [spokenAt] of word [index] of [words], the word ranges of [text]. */
+    fun spokenAt(
+        text: String,
+        words: List<WordRange>,
+        index: Int,
+    ): String? {
+        val range = words[index]
+        val form = TextTools.normalize(text.substring(range.start, range.end))
         if (isHomograph(form)) {
-            val reading = resolve(text, range)?.takeIf { it.kind == Reading.Kind.VERB } ?: return null
+            val reading = resolve(text, words, index)?.takeIf { it.kind == Reading.Kind.VERB } ?: return null
             val verb = verbsByBase[reading.base] ?: return null
             val slot =
                 when (reading.step) {
@@ -133,10 +185,7 @@ class IrregularVerbs private constructor(table: Table) {
         }
         val verb = verbsByBase[formToBase[form] ?: form] ?: return null
         val spoken = verb.spokenAs ?: return null
-        if (isName(text, range)) return null
-        val words = TextTools.wordRanges(text)
-        val index = words.indexOf(range)
-        if (index < 0) return null
+        if (isName(text, words, index)) return null
         val head = Window(text, words, index).let { window -> window.head()?.let(window::tok) } ?: return null
         val slot =
             when {
@@ -163,12 +212,24 @@ class IrregularVerbs private constructor(table: Table) {
         text: String,
         range: WordRange,
     ): Reading? {
+        // Most words are no homograph: no need to tokenize the text for them.
+        if (TextTools.normalize(text.substring(range.start, range.end)) !in homographs) return null
+        return at(text, range, null) { words, index -> resolve(text, words, index) }
+    }
+
+    /**
+     * [resolve] for word [index] of [words], the word ranges of [text]: constant work per
+     * word, so reading every word of a paragraph stays linear in its length.
+     */
+    fun resolve(
+        text: String,
+        words: List<WordRange>,
+        index: Int,
+    ): Reading? {
+        val range = words[index]
         val surface = text.substring(range.start, range.end)
         val form = TextTools.normalize(surface)
         val homograph = homographs[form] ?: return null
-        val words = TextTools.wordRanges(text)
-        val index = words.indexOf(range)
-        if (index < 0) return null
         return Resolver(text, words, index, surface, form, homograph).resolve()
     }
 

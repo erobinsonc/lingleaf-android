@@ -26,6 +26,12 @@ for mode in light dark; do
     cp "$png" "screenshots/$mode-$(basename "$png")"
   done
 done
+# The shrunk build must still load the bundled irregular-verb table: the app
+# logs a refused (or missing) table at start-up instead of crashing.
+if adb logcat -d -v brief Lingleaf:V '*:S' | grep -q "Irregular-verb table refused"; then
+  echo "::error::The irregular-verb table did not load in the minified build"
+  status=1
+fi
 # On a failure, the app's own log (and any crash) goes with the screenshots.
 if [ "$status" != 0 ]; then
   adb logcat -d -v brief Lingleaf:V AndroidRuntime:E '*:S' > screenshots/logcat.txt || true

@@ -308,16 +308,24 @@ object TextTools {
     fun baseFormCandidates(
         text: String,
         range: WordRange,
-    ): List<String> = readingAndCandidates(text, range).second
+    ): List<String> {
+        val words = wordRanges(text)
+        val index = words.indexOf(range)
+        if (index < 0) return baseFormCandidates(text.substring(range.start, range.end))
+        return readingAndCandidates(text, words, index).second
+    }
 
+    /** Word [index] of [words] (the word ranges of [text]): its reading and base forms. */
     private fun readingAndCandidates(
         text: String,
-        range: WordRange,
+        words: List<WordRange>,
+        index: Int,
     ): Pair<Reading?, List<String>> {
+        val range = words[index]
         val word = text.substring(range.start, range.end)
         val verbs = IrregularVerbs.shared
-        val reading = verbs.resolve(text, range)
-        return reading to candidates(word, reading, irregular = reading != null || !verbs.isName(text, range))
+        val reading = verbs.resolve(text, words, index)
+        return reading to candidates(word, reading, irregular = reading != null || !verbs.isName(text, words, index))
     }
 
     /**
@@ -334,7 +342,22 @@ object TextTools {
             val start = normalize(sentence).indexOf(key)
             return if (start < 0) emptyList() else listOf(WordRange(start, start + key.length))
         }
-        return wordRanges(sentence).filter { key in matchKeys(sentence, it) }
+        val words = wordRanges(sentence)
+        return words.filterIndexed { index, _ -> key in matchKeys(sentence, words, index) }
+    }
+
+    /**
+     * The words of [text] ([words], its word ranges) that are forms of one of [saved] (the
+     * words being learned, normalised), homographs read in their sentence: what the reader
+     * underlines. One pass over the text, constant work per word.
+     */
+    fun marked(
+        text: String,
+        words: List<WordRange>,
+        saved: Set<String>,
+    ): List<WordRange> {
+        if (saved.isEmpty()) return emptyList()
+        return words.filterIndexed { index, _ -> matchKeys(text, words, index).any { it in saved } }
     }
 
     /** The word plus its likely base forms: what to match against saved words. Homographs are unsure. */
@@ -349,8 +372,21 @@ object TextTools {
         text: String,
         range: WordRange,
     ): Set<String> {
+        val words = wordRanges(text)
+        val index = words.indexOf(range)
+        if (index < 0) return matchKeys(text.substring(range.start, range.end))
+        return matchKeys(text, words, index)
+    }
+
+    /** [matchKeys] of word [index] of [words], the word ranges of [text]. */
+    fun matchKeys(
+        text: String,
+        words: List<WordRange>,
+        index: Int,
+    ): Set<String> {
+        val range = words[index]
         val word = normalize(text.substring(range.start, range.end))
-        val (reading, candidates) = readingAndCandidates(text, range)
+        val (reading, candidates) = readingAndCandidates(text, words, index)
         val claimed = reading != null && reading.kind != Reading.Kind.UNSURE && reading.base != word
         return if (claimed) candidates.toSet() else setOf(word) + candidates
     }

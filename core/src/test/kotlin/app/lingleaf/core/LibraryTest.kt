@@ -99,6 +99,7 @@ class LibraryTest {
         assertFalse(state.isLearning(text, ranges[0]), "turn left: the side")
         assertTrue(state.isLearning(text, ranges[1]), "she left: leave")
         assertFalse(LibraryState().isLearning(text, ranges[1]), "nothing saved")
+        assertEquals(listOf(ranges[1]), state.learning(text, TextTools.wordRanges(text)))
     }
 
     @Test
