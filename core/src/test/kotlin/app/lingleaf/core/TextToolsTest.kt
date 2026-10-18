@@ -7,6 +7,15 @@ import kotlin.test.assertTrue
 
 class TextToolsTest {
     @Test
+    fun `a long run of marks is matched in linear time`() {
+        val hostile = "!".repeat(50_000) + "x"
+        val started = System.nanoTime()
+        assertEquals(1, TextTools.sentenceRanges(hostile).size, "no sentence end: one sentence")
+        assertTrue((System.nanoTime() - started) / 1e9 < 2, "not one scan of the run per mark")
+        assertEquals(3, TextTools.sentenceRanges("Wait!!! He said “no.” Then?").size, "runs and closing quotes still end sentences")
+    }
+
+    @Test
     fun `a paragraph the size of a book is cut at sentence ends or spaces`() {
         val noStops = "word ".repeat(5_000)
         val pieces = TextTools.splitParagraphs(noStops)

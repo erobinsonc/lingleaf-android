@@ -3,6 +3,11 @@
 package app.lingleaf.ui
 
 import android.accessibilityservice.AccessibilityServiceInfo
+import android.content.ActivityNotFoundException
+import android.content.Context
+import android.content.Intent
+import android.provider.Settings
+import android.speech.tts.TextToSpeech
 import android.view.accessibility.AccessibilityManager
 import androidx.compose.foundation.background
 import androidx.compose.foundation.layout.Arrangement
@@ -21,6 +26,7 @@ import androidx.compose.foundation.text.BasicText
 import androidx.compose.material.icons.Icons
 import androidx.compose.material.icons.automirrored.filled.ArrowBack
 import androidx.compose.material.icons.filled.Whatshot
+import androidx.compose.material3.AlertDialog
 import androidx.compose.material3.Card
 import androidx.compose.material3.CardDefaults
 import androidx.compose.material3.CircularProgressIndicator
@@ -39,6 +45,7 @@ import androidx.compose.material3.SnackbarHost
 import androidx.compose.material3.SnackbarHostState
 import androidx.compose.material3.SnackbarResult
 import androidx.compose.material3.Text
+import androidx.compose.material3.TextButton
 import androidx.compose.material3.TopAppBar
 import androidx.compose.material3.TopAppBarDefaults
 import androidx.compose.runtime.Composable
@@ -80,6 +87,7 @@ import androidx.compose.ui.unit.dp
 import androidx.compose.ui.unit.sp
 import androidx.lifecycle.compose.collectAsStateWithLifecycle
 import app.lingleaf.R
+import app.lingleaf.Speaker
 import app.lingleaf.TRANSLATION_LANGUAGES
 import app.lingleaf.core.Book
 import app.lingleaf.core.WordRange
@@ -93,10 +101,12 @@ fun ScreenScaffold(
     onBack: (() -> Unit)? = null,
     actions: @Composable RowScope.() -> Unit = {},
     snackbarHostState: SnackbarHostState? = null,
+    bottomBar: @Composable () -> Unit = {},
     content: @Composable (Modifier) -> Unit,
 ) {
     Scaffold(
         contentWindowInsets = WindowInsets(0),
+        bottomBar = bottomBar,
         topBar = {
             TopAppBar(
                 title = { Text(title, maxLines = 1, overflow = TextOverflow.Ellipsis) },
@@ -190,6 +200,53 @@ suspend fun SnackbarHostState.showUndo(
             }
         }
     if (result == SnackbarResult.ActionPerformed) onUndo()
+}
+
+/**
+ * Says the device has no English voice, with a way to the voice settings (SPEC S6). A dialog,
+ * so it shows over the word sheet too.
+ */
+@Composable
+fun NoVoiceDialog(speaker: Speaker) {
+    val context = LocalContext.current
+    AlertDialog(
+        onDismissRequest = speaker::dismissMissedVoice,
+        title = { Text(stringResource(R.string.no_voice_title)) },
+        text = { Text(stringResource(R.string.no_voice)) },
+        confirmButton = {
+            TextButton(onClick = {
+                speaker.dismissMissedVoice()
+                openVoiceSettings(context, speaker.engine)
+            }) { Text(stringResource(R.string.voice_settings)) }
+        },
+        dismissButton = { TextButton(onClick = speaker::dismissMissedVoice) { Text(stringResource(R.string.ok)) } },
+    )
+}
+
+/**
+ * Opens the voice engine's install-voice screen, else the text-to-speech settings, else the
+ * system settings. Each intent names its app, so no other app can answer it.
+ */
+fun openVoiceSettings(
+    context: Context,
+    engine: String?,
+) {
+    val screens =
+        listOfNotNull(
+            engine?.let { Intent(TextToSpeech.Engine.ACTION_INSTALL_TTS_DATA).setPackage(it) },
+            Intent("com.android.settings.TTS_SETTINGS").setPackage("com.android.settings"),
+            Intent(Settings.ACTION_SETTINGS).setPackage("com.android.settings"),
+        )
+    for (screen in screens) {
+        try {
+            context.startActivity(screen.addFlags(Intent.FLAG_ACTIVITY_NEW_TASK))
+            return
+        } catch (_: ActivityNotFoundException) {
+            // Try the next screen.
+        } catch (_: SecurityException) {
+            // Not ours to open: try the next screen.
+        }
+    }
 }
 
 /** Every translation language, each named in its own language. */
@@ -363,7 +420,14 @@ fun TappableParagraph(
     selected: WordRange?,
     onWordTap: (WordRange) -> Unit,
     modifier: Modifier = Modifier,
+    /**
+     * The sentences being read aloud or repeated, on a neutral fill (yellow marks words being
+     * learned); a repeated stretch of several also gets a bar at the side, not only a colour.
+     */
+    reading: List<WordRange> = emptyList(),
 ) {
+    // Neutral: yellow marks words being learned.
+    val readingBackground = MaterialTheme.colorScheme.surfaceContainerHighest
     var layout by remember { mutableStateOf<TextLayoutResult?>(null) }
     val colors = LocalLingleafColors.current
     val currentOnWordTap by rememberUpdatedState(onWordTap)
@@ -379,9 +443,10 @@ fun TappableParagraph(
                 ),
         )
     val annotated =
-        remember(text, words, selected, colors) {
+        remember(text, words, selected, colors, reading, readingBackground) {
             buildAnnotatedString {
                 append(text)
+                for (sentence in reading) addStyle(SpanStyle(background = readingBackground), sentence.start, sentence.end)
                 for (word in words) {
                     addLink(
                         LinkAnnotation.Clickable(

@@ -57,15 +57,43 @@ import org.robolectric.annotation.GraphicsMode
 class FakeSpeaker : Speaker {
     val spoken = mutableListOf<String>()
     override val isSpeaking: StateFlow<Boolean> = MutableStateFlow(false)
+    private var onDone: (() -> Unit)? = null
+
+    /** A phone with no English voice: every request fails at once. */
+    var voiceMissing = false
+    override val noVoice: Boolean get() = voiceMissing
+    private val missed = MutableStateFlow(false)
+    override val missedVoice: StateFlow<Boolean> = missed
+
+    override fun dismissMissedVoice() {
+        missed.value = false
+    }
 
     override fun speak(
         text: String,
         rate: Float,
+        onDone: (() -> Unit)?,
+        onError: (() -> Unit)?,
     ) {
+        if (voiceMissing) {
+            missed.value = true
+            onError?.invoke()
+            return
+        }
         spoken += text
+        this.onDone = onDone
     }
 
-    override fun stop() = Unit
+    override fun stop() {
+        onDone = null
+    }
+
+    /** The text being spoken ends by itself. */
+    fun finish() {
+        val done = onDone
+        onDone = null
+        done?.invoke()
+    }
 }
 
 private val dictionaryJson =
@@ -75,7 +103,7 @@ private val dictionaryJson =
 /** Generous: CI runners are slow on the first test, and lookups run on real background threads. */
 private const val WAIT_MS = 15_000L
 
-private const val STORY = "All animals are equal, but some are more equal.\n\nCan we fix it?\n\nThe end."
+private const val STORY = "All animals are equal, but some are more equal.\n\nCan we fix it?\n\nIt's late. He had gone.\n\nThe end."
 
 private const val ALICE_TITLE = "Alice's Adventures in Wonderland"
 private const val ALICE_TEXT_URL = "https://www.gutenberg.org/cache/epub/11/pg11.txt"
@@ -246,6 +274,45 @@ class AppTest {
         assertEquals(FunctionWord.Kind.MODAL, saved.kind)
         assertEquals("can", saved.base)
         assertEquals("[es] Can we fix", saved.translation)
+    }
+
+    /** Opens the story and taps the character at [offset] of the paragraph [text]. */
+    private fun tapInParagraph(
+        text: String,
+        offset: Int,
+    ) {
+        compose.onAllNodesWithText("The Red Boat").onFirst().performClick()
+        val paragraph = hasText(text)
+        compose.waitUntil(WAIT_MS) { compose.onAllNodes(paragraph).fetchSemanticsNodes().isNotEmpty() }
+        val node = compose.onAllNodes(paragraph).onFirst()
+        val layouts = mutableListOf<TextLayoutResult>()
+        node.fetchSemanticsNode().config[SemanticsActions.GetTextLayoutResult].action!!.invoke(layouts)
+        val box = layouts.first().getBoundingBox(offset)
+        node.performTouchInput { click(Offset(box.center.x, box.center.y)) }
+    }
+
+    @Test
+    fun aPerfectSaysWhatItDoes() {
+        tapInParagraph("It's late. He had gone.", "It's late. He had".indexOf("had") + 1)
+        compose.waitUntil(WAIT_MS) { compose.onAllNodesWithText("[es] had gone").fetchSemanticsNodes().isNotEmpty() }
+        compose.onNodeWithText("Helper verb").assertExists()
+        compose.onNodeWithText("have").assertExists()
+        compose.onNodeWithText("“had” + past participle: it happened before another past moment: “had left”.").assertExists()
+    }
+
+    @Test
+    fun aContractionSaysWhatItStandsFor() {
+        tapInParagraph("It's late. He had gone.", 1)
+        compose.waitUntil(WAIT_MS) { compose.onAllNodesWithText("it is").fetchSemanticsNodes().isNotEmpty() }
+        compose.onNodeWithText("“it's” = “it is”; “its” (no apostrophe) = belonging to it.").assertExists()
+        compose.onNodeWithText("Helper verb").assertDoesNotExist()
+        compose.onNodeWithText("Modal verb").assertDoesNotExist()
+
+        compose.onNodeWithText("Save word").performClick()
+        compose.waitUntil(WAIT_MS) { container.library.state.value.word("it's") != null }
+        val saved = container.library.state.value.word("it's")!!
+        assertEquals(FunctionWord.Kind.CONTRACTION, saved.kind)
+        assertEquals("it is", saved.base)
     }
 
     @Test
@@ -495,15 +562,77 @@ class AppTest {
         val paragraph = hasText("The sun is up.", substring = true)
         compose.waitUntil(WAIT_MS) { compose.onAllNodes(paragraph).fetchSemanticsNodes().isNotEmpty() }
 
+        // Read aloud goes on sentence by sentence to the end; the bar at the bottom pauses (issue #32).
         compose.onNodeWithContentDescription("Read aloud").performClick()
-        assertEquals(listOf("The sun is up. All animals are equal."), speaker.spoken)
+        assertEquals(listOf("The sun is up."), speaker.spoken)
+        compose.onNodeWithContentDescription("Pause").assertExists()
+        compose.runOnIdle { speaker.finish() }
+        compose.runOnIdle { speaker.finish() }
+        assertEquals(listOf("The sun is up.", "All animals are equal.", "The end."), speaker.spoken)
+        compose.runOnIdle { speaker.finish() }
+        compose.onNodeWithContentDescription("Read aloud").assertExists()
 
+        // Tapping a word pauses; its sheet speaks the word and the sentence.
+        compose.onNodeWithContentDescription("Read aloud").performClick()
+        compose.onAllNodes(paragraph).onFirst().invokeCustomAction("Look up equal")
+        compose.waitUntil(WAIT_MS) { compose.onAllNodesWithText("igual").fetchSemanticsNodes().isNotEmpty() }
+        compose.runOnIdle { speaker.finish() }
+        compose.onNodeWithContentDescription("Listen to equal").performClick()
+        compose.onNodeWithContentDescription("Listen to the sentence").performClick()
+        assertEquals("paused: nothing more read", listOf("The sun is up.", "equal", "All animals are equal."), speaker.spoken.drop(3))
+
+        // Read from here starts at the word's sentence (issue #33).
+        compose.onNodeWithText("Read from here").performClick()
+        compose.waitForIdle()
+        assertEquals("All animals are equal.", speaker.spoken.last())
+
+        // The bar at the bottom repeats the sentence and grows the stretch backwards (issue #33).
+        compose.onNodeWithContentDescription("Repeat sentence").performClick()
+        compose.onNodeWithText("Repeating 1 sentence").assertExists()
+        compose.runOnIdle { speaker.finish() }
+        assertEquals("the sentence again", "All animals are equal.", speaker.spoken.last())
+        compose.onNodeWithContentDescription("Add previous sentence").performClick()
+        compose.onNodeWithText("Repeating 2 sentences").assertExists()
+        assertEquals("the stretch from its new start", "The sun is up.", speaker.spoken.last())
+        compose.runOnIdle { speaker.finish() }
+        compose.runOnIdle { speaker.finish() }
+        assertEquals("then back to the start", listOf("All animals are equal.", "The sun is up."), speaker.spoken.takeLast(2))
+        compose.onNodeWithContentDescription("Repeat sentence").performClick()
+        compose.onNodeWithContentDescription("Previous sentence").assertExists()
+        compose.onNodeWithContentDescription("Pause").performClick()
+        compose.onNodeWithContentDescription("Play").assertExists()
+    }
+
+    // S6 Listen: with no English voice, reading aloud and Listen stop and say why, with a way
+    // to the voice settings; once a voice is installed, reading aloud works.
+    @Test
+    fun withNoEnglishVoiceReadingAloudSaysSoUntilOneIsInstalled() {
+        speaker.voiceMissing = true
+        container.library.addBook("Listening Practice", "Lingleaf", "The sun is up. All animals are equal.\n\nThe end.")
+        compose.onAllNodesWithText("Listening Practice").onFirst().performClick()
+        val paragraph = hasText("The sun is up.", substring = true)
+        compose.waitUntil(WAIT_MS) { compose.onAllNodes(paragraph).fetchSemanticsNodes().isNotEmpty() }
+        compose.onNodeWithContentDescription("Read aloud").performClick()
+        compose.onNodeWithText("Can't read aloud").assertExists()
+        compose.onNodeWithText("This device has no English voice.").assertExists()
+        compose.onNodeWithText("Voice settings").assertExists()
+        compose.onNodeWithContentDescription("Pause").assertDoesNotExist()
+        compose.onNodeWithText("OK").performClick()
+        compose.onNodeWithText("Can't read aloud").assertDoesNotExist()
+
+        // Listen on the word sheet says so too, over the sheet.
         compose.onAllNodes(paragraph).onFirst().invokeCustomAction("Look up equal")
         compose.waitUntil(WAIT_MS) { compose.onAllNodesWithText("igual").fetchSemanticsNodes().isNotEmpty() }
         compose.onNodeWithContentDescription("Listen to equal").performClick()
-        compose.onNodeWithContentDescription("Listen to the sentence").performClick()
+        compose.onNodeWithText("Can't read aloud").assertExists()
+        compose.onNodeWithText("OK").performClick()
+        assertTrue("nothing spoken", speaker.spoken.isEmpty())
 
-        assertEquals(listOf("The sun is up. All animals are equal.", "equal", "All animals are equal."), speaker.spoken)
+        // A voice was installed: the next request speaks.
+        speaker.voiceMissing = false
+        compose.onNodeWithContentDescription("Listen to equal").performClick()
+        compose.onNodeWithText("Can't read aloud").assertDoesNotExist()
+        assertEquals(listOf("equal"), speaker.spoken)
     }
 
     // S9 Discover: a search shows its results above the recommended books.
@@ -514,6 +643,9 @@ class AppTest {
         compose.onNode(hasSetTextAction()).performTextInput("alice")
         compose.onNode(hasSetTextAction()).performImeAction()
         compose.waitUntil(WAIT_MS) { compose.onAllNodesWithText("Results").fetchSemanticsNodes().isNotEmpty() }
+        // The row can be below the screen, where a lazy list doesn't compose it: scroll to it.
+        compose.onNode(hasScrollToIndexAction()).performScrollToNode(hasContentDescription("Get $ALICE_TITLE"))
+        // The result row, above the recommended one with the same book.
         compose.onAllNodes(hasContentDescription("Get $ALICE_TITLE")).onFirst().assertExists()
     }
 

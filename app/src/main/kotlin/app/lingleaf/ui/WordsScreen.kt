@@ -162,9 +162,12 @@ private fun WordRow(
         },
         supportingContent = {
             Column {
-                // A helper or modal verb is saved as its verb group: "do · Helper verb".
-                word.kind?.let {
-                    Text("${word.base.orEmpty()} · ${stringResource(it.label)}", color = MaterialTheme.colorScheme.onSurfaceVariant)
+                // A helper or modal verb is saved as its verb group: "do · Helper verb"; a
+                // contraction has no label: its base ("it is") says what it is.
+                word.kind?.let { kind ->
+                    val label = kind.label?.let { stringResource(it) }
+                    val detail = listOfNotNull(word.base, label).filter { it.isNotEmpty() }
+                    if (detail.isNotEmpty()) Text(detail.joinToString(" · "), color = MaterialTheme.colorScheme.onSurfaceVariant)
                 }
                 if (word.translation.isNotEmpty()) Text(word.translation)
                 if (word.context.isNotEmpty() && TextTools.normalize(word.context) != word.word) {
