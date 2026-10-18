@@ -243,7 +243,7 @@ private fun ReaderText(
     paragraphs: List<String>,
     initialParagraph: Int,
     fontSize: Float,
-    isLearning: (String) -> Boolean,
+    isLearning: (String, WordRange) -> Boolean,
     selection: Selection?,
     reading: SentencePosition?,
     loop: Pair<SentencePosition, SentencePosition>?,

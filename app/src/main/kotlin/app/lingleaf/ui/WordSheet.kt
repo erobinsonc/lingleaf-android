@@ -74,6 +74,7 @@ import app.lingleaf.R
 import app.lingleaf.TRANSLATION_LANGUAGES
 import app.lingleaf.core.DictionaryEntry
 import app.lingleaf.core.FunctionWord
+import app.lingleaf.core.IrregularVerbs
 import app.lingleaf.core.TextTools
 import app.lingleaf.core.TranslationLanguages
 import app.lingleaf.core.VocabWord
@@ -141,8 +142,25 @@ fun WordSheet(
     // Runs in the app's scope, so a translation that arrives after saving is still recorded.
     var pendingTranslation by remember(word, target) { mutableStateOf<PendingTranslation?>(null) }
 
+    // A form that is also another word ("left", "saw") is read from its sentence (SPEC S3).
+    val reading =
+        remember(word, sentence, rangeInSentence) {
+            rangeInSentence?.takeIf { function == null }?.let { IrregularVerbs.shared.resolve(sentence, it) }
+        }
+    // The irregular-verb table's base ("stolen" → "steal", "she left" → "leave"): the base form
+    // when the dictionary can't be reached or doesn't know the word (SPEC S3). Not over an entry
+    // the dictionary has for the form itself ("a human being").
+    val tableBase =
+        remember(word, sentence, rangeInSentence) {
+            when {
+                function != null -> null
+                rangeInSentence != null -> IrregularVerbs.shared.baseAt(sentence, rangeInSentence)
+                else -> IrregularVerbs.shared.formToBase[TextTools.normalize(word)]
+            }
+        }
     // The dictionary's base form ("animal") when it differs from the tapped word ("animals").
-    val headword = function?.base ?: entry?.word?.takeIf { it != TextTools.normalize(word) } ?: word
+    val baseForm = entry?.word?.takeIf { it != TextTools.normalize(word) } ?: tableBase?.takeIf { entryLoaded && entry == null }
+    val headword = function?.base ?: baseForm ?: word
     val savedKey = if (function == null) headword else chunk ?: sentence
     // How messages name it: "did not go"; without a verb group, the start of the sentence.
     val savedName =
@@ -157,7 +175,7 @@ fun WordSheet(
     LaunchedEffect(word) {
         // A helper or modal verb needs no dictionary: its definition and IPA would be the
         // base form's ("do"), not what the learner sees ("didn't go").
-        if (function == null) entry = withContext(container.io) { container.dictionary.lookup(word) }
+        if (function == null) entry = withContext(container.io) { container.dictionary.lookup(word, reading) }
         entryLoaded = true
     }
 
@@ -178,7 +196,7 @@ fun WordSheet(
         val tapped = container.appScope.async { container.translateOrNull(word, target) }
         pendingTranslation = PendingTranslation(word, tapped)
         snapshotFlow { entryLoaded }.first { it }
-        val base = entry?.word?.takeIf { it != TextTools.normalize(word) }
+        val base = entry?.word?.takeIf { it != TextTools.normalize(word) } ?: tableBase?.takeIf { entry == null }
         if (base == null) {
             translation = tapped.await()
             translationFailed = translation == null
@@ -257,9 +275,15 @@ fun WordSheet(
             ) {
                 Row(verticalAlignment = Alignment.CenterVertically) {
                     // A helper or modal verb: how the verb group sounds ("didn't go", not "do").
-                    val spoken = if (function == null) headword else chunk ?: word
-                    FilledTonalIconButton(onClick = { container.speaker.speak(spoken, state.settings.speechRate) }) {
-                        Icon(Icons.AutoMirrored.Filled.VolumeUp, contentDescription = stringResource(R.string.listen_word, spoken))
+                    val shown = if (function == null) headword else chunk ?: word
+                    // The tapped form itself, with the table's respelling where its sentence proves
+                    // the form ("she had read" → "red"); never for the label.
+                    val respelled =
+                        rangeInSentence
+                            ?.takeIf { function == null && TextTools.normalize(headword) == TextTools.normalize(word) }
+                            ?.let { IrregularVerbs.shared.spokenAt(sentence, it) }
+                    FilledTonalIconButton(onClick = { container.speaker.speak(respelled ?: shown, state.settings.speechRate) }) {
+                        Icon(Icons.AutoMirrored.Filled.VolumeUp, contentDescription = stringResource(R.string.listen_word, shown))
                     }
                     Spacer(Modifier.width(12.dp))
                     // A screen reader says "he had or he would", not "slash".

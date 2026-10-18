@@ -203,6 +203,38 @@ class DictionaryTest {
         }
 
     @Test
+    fun `a reading decides what is looked up`() =
+        runTest {
+            val requested = mutableListOf<String>()
+            val client =
+                DictionaryClient { url ->
+                    val word = url.substringAfterLast('/')
+                    requested += word
+                    when (word) {
+                        "left" -> entry("left", "simple past tense and past participle of leave")
+                        "leave" -> entry("leave", "To go away.")
+                        "leaf" -> entry("leaf", "The green part of a plant.")
+                        "stole" -> entry("stole", "A long scarf.")
+                        else -> notFound
+                    }
+                }
+            val she = "She left early."
+            val verb = IrregularVerbs.shared.resolve(she, she.rangeOf("left"))
+            assertEquals("leave", client.lookup("left", verb)!!.word, "a verb looks its base up")
+            assertEquals(listOf("leave"), requested)
+            val turn = "Turn left here."
+            val noun = IrregularVerbs.shared.resolve(turn, turn.rangeOf("left"))
+            assertEquals("left", client.lookup("left", noun)!!.word, "a noun doesn't follow \"past tense of\"")
+            val leaves = "The leaves fell."
+            assertEquals("leaf", client.lookup("leaves", IrregularVerbs.shared.resolve(leaves, leaves.rangeOf("leaves")))!!.word)
+            // A verb whose base isn't found falls back to the word as tapped.
+            assertEquals("stole", client.lookup("stole", Reading(Reading.Kind.VERB, "steal", Reading.Step.SUBJECT))!!.word)
+            assertNull(client.lookup("zzz", Reading(Reading.Kind.NOUN, "zzz", Reading.Step.NOUN)))
+            // Unsure looks the word up as before, following "past tense of".
+            assertEquals("leave", client.lookup("left", Reading(Reading.Kind.UNSURE, "left", Reading.Step.UNSURE))!!.word)
+        }
+
+    @Test
     fun `huge answers are cut to sane lengths`() =
         runTest {
             val huge = "plural ".repeat(200_000)

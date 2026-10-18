@@ -26,6 +26,7 @@ import app.lingleaf.core.GutenbergException
 import app.lingleaf.core.Hosts
 import app.lingleaf.core.HttpFetcher
 import app.lingleaf.core.HttpResponse
+import app.lingleaf.core.IrregularVerbs
 import app.lingleaf.core.Library
 import app.lingleaf.core.NetworkException
 import app.lingleaf.core.Settings
@@ -144,6 +145,17 @@ class AppContainer(
         )
 
     private val filling = AtomicBoolean(false)
+
+    init {
+        // Reads the irregular-verb table off the main thread, before the first tapped word. A
+        // refused table leaves the regular rules working; it is only logged (release builds
+        // strip log calls).
+        appScope.launch {
+            if (IrregularVerbs.shared.formToBase.isEmpty()) {
+                IrregularVerbs.loadError?.let { Log.w("Lingleaf", "Irregular-verb table refused", it) }
+            }
+        }
+    }
 
     private val _downloads = MutableStateFlow<Map<Int, BookDownload>>(emptyMap())
 

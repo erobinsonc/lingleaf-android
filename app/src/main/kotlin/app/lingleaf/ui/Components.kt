@@ -416,7 +416,8 @@ fun TappableParagraph(
     text: String,
     words: List<WordRange>,
     style: TextStyle,
-    isLearning: (String) -> Boolean,
+    /** Whether the word at a range of [text] is a form of a word being learned, read in its sentence. */
+    isLearning: (String, WordRange) -> Boolean,
     selected: WordRange?,
     onWordTap: (WordRange) -> Unit,
     modifier: Modifier = Modifier,
@@ -431,7 +432,7 @@ fun TappableParagraph(
     var layout by remember { mutableStateOf<TextLayoutResult?>(null) }
     val colors = LocalLingleafColors.current
     val currentOnWordTap by rememberUpdatedState(onWordTap)
-    val learning = remember(text, words, isLearning) { words.filter { isLearning(text.substring(it.start, it.end)) } }
+    val learning = remember(text, words, isLearning) { words.filter { isLearning(text, it) } }
     val markerHeight = with(LocalDensity.current) { 3.dp.toPx() }
     val focusedLink =
         TextLinkStyles(

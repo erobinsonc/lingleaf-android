@@ -240,9 +240,21 @@ object TextTools {
     /**
      * Likely dictionary forms of [word], most likely first, never the word
      * itself. Used to look words up and to recognise inflected forms
-     * ("animals", "walked") of a word being learned.
+     * ("animals", "walked", "stole") of a word being learned. A homograph of the
+     * irregular-verb table ("left", "leaves") gives the base of its [reading] in its
+     * sentence; without one (or unsure) only the base both readings share ("tears" → "tear").
      */
-    fun baseFormCandidates(word: String): List<String> {
+    fun baseFormCandidates(
+        word: String,
+        reading: Reading? = null,
+    ): List<String> = candidates(word, reading, irregular = true)
+
+    /** [irregular] false: a name ("Drew"), without the irregular-verb link. */
+    private fun candidates(
+        word: String,
+        reading: Reading?,
+        irregular: Boolean,
+    ): List<String> {
         val w = normalize(word)
         val out = mutableListOf<String>()
 
@@ -250,7 +262,13 @@ object TextTools {
             if (candidate.length >= 2 && candidate != w && candidate !in out) out += candidate
         }
 
-        IRREGULAR[w]?.let(::add)
+        val verbs = IrregularVerbs.shared
+        if (verbs.isHomograph(w)) {
+            val base = if (reading == null || reading.kind == Reading.Kind.UNSURE) verbs.sharedBase(w) else reading.base
+            base?.let(::add)
+            return out
+        }
+        ((if (irregular) verbs.formToBase[w] else null) ?: NON_VERB[w])?.let(::add)
 
         when {
             w.endsWith("'s") -> add(w.dropLast(2))
@@ -262,31 +280,50 @@ object TextTools {
             w.endsWith("s") && !w.endsWith("ss") && w.length > 3 -> add(w.dropLast(1))
         }
 
+        fun stemRules(stem: String) {
+            when {
+                // travell → travel, controll → control; not call, fill (one vowel group).
+                stem.endsWith("ll") && vowelGroups(stem.dropLast(1)) >= 2 -> add(stem.dropLast(1))
+                isDoubled(stem) -> add(stem.dropLast(1))
+            }
+            add(stem)
+            add(stem + "e")
+        }
+
         if (w.endsWith("ied") && w.length > 4) {
             add(w.dropLast(3) + "y")
         } else if (w.endsWith("ed") && w.length > 4) {
             val stem = w.dropLast(2)
-            if (hasVowel(stem)) {
-                if (isDoubled(stem)) add(stem.dropLast(1))
-                add(stem)
-                add(stem + "e")
-            }
+            if (hasVowel(stem)) stemRules(stem)
         }
 
         if (w.endsWith("ing") && w.length > 5) {
             val stem = w.dropLast(3)
-            if (stem.length >= 3 && hasVowel(stem)) {
-                if (isDoubled(stem)) add(stem.dropLast(1))
-                add(stem)
-                add(stem + "e")
-            }
+            if (stem.length >= 3 && hasVowel(stem)) stemRules(stem)
         }
         return out
     }
 
+    /** [baseFormCandidates] of the word at [range] of [text], a homograph read in its sentence. */
+    fun baseFormCandidates(
+        text: String,
+        range: WordRange,
+    ): List<String> = readingAndCandidates(text, range).second
+
+    private fun readingAndCandidates(
+        text: String,
+        range: WordRange,
+    ): Pair<Reading?, List<String>> {
+        val word = text.substring(range.start, range.end)
+        val verbs = IrregularVerbs.shared
+        val reading = verbs.resolve(text, range)
+        return reading to candidates(word, reading, irregular = reading != null || !verbs.isName(text, range))
+    }
+
     /**
      * Where a saved word appears in [sentence], to mark it: its forms ("animals" for
-     * "animal"), or, for a saved group of words ("did not go"), that group (ignoring case).
+     * "animal", "stole" for "steal"; a homograph only where the sentence reads it that way),
+     * or, for a saved group of words ("did not go"), that group (ignoring case).
      */
     fun occurrences(
         word: String,
@@ -297,42 +334,41 @@ object TextTools {
             val start = normalize(sentence).indexOf(key)
             return if (start < 0) emptyList() else listOf(WordRange(start, start + key.length))
         }
-        return wordRanges(sentence).filter { key in matchKeys(sentence.substring(it.start, it.end)) }
+        return wordRanges(sentence).filter { key in matchKeys(sentence, it) }
     }
 
-    /** The word plus its likely base forms: what to match against saved words. */
+    /** The word plus its likely base forms: what to match against saved words. Homographs are unsure. */
     fun matchKeys(word: String): Set<String> = setOf(normalize(word)) + baseFormCandidates(word)
+
+    /**
+     * [matchKeys] of the word at [range] of [text]. A homograph read as a verb or noun with
+     * another base ("she left" → "leave") doesn't match its own spelling: a saved "left"
+     * (the side) isn't marked in "she left".
+     */
+    fun matchKeys(
+        text: String,
+        range: WordRange,
+    ): Set<String> {
+        val word = normalize(text.substring(range.start, range.end))
+        val (reading, candidates) = readingAndCandidates(text, range)
+        val claimed = reading != null && reading.kind != Reading.Kind.UNSURE && reading.base != word
+        return if (claimed) candidates.toSet() else setOf(word) + candidates
+    }
 
     private fun hasVowel(s: String) = s.any { it in "aeiouy" }
 
+    private val vowelGroup = Regex("[aeiouy]+")
+
+    private fun vowelGroups(s: String) = vowelGroup.findAll(s).count()
+
     private fun isDoubled(stem: String) = stem.length >= 3 && stem.last() == stem[stem.length - 2] && stem.last() !in "aeiouslz"
 
-    private val IRREGULAR =
+    /** Irregular nouns and comparatives; irregular verbs are in [IrregularVerbs]. */
+    private val NON_VERB =
         mapOf(
-            "am" to "be", "is" to "be", "are" to "be", "was" to "be", "were" to "be", "been" to "be",
-            "has" to "have", "had" to "have", "does" to "do", "did" to "do", "done" to "do",
-            "went" to "go", "gone" to "go", "goes" to "go", "saw" to "see", "seen" to "see",
-            "said" to "say", "made" to "make", "took" to "take", "taken" to "take",
-            "came" to "come", "knew" to "know", "known" to "know", "thought" to "think",
-            "got" to "get", "gotten" to "get", "gave" to "give", "given" to "give",
-            "found" to "find", "told" to "tell", "felt" to "feel", "left" to "leave",
-            "brought" to "bring", "began" to "begin", "begun" to "begin", "kept" to "keep",
-            "stood" to "stand", "heard" to "hear", "ran" to "run", "sat" to "sit",
-            "spoke" to "speak", "spoken" to "speak", "wrote" to "write", "written" to "write",
-            "bought" to "buy", "caught" to "catch", "taught" to "teach", "fought" to "fight",
-            "held" to "hold", "met" to "meet", "paid" to "pay", "sent" to "send", "spent" to "spend",
-            "built" to "build", "lost" to "lose", "meant" to "mean", "slept" to "sleep",
-            "won" to "win", "ate" to "eat", "eaten" to "eat", "drank" to "drink", "drunk" to "drink",
-            "drove" to "drive", "driven" to "drive", "flew" to "fly", "flown" to "fly",
-            "grew" to "grow", "grown" to "grow", "threw" to "throw", "thrown" to "throw",
-            "fell" to "fall", "fallen" to "fall", "forgot" to "forget", "forgotten" to "forget",
-            "broke" to "break", "broken" to "break", "chose" to "choose", "chosen" to "choose",
-            "rode" to "ride", "ridden" to "ride", "rose" to "rise", "risen" to "rise",
-            "sang" to "sing", "sung" to "sing", "swam" to "swim", "woke" to "wake",
-            "wore" to "wear", "worn" to "wear", "understood" to "understand", "led" to "lead",
             "children" to "child", "men" to "man", "women" to "woman", "feet" to "foot",
-            "teeth" to "tooth", "mice" to "mouse", "geese" to "goose", "lives" to "life",
-            "wives" to "wife", "knives" to "knife", "leaves" to "leaf", "wolves" to "wolf",
+            "teeth" to "tooth", "mice" to "mouse", "geese" to "goose",
+            "wives" to "wife", "knives" to "knife", "wolves" to "wolf",
             "better" to "good", "best" to "good", "worse" to "bad", "worst" to "bad",
         )
 }

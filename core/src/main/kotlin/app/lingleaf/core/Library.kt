@@ -95,7 +95,14 @@ data class LibraryState(
     /** Base forms of words being learned. */
     val learningWords: Set<String> = words.filterNot { it.learned }.map { it.word }.toSet()
 
-    fun isLearning(token: String) = learningWords.isNotEmpty() && TextTools.matchKeys(token).any { it in learningWords }
+    /**
+     * Whether the word at [range] of [text] is a form of a word being learned, a homograph
+     * read in its sentence ("she left" for a saved "leave", not "turn left").
+     */
+    fun isLearning(
+        text: String,
+        range: WordRange,
+    ) = learningWords.isNotEmpty() && TextTools.matchKeys(text, range).any { it in learningWords }
 
     fun word(base: String) = words.firstOrNull { it.word == TextTools.normalize(base) }
 

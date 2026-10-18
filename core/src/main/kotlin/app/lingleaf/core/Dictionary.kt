@@ -54,9 +54,22 @@ private val inflectionOf =
 class DictionaryClient(private val http: HttpFetcher) {
     private val cache = mutableMapOf<String, DictionaryEntry?>()
 
-    /** Looks [word] up, resolving inflected forms: "walked" → "walk", "animals" → "animal". */
-    suspend fun lookup(word: String): DictionaryEntry? {
+    /**
+     * Looks [word] up, resolving inflected forms: "walked" → "walk", "animals" → "animal".
+     * With the [reading] of a homograph in its sentence: a verb looks its base up first
+     * ("she left" → "leave"); a noun is looked up as its base ("the leaves" → "leaf"; "turn
+     * left" → "left") without following "past tense of …" in the definition. Unsure (or none)
+     * looks the word up as before.
+     */
+    suspend fun lookup(
+        word: String,
+        reading: Reading? = null,
+    ): DictionaryEntry? {
         val w = TextTools.normalize(word)
+        if (reading != null && reading.kind != Reading.Kind.UNSURE) {
+            val base = TextTools.normalize(reading.base)
+            return get(base) ?: if (base != w) get(w) else null
+        }
         val direct = get(w)
         if (direct != null) {
             val base = direct.definition?.let { inflectionOf.find(it)?.groupValues?.get(1)?.lowercase() }
