@@ -86,7 +86,7 @@ fun ReviewScreen(onBack: () -> Unit) {
         val word = queue.removeAt(0)
         if (correct) reviewed++ else queue.add(word)
         revealed = false
-        library.answerReview(word.word, correct)
+        library.answerReview(word.key, correct)
     }
 
     ScreenScaffold(title = stringResource(R.string.review_title), onBack = onBack) { modifier ->
@@ -106,7 +106,8 @@ fun ReviewScreen(onBack: () -> Unit) {
         } else {
             ReviewCard(
                 // The saved word, so a translation filled in meanwhile shows up.
-                word = state.word(current.word) ?: current,
+                word = state.word(current.key) ?: current,
+                name = state.displayName(state.word(current.key) ?: current),
                 target = target,
                 reviewed = reviewed,
                 total = total,
@@ -158,6 +159,8 @@ private fun ReviewDone(
 @Composable
 private fun ReviewCard(
     word: VocabWord,
+    /** "to wind" / "the wind" when both senses are saved, else the word (SPEC S4). */
+    name: String,
     target: String?,
     reviewed: Int,
     total: Int,
@@ -221,7 +224,7 @@ private fun ReviewCard(
                         verticalArrangement = Arrangement.spacedBy(12.dp),
                     ) {
                         Row(verticalAlignment = Alignment.CenterVertically) {
-                            Text(word.word, style = MaterialTheme.typography.headlineMedium, fontWeight = FontWeight.SemiBold)
+                            Text(name, style = MaterialTheme.typography.headlineMedium, fontWeight = FontWeight.SemiBold)
                             IconButton(
                                 onClick = { container.speaker.speak(word.word, container.library.state.value.settings.speechRate) },
                             ) {
@@ -246,11 +249,23 @@ private fun ReviewCard(
                                     if (word.phonetic.isNotEmpty() && word.kind == null) {
                                         Text(word.phonetic, color = MaterialTheme.colorScheme.onSurfaceVariant)
                                     }
-                                    Text(
-                                        word.translation.ifEmpty { stringResource(R.string.no_translation) },
-                                        style = MaterialTheme.typography.headlineSmall,
-                                        textAlign = TextAlign.Center,
-                                    )
+                                    val meanings = word.meanings
+                                    if (word.isUnsure && meanings != null) {
+                                        // Saved unsure: both readings, as on the card (SPEC S7).
+                                        for (meaning in meanings) {
+                                            Text(
+                                                readingLine(meaning.label, meaning.meaning, word.translationLanguage),
+                                                style = MaterialTheme.typography.titleMedium,
+                                                textAlign = TextAlign.Center,
+                                            )
+                                        }
+                                    } else {
+                                        Text(
+                                            word.translation.ifEmpty { stringResource(R.string.no_translation) },
+                                            style = MaterialTheme.typography.headlineSmall,
+                                            textAlign = TextAlign.Center,
+                                        )
+                                    }
                                 }
                             } else {
                                 FilledTonalButton(onClick = onReveal) { Text(stringResource(R.string.show_meaning)) }
@@ -284,7 +299,7 @@ private fun SavedSentence(
     HorizontalDivider(Modifier.padding(vertical = 12.dp))
     Row(Modifier.fillMaxWidth(), verticalAlignment = Alignment.Top) {
         Column(Modifier.weight(1f)) {
-            Text(markedSentence(word.context, word.word), fontStyle = FontStyle.Italic, fontFamily = ReadingFont)
+            Text(markedSentence(word), fontStyle = FontStyle.Italic, fontFamily = ReadingFont)
             // Only in the current translation language; another one is translated meanwhile.
             word.contextTranslation(target)?.let {
                 Spacer(Modifier.height(6.dp))
@@ -298,16 +313,15 @@ private fun SavedSentence(
 }
 
 /**
- * [sentence] with the saved [word] in bold: its inflected forms ("animals" for "animal"),
- * or, for a saved group of words, that group.
+ * The saved [word]'s sentence with the occurrence that was tapped in bold (SPEC S7); for a word
+ * saved before that was kept, its forms read in its sense, or a saved group of words.
  */
-internal fun markedSentence(
-    sentence: String,
-    word: String,
-) = buildAnnotatedString {
-    append(sentence)
-    for (range in TextTools.occurrences(word, sentence)) addStyle(SpanStyle(fontWeight = FontWeight.Bold), range.start, range.end)
-}
+internal fun markedSentence(word: VocabWord) =
+    buildAnnotatedString {
+        append(word.context)
+        val ranges = word.formRange?.let(::listOf) ?: TextTools.occurrences(word, word.context)
+        for (range in ranges) addStyle(SpanStyle(fontWeight = FontWeight.Bold), range.start, range.end)
+    }
 
 @Composable
 private fun AnswerButtons(onAnswer: (Boolean) -> Unit) {

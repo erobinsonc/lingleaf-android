@@ -90,6 +90,8 @@ import app.lingleaf.R
 import app.lingleaf.Speaker
 import app.lingleaf.TRANSLATION_LANGUAGES
 import app.lingleaf.core.Book
+import app.lingleaf.core.LearningIndex
+import app.lingleaf.core.TextTools
 import app.lingleaf.core.WordRange
 import app.lingleaf.languageName
 import kotlinx.coroutines.withTimeoutOrNull
@@ -416,7 +418,8 @@ fun TappableParagraph(
     text: String,
     words: List<WordRange>,
     style: TextStyle,
-    isLearning: (String) -> Boolean,
+    /** The words being learned, with their senses; their forms in [text] are underlined (SPEC S4). */
+    learningIndex: LearningIndex,
     selected: WordRange?,
     onWordTap: (WordRange) -> Unit,
     modifier: Modifier = Modifier,
@@ -431,7 +434,9 @@ fun TappableParagraph(
     var layout by remember { mutableStateOf<TextLayoutResult?>(null) }
     val colors = LocalLingleafColors.current
     val currentOnWordTap by rememberUpdatedState(onWordTap)
-    val learning = remember(text, words, isLearning) { words.filter { isLearning(text.substring(it.start, it.end)) } }
+    // One pass over the paragraph, homographs read in their sentence; only redone when the
+    // paragraph or the saved words change, not on every library update.
+    val learning = remember(text, words, learningIndex) { TextTools.marked(text, words, learningIndex) }
     val markerHeight = with(LocalDensity.current) { 3.dp.toPx() }
     val focusedLink =
         TextLinkStyles(

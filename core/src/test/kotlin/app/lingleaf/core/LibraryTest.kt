@@ -90,18 +90,32 @@ class LibraryTest {
     }
 
     @Test
+    fun `a saved homograph is marked only where its sentence reads it that way`() {
+        val library = library()
+        library.saveWord("leave", learned = false, translation = "irse")
+        val state = library.state.value
+        val text = "Turn left, then she left the room."
+        val ranges = TextTools.wordRanges(text).filter { text.substring(it.start, it.end) == "left" }
+        assertFalse(state.isLearning(text, ranges[0]), "turn left: the side")
+        assertTrue(state.isLearning(text, ranges[1]), "she left: leave")
+        assertFalse(LibraryState().isLearning(text, ranges[1]), "nothing saved")
+        assertEquals(listOf(ranges[1]), state.learning(text, TextTools.wordRanges(text)))
+    }
+
+    @Test
     fun `learning words highlight inflected forms and survive restart`() {
         val library = library()
         library.saveWord("Animal", learned = false, translation = "animal", context = "All animals are equal.", source = "The Red Boat")
         val state = library.state.value
-        assertTrue(state.isLearning("animals"))
-        assertFalse(state.isLearning("equal"))
+        val sentence = "All animals are equal."
+        assertTrue(state.isLearning(sentence, sentence.rangeOf("animals")))
+        assertFalse(state.isLearning(sentence, sentence.rangeOf("equal")))
         assertTrue(library.dueWords().isEmpty(), "a new word is first reviewed tomorrow")
         clock.instant = java.time.Instant.parse("2026-10-10T04:00:00Z")
         assertEquals("animal", library.dueWords().single().word, "due from 04:00 the next day")
 
         library.saveWord("animal", learned = true, translation = "")
-        assertFalse(library.state.value.isLearning("animals"))
+        assertFalse(library.state.value.isLearning(sentence, sentence.rangeOf("animals")))
         val saved = library().state.value.word("animal")
         assertNotNull(saved)
         assertTrue(saved.learned)
@@ -396,7 +410,7 @@ class LibraryTest {
         assertEquals("no fue", past.translation, "each verb group is its own record")
         assertEquals("do", reloaded.word("doesn't like")?.base)
         assertNull(reloaded.word("do")?.kind, "\"do\" as a word stays separate")
-        assertFalse(reloaded.isLearning("did"), "a verb group doesn't underline the helper everywhere")
+        assertFalse(reloaded.isLearning("did", WordRange(0, 3)), "a verb group doesn't underline the helper everywhere")
         assertEquals(listOf("doesn't like"), library.wordsNeedingTranslation("es").map { it.word })
     }
 
@@ -447,3 +461,6 @@ class LibraryTest {
         assertNull(library.millisUntilNextDue())
     }
 }
+
+/** The first whole-word, case-sensitive match of [word]. */
+internal fun String.rangeOf(word: String): WordRange = TextTools.wordRanges(this).first { substring(it.start, it.end) == word }

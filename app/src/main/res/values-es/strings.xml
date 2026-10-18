@@ -202,4 +202,16 @@
     <string name="note_whos">“who\'s” = “%1$s”; “whose” = de quién: “Whose book?”</string>
     <string name="note_had_or_would">“%1$s” puede ser “%2$s” o “%3$s”: la traducción de la frase dice cuál.</string>
     <string name="either_or">%1$s o %2$s</string>
+    <string name="unsure_guide">La traducción de la frase te dice cuál:</string>
+    <string name="corrected_one">Corregida según su frase: “%1$s” → “%2$s”.</string>
+    <string name="corrected_one_spoken">Corregida según su frase: “%1$s” ahora es “%2$s”.</string>
+    <string name="corrected_many">Corregidas según sus frases:</string>
+    <string name="corrected_line">“%1$s” → “%2$s”</string>
+    <string name="corrected_line_spoken">“%1$s” ahora es “%2$s”</string>
+    <plurals name="corrected_more">
+        <item quantity="one">y %d más</item>
+        <item quantity="many">y %d más</item>
+        <item quantity="other">y %d más</item>
+    </plurals>
+    <string name="close">Cerrar</string>
 </resources>

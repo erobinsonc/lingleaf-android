@@ -161,10 +161,11 @@ class DictionaryTest {
         word: String,
         definition: String,
         phonetic: String? = null,
+        partOfSpeech: String = "noun",
     ) = ok(
         """[{"word": "$word", ${phonetic?.let { "\"phonetic\": \"$it\"," } ?: ""}
             "phonetics": [{"audio": ""}, {"text": "/$word/"}],
-            "meanings": [{"partOfSpeech": "noun", "definitions": [{"definition": "$definition"}]}]}]""",
+            "meanings": [{"partOfSpeech": "$partOfSpeech", "definitions": [{"definition": "$definition"}]}]}]""",
     )
 
     @Test
@@ -200,6 +201,80 @@ class DictionaryTest {
             val result = client.lookup("walked")!!
             assertEquals("walk", result.word)
             assertEquals("/walk/", result.phonetic)
+        }
+
+    @Test
+    fun `a reading decides what is looked up`() =
+        runTest {
+            val requested = mutableListOf<String>()
+            val client =
+                DictionaryClient { url ->
+                    val word = url.substringAfterLast('/')
+                    requested += word
+                    when (word) {
+                        "left" -> entry("left", "simple past tense and past participle of leave")
+                        "leave" -> entry("leave", "To go away.", partOfSpeech = "verb")
+                        "leaf" -> entry("leaf", "The green part of a plant.")
+                        "stole" -> entry("stole", "A long scarf.", partOfSpeech = "verb")
+                        else -> notFound
+                    }
+                }
+            val she = "She left early."
+            val verb = IrregularVerbs.shared.resolve(she, she.rangeOf("left"))
+            assertEquals("leave", client.lookup("left", verb)!!.word, "a verb looks its base up")
+            assertEquals(listOf("leave"), requested)
+            val turn = "Turn left here."
+            val noun = IrregularVerbs.shared.resolve(turn, turn.rangeOf("left"))
+            assertEquals("left", client.lookup("left", noun)!!.word, "a noun doesn't follow \"past tense of\"")
+            val leaves = "The leaves fell."
+            assertEquals("leaf", client.lookup("leaves", IrregularVerbs.shared.resolve(leaves, leaves.rangeOf("leaves")))!!.word)
+            // A verb whose base isn't found falls back to the word as tapped.
+            assertEquals("stole", client.lookup("stole", Reading(Reading.Kind.VERB, "steal", Reading.Step.SUBJECT))!!.word)
+            assertNull(client.lookup("zzz", Reading(Reading.Kind.NOUN, "zzz", Reading.Step.NOUN)))
+            // Unsure looks the word up as before, following "past tense of".
+            assertEquals("leave", client.lookup("left", Reading(Reading.Kind.UNSURE, "left", Reading.Step.UNSURE))!!.word)
+        }
+
+    @Test
+    fun `a reading takes the meaning of its part of speech, with that entry's phonetic`() =
+        runTest {
+            val wind =
+                ok(
+                    """[{"word": "wind", "phonetic": "/wɪnd/", "meanings": [
+                          {"partOfSpeech": "noun", "definitions": [{"definition": "Moving air."}]}]},
+                        {"word": "wind", "phonetic": "/waɪnd/", "meanings": [
+                          {"partOfSpeech": "noun", "definitions": [{"definition": "A turn."}]},
+                          {"partOfSpeech": "verb", "definitions": [{"definition": "To turn coils."}]}]}]""",
+                )
+            val client = DictionaryClient { url -> if (url.endsWith("/wind")) wind else notFound }
+            val verb = client.lookup("wound", Reading(Reading.Kind.VERB, "wind", Reading.Step.CHOSEN))!!
+            assertEquals("To turn coils.", verb.definition)
+            assertEquals("/waɪnd/", verb.phonetic)
+            assertEquals("verb", verb.partOfSpeech)
+            val noun = client.lookup("wind", Reading(Reading.Kind.NOUN, "wind", Reading.Step.CHOSEN))!!
+            assertEquals("Moving air.", noun.definition)
+            assertEquals("/wɪnd/", noun.phonetic)
+            val nounOnly = DictionaryClient { entry("breeze", "A light wind.") }
+            assertNull(nounOnly.lookup("breeze", Reading(Reading.Kind.VERB, "breeze", Reading.Step.CHOSEN)), "no verb meaning: none")
+            assertEquals("Moving air.", client.lookup("wind")!!.definition, "no reading: the first meaning")
+            val many = (1..30).joinToString(",") { """{"word": "x$it", "meanings": [{"partOfSpeech": "noun"}]}""" }
+            assertEquals(
+                DictionaryEntry.MAX_ENTRIES,
+                DictionaryEntry.parseAll(
+                    kotlinx.serialization.json.Json.parseToJsonElement("[$many]") as kotlinx.serialization.json.JsonArray,
+                ).size,
+            )
+            val bare = """[{"word": "y"}, 3]"""
+            assertEquals(
+                listOf(
+                    "y",
+                ),
+                DictionaryEntry.parseAll(
+                    kotlinx.serialization.json.Json.parseToJsonElement(bare) as kotlinx.serialization.json.JsonArray,
+                ).map {
+                    it.word
+                },
+            )
         }
 
     @Test

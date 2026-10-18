@@ -3,6 +3,7 @@ package app.lingleaf.core
 import kotlinx.serialization.json.Json
 import kotlinx.serialization.json.JsonArray
 import kotlinx.serialization.json.JsonObject
+import kotlinx.serialization.json.JsonPrimitive
 import kotlinx.serialization.json.contentOrNull
 import kotlinx.serialization.json.jsonArray
 import kotlinx.serialization.json.jsonObject
@@ -23,6 +24,42 @@ data class DictionaryEntry(
          */
         const val MAX_DEFINITION = 500
         const val MAX_SHORT_FIELD = 100
+
+        /** Entries walked in one answer, and meanings in each: real answers have a few. */
+        const val MAX_ENTRIES = 10
+        const val MAX_MEANINGS = 10
+
+        /**
+         * Every meaning of every entry of an answer, in order, each with its entry's word and
+         * phonetic and its part of speech: so a reading can pick the meaning that matches it.
+         */
+        fun parseAll(answer: JsonArray): List<DictionaryEntry> =
+            answer.take(MAX_ENTRIES).mapNotNull { it as? JsonObject }.flatMap { json ->
+                val meanings = (json["meanings"] as? JsonArray)?.take(MAX_MEANINGS)?.mapNotNull { it as? JsonObject }.orEmpty()
+                val first = parse(json)
+                if (meanings.isEmpty()) {
+                    listOf(first)
+                } else {
+                    meanings.map { meaning ->
+                        val definition = (meaning["definitions"] as? JsonArray)?.firstOrNull() as? JsonObject
+                        first.copy(
+                            partOfSpeech =
+                                (meaning["partOfSpeech"] as? JsonPrimitive)?.contentOrNull?.let {
+                                    TextTools.truncated(
+                                        it,
+                                        MAX_SHORT_FIELD,
+                                    )
+                                },
+                            definition =
+                                (
+                                    definition?.get(
+                                        "definition",
+                                    ) as? JsonPrimitive
+                                )?.contentOrNull?.let { TextTools.truncated(it, MAX_DEFINITION) },
+                        )
+                    }
+                }
+            }
 
         fun parse(json: JsonObject): DictionaryEntry {
             val phonetic =
@@ -52,11 +89,26 @@ private val inflectionOf =
     )
 
 class DictionaryClient(private val http: HttpFetcher) {
-    private val cache = mutableMapOf<String, DictionaryEntry?>()
+    private val cache = mutableMapOf<String, List<DictionaryEntry>?>()
 
-    /** Looks [word] up, resolving inflected forms: "walked" → "walk", "animals" → "animal". */
-    suspend fun lookup(word: String): DictionaryEntry? {
+    /**
+     * Looks [word] up, resolving inflected forms: "walked" → "walk", "animals" → "animal".
+     * With the [reading] of a homograph in its sentence: a verb looks its base up first
+     * ("she left" → "leave"); a noun is looked up as its base ("the leaves" → "leaf"; "turn
+     * left" → "left") without following "past tense of …" in the definition; either takes the
+     * first meaning of the reading's part of speech, with that entry's phonetic, or none. Unsure
+     * (or none) looks the word up as before.
+     */
+    suspend fun lookup(
+        word: String,
+        reading: Reading? = null,
+    ): DictionaryEntry? {
         val w = TextTools.normalize(word)
+        if (reading != null && reading.kind != Reading.Kind.UNSURE) {
+            val base = TextTools.normalize(reading.base)
+            val pos = if (reading.kind == Reading.Kind.VERB) "verb" else "noun"
+            return get(base, pos) ?: if (base != w) get(w, pos) else null
+        }
         val direct = get(w)
         if (direct != null) {
             val base = direct.definition?.let { inflectionOf.find(it)?.groupValues?.get(1)?.lowercase() }
@@ -68,7 +120,16 @@ class DictionaryClient(private val http: HttpFetcher) {
         return null
     }
 
-    private suspend fun get(word: String): DictionaryEntry? {
+    /** The first meaning of [word] in [partOfSpeech] (any when null). */
+    private suspend fun get(
+        word: String,
+        partOfSpeech: String? = null,
+    ): DictionaryEntry? {
+        val entries = entries(word) ?: return null
+        return if (partOfSpeech == null) entries.firstOrNull() else entries.firstOrNull { it.partOfSpeech == partOfSpeech }
+    }
+
+    private suspend fun entries(word: String): List<DictionaryEntry>? {
         if (cache.containsKey(word)) return cache[word]
         val response =
             try {
@@ -80,13 +141,13 @@ class DictionaryClient(private val http: HttpFetcher) {
             }
         if (response.status == 404) cache[word] = null
         if (response.status != 200 || !JsonGuard.isShallow(response.text)) return null
-        val entry =
+        val entries =
             try {
-                Json.parseToJsonElement(response.text).jsonArray.firstOrNull()?.jsonObject?.let(DictionaryEntry::parse)
+                DictionaryEntry.parseAll(Json.parseToJsonElement(response.text).jsonArray).takeIf { it.isNotEmpty() }
             } catch (e: Exception) {
                 null
             }
-        cache[word] = entry
-        return entry
+        cache[word] = entries
+        return entries
     }
 }
