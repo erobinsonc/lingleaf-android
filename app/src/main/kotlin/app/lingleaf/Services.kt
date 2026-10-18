@@ -148,11 +148,15 @@ class AppContainer(
 
     init {
         // Reads the irregular-verb table off the main thread, before the first tapped word. A
-        // refused table leaves the regular rules working; it is only logged (release builds
-        // strip log calls).
+        // refused table leaves the regular rules working. Both outcomes are logged, so the
+        // emulator tour can require the table in the shrunk build (release builds strip logs).
         appScope.launch {
-            if (IrregularVerbs.shared.formToBase.isEmpty()) {
-                IrregularVerbs.loadError?.let { Log.w("Lingleaf", "Irregular-verb table refused", it) }
+            val forms = IrregularVerbs.shared.formToBase.size
+            val error = IrregularVerbs.loadError
+            if (error == null) {
+                Log.i("Lingleaf", "Irregular-verb table loaded ($forms forms)")
+            } else {
+                Log.w("Lingleaf", "Irregular-verb table refused", error)
             }
         }
     }

@@ -11,6 +11,7 @@ import kotlinx.serialization.json.jsonObject
 import kotlinx.serialization.json.jsonPrimitive
 import kotlin.test.Test
 import kotlin.test.assertEquals
+import kotlin.test.assertFailsWith
 import kotlin.test.assertFalse
 import kotlin.test.assertNull
 import kotlin.test.assertTrue
@@ -351,5 +352,156 @@ class IrregularVerbsTest {
         assertEquals(TextTools.baseFormCandidates("ur"), TextTools.baseFormCandidates(text, absent))
         assertEquals(listOf("left"), TextTools.marked(text, words, setOf("leave")).map { text.substring(it.start, it.end) })
         assertEquals(emptyList(), TextTools.marked(text, words, emptySet()))
+    }
+
+    @Test
+    fun `a table that can't be read leaves an empty one, errors included`() {
+        val (missing, why) = IrregularVerbs.loadBundled { null }
+        assertTrue(missing.formToBase.isEmpty() && missing.participles.isEmpty())
+        assertTrue(why is IrregularVerbsException)
+        val dropped = NoClassDefFoundError("app/lingleaf/core/Verb")
+        val (empty, error) = IrregularVerbs.loadBundled { throw dropped }
+        assertTrue(empty.formToBase.isEmpty())
+        assertEquals(dropped, error)
+        val (bad, refused) = IrregularVerbs.loadBundled { java.io.ByteArrayInputStream("{}".toByteArray()) }
+        assertTrue(bad.bases.isEmpty())
+        assertTrue(refused is IrregularVerbsException, "no schema version")
+        assertFailsWith<StackOverflowError> { IrregularVerbs.loadBundled { throw StackOverflowError() } }
+        val (loaded, none) = IrregularVerbs.loadBundled { java.io.ByteArrayInputStream(bundled) }
+        assertNull(none)
+        assertEquals(verbs.formToBase, loaded.formToBase)
+        // The empty table still answers, with the regular rules only.
+        assertNull(empty.resolve("She left.", "She left.".rangeOf("left")))
+        assertFalse(empty.isName("Uncle Drew", "Uncle Drew".rangeOf("Drew")))
+    }
+
+    @Test
+    fun `marking a paragraph full of homographs and long gaps stays linear`() {
+        // Homographs between long runs of punctuation: each gap is looked at by a few words only.
+        val unit = "left " + "!".repeat(60) + " Rose saw; " + ",".repeat(40) + " leaves lay. "
+
+        fun paragraph(size: Int) = unit.repeat(size / unit.length)
+        val small = paragraph(TextTools.MAX_PARAGRAPH)
+        val large = paragraph(10 * TextTools.MAX_PARAGRAPH)
+        val saved = setOf("leave", "leaf", "rise", "see", "lie")
+
+        fun best(text: String): Long {
+            val words = TextTools.wordRanges(text)
+            return (1..5).minOf {
+                val start = System.nanoTime()
+                TextTools.marked(text, words, saved)
+                System.nanoTime() - start
+            }
+        }
+        assertTrue(TextTools.marked(small, TextTools.wordRanges(small), saved).isNotEmpty())
+        repeat(3) { best(large) }
+        val tSmall = best(small)
+        val tLarge = best(large)
+        println("marked: ${small.length} chars ${tSmall / 1000} µs, ${large.length} chars ${tLarge / 1000} µs")
+        assertTrue(tLarge <= 30 * tSmall + 20_000_000, "10× the text took ${tLarge / tSmall.coerceAtLeast(1)}× the time")
+        assertTrue(tLarge < 2_000_000_000)
+    }
+
+    @Test
+    fun `the derivation gives the reviewed counts`() {
+        assertEquals(573, verbs.formToBase.size, "form-to-base links")
+        assertEquals(203, verbs.participles.size, "participles")
+        assertEquals(26, verbs.baseLikeParticiples.size, "base-like participles")
+        assertEquals(141, verbs.bases.size, "bases for \"had better\"")
+    }
+
+    @Test
+    fun `shown text, group ids and lists are checked as on iOS`() {
+        refused(withVerb { it.with("es", strings("robar\u202E")) })
+        refused(withVerb { it.with("es", strings("ro\u200Bbar")) })
+        refused(withVerb { it.with("es", strings("a".repeat(101))) })
+        refused(withVerb { it.with("es", strings("robar\u0007")) })
+        refused(withVerb { it.with("freq", JsonPrimitive(-1)) })
+        refused(withVerb { it.with("present", strings("a", "b", "c")) })
+        refused(withVerb("lie") { it.with("homonym", it["homonym"]!!.jsonObject.with("past", strings("lied", "lied"))) })
+        refused(withVerb("lie") { it.with("homonym", it["homonym"]!!.jsonObject.with("es", strings("mentir\u202E"))) })
+        val group =
+            JsonObject(
+                mapOf(
+                    "id" to JsonPrimitive("aaa"),
+                    "example" to JsonPrimitive("x"),
+                    "title" to JsonObject(mapOf("en" to JsonPrimitive("x"), "es" to JsonPrimitive("x"))),
+                ),
+            )
+
+        fun withGroup(change: (JsonObject) -> JsonObject) =
+            table.with(
+                "groups",
+                JsonArray(listOf(change(group)) + table["groups"]!!.jsonArray.drop(1)),
+            )
+        IrregularVerbs.load(withGroup { it }.toString().toByteArray())
+        refused(withGroup { it.with("id", JsonPrimitive("A B")) })
+        refused(withGroup { it.with("id", JsonPrimitive("a".repeat(21))) })
+        refused(withGroup { it.with("example", JsonPrimitive("")) })
+        refused(withGroup { it.with("example", JsonPrimitive("x".repeat(101))) })
+        refused(withGroup { it.with("title", JsonObject(mapOf("en" to JsonPrimitive(" "), "es" to JsonPrimitive("x")))) })
+        refused(withGroup { it.with("title", JsonObject(mapOf("en" to JsonPrimitive("x"), "es" to JsonPrimitive("\u202Ex")))) })
+        refused(table.with("about", JsonPrimitive("x".repeat(4001))))
+        IrregularVerbs.load(table.with("about", JsonPrimitive("x".repeat(4000))).toString().toByteArray())
+        for (bad in listOf("'s", "can'", "can''t", "Can't", "a".repeat(21))) {
+            refused(table.with("context", table["context"]!!.jsonObject.with("skip", strings(bad))))
+        }
+        IrregularVerbs.load(table.with("context", table["context"]!!.jsonObject.with("skip", strings("o'er'd"))).toString().toByteArray())
+    }
+
+    @Test
+    fun `a future schema is refused as such, whatever else it holds`() {
+        val future = table.with("schemaVersion", JsonPrimitive(2)).with("newList", strings("x"))
+        val error = assertFailsWith<IrregularVerbsException> { IrregularVerbs.load(future.toString().toByteArray()) }
+        assertTrue("schema" in error.message.orEmpty())
+        assertFailsWith<IrregularVerbsException> {
+            IrregularVerbs.load(
+                table.with("schemaVersion", JsonPrimitive("1")).toString().toByteArray(),
+            )
+        }
+        assertFailsWith<IrregularVerbsException> { IrregularVerbs.load(table.with("schemaVersion", null).toString().toByteArray()) }
+        assertFailsWith<IrregularVerbsException> { IrregularVerbs.load("[1]".toByteArray()) }
+    }
+
+    @Test
+    fun `cases shared with iOS`() {
+        val noun = Reading.Kind.NOUN
+        val verb = Reading.Kind.VERB
+        assertReading("It is bound to rain.", "bound", noun, "bound", Reading.Step.FIXED)
+        assertReading("She wore a felt hat.", "felt", noun, "felt", Reading.Step.FIXED)
+        assertReading("He looked left and right.", "left", noun, "left", Reading.Step.FIXED)
+        assertReading("This tears easily.", "tears", verb, "tear", Reading.Step.SUBJECT)
+        assertReading("Left alone, she cried.", "Left", Reading.Kind.UNSURE, "left", Reading.Step.UNSURE)
+        assertReading("Tom's leaves are green.", "leaves", noun, "leaf", Reading.Step.NOUN)
+        assertReading("When the old moon rose, we left.", "rose", verb, "rise", Reading.Step.SUBJECT_NOUN)
+        assertReading("We lay the cloth on the grass.", "lay", verb, "lay", Reading.Step.SUBJECT)
+    }
+
+    @Test
+    fun `ranges outside the text or not a word give nothing`() {
+        val s = "She left."
+        assertNull(verbs.resolve(s, WordRange(4, 20)), "out of range")
+        assertNull(verbs.resolve(s, WordRange(-1, 3)), "negative")
+        assertNull(verbs.resolve(s, WordRange(6, 4)), "backwards")
+        assertNull(verbs.resolve(s, WordRange(4, 4)), "empty")
+        assertNull(verbs.resolve(s, WordRange(5, 8)), "not a word of the text: \"eft\"")
+        assertNull(verbs.resolve("She lefts.", WordRange(4, 8)), "part of a longer word")
+        assertFalse(verbs.isName(s, WordRange(4, 20)))
+        assertFalse(verbs.isName(s, WordRange(4, 4)))
+        assertNull(verbs.baseAt(s, WordRange(4, 20)))
+        assertNull(verbs.spokenAt(s, WordRange(-2, 1)))
+        val words = TextTools.wordRanges(s)
+        assertNull(verbs.resolve(s, words, 5))
+        assertNull(verbs.resolve(s, words, -1))
+        assertFalse(verbs.isName(s, words, 9))
+        assertNull(verbs.baseAt(s, words, 9))
+        assertNull(verbs.spokenAt(s, words, 9))
+        assertNull(verbs.resolve("Hi", words, 1), "ranges of another text")
+        assertEquals(emptySet(), TextTools.matchKeys(s, WordRange(4, 20)))
+        assertEquals(emptySet(), TextTools.matchKeys(s, WordRange(4, 4)))
+        assertEquals(emptySet(), TextTools.matchKeys(s, words, 7))
+        assertEquals(emptyList(), TextTools.baseFormCandidates(s, WordRange(0, 99)))
+        assertEquals(emptyList(), TextTools.baseFormCandidates(s, WordRange(3, 3)))
+        assertEquals(emptyList(), TextTools.marked(s, listOf(WordRange(4, 99)), setOf("leave")))
     }
 }

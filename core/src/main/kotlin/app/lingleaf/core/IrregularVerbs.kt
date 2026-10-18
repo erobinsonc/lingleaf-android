@@ -2,6 +2,9 @@ package app.lingleaf.core
 
 import kotlinx.serialization.Serializable
 import kotlinx.serialization.json.Json
+import kotlinx.serialization.json.JsonObject
+import kotlinx.serialization.json.JsonPrimitive
+import kotlinx.serialization.json.intOrNull
 
 /**
  * How a homograph of the irregular-verb table ("left", "saw", "leaves") reads in its sentence
@@ -81,8 +84,10 @@ class IrregularVerbs private constructor(table: Table) {
         text: String,
         range: WordRange,
     ): Boolean {
+        if (!range.fitsIn(text)) return false
         val surface = text.substring(range.start, range.end)
-        if (!isTitlecase(surface) || TextTools.normalize(surface) !in formToBase) return false
+        if (surface.isEmpty() || !isTitlecase(surface) || surface == surface.uppercase()) return false
+        if (TextTools.normalize(surface) !in formToBase) return false
         return at(text, range) { words, index -> isName(text, words, index) }
     }
 
@@ -92,7 +97,7 @@ class IrregularVerbs private constructor(table: Table) {
         words: List<WordRange>,
         index: Int,
     ): Boolean {
-        val range = words[index]
+        val range = words.getOrNull(index)?.takeIf { it.fitsIn(text) && it.start < it.end } ?: return false
         val surface = text.substring(range.start, range.end)
         if (!isTitlecase(surface) || surface == surface.uppercase() || TextTools.normalize(surface) !in formToBase) return false
         return index > 0 && !sentenceStart.containsMatchIn(text.substring(words[index - 1].end, range.start))
@@ -128,7 +133,7 @@ class IrregularVerbs private constructor(table: Table) {
     fun baseAt(
         text: String,
         range: WordRange,
-    ): String? = at(text, range, null) { words, index -> baseAt(text, words, index) }
+    ): String? = if (range.fitsIn(text)) at(text, range, null) { words, index -> baseAt(text, words, index) } else null
 
     /** [baseAt] of word [index] of [words], the word ranges of [text]. */
     fun baseAt(
@@ -136,7 +141,7 @@ class IrregularVerbs private constructor(table: Table) {
         words: List<WordRange>,
         index: Int,
     ): String? {
-        val range = words[index]
+        val range = words.getOrNull(index)?.takeIf { it.fitsIn(text) } ?: return null
         val word = TextTools.normalize(text.substring(range.start, range.end))
         if (isHomograph(word)) return resolve(text, words, index)?.takeIf { it.kind != Reading.Kind.UNSURE && it.base != word }?.base
         return formToBase[word]?.takeUnless { isName(text, words, index) }
@@ -154,6 +159,7 @@ class IrregularVerbs private constructor(table: Table) {
         text: String,
         range: WordRange,
     ): String? {
+        if (!range.fitsIn(text)) return null
         val form = TextTools.normalize(text.substring(range.start, range.end))
         if (!isHomograph(form) && verbsByBase[formToBase[form] ?: form]?.spokenAs == null) return null
         return at(text, range, null) { words, index -> spokenAt(text, words, index) }
@@ -165,7 +171,7 @@ class IrregularVerbs private constructor(table: Table) {
         words: List<WordRange>,
         index: Int,
     ): String? {
-        val range = words[index]
+        val range = words.getOrNull(index)?.takeIf { it.fitsIn(text) } ?: return null
         val form = TextTools.normalize(text.substring(range.start, range.end))
         if (isHomograph(form)) {
             val reading = resolve(text, words, index)?.takeIf { it.kind == Reading.Kind.VERB } ?: return null
@@ -212,6 +218,7 @@ class IrregularVerbs private constructor(table: Table) {
         text: String,
         range: WordRange,
     ): Reading? {
+        if (!range.fitsIn(text)) return null
         // Most words are no homograph: no need to tokenize the text for them.
         if (TextTools.normalize(text.substring(range.start, range.end)) !in homographs) return null
         return at(text, range, null) { words, index -> resolve(text, words, index) }
@@ -226,7 +233,7 @@ class IrregularVerbs private constructor(table: Table) {
         words: List<WordRange>,
         index: Int,
     ): Reading? {
-        val range = words[index]
+        val range = words.getOrNull(index)?.takeIf { it.fitsIn(text) } ?: return null
         val surface = text.substring(range.start, range.end)
         val form = TextTools.normalize(surface)
         val homograph = homographs[form] ?: return null
@@ -418,8 +425,9 @@ class IrregularVerbs private constructor(table: Table) {
 
         private val formPattern = Regex("^[a-z]{1,$MAX_FORM}$")
 
-        /** A context word: a–z, or a contraction such as "didn't", "i've". */
-        private val contextPattern = Regex("^[a-z]{1,$MAX_FORM}(?:'[a-z]{1,$MAX_FORM})?$")
+        private val groupPattern = Regex("^[a-z-]{1,$MAX_FORM}$")
+        private const val MAX_TEXT = 100
+        private const val MAX_ABOUT = 4000
         private val levels = setOf("A1", "A2", "B1", "B2", "C1", "C2")
         private val slots = setOf("base", "past", "participle", "ing", "s")
         private val ruleNames = setOf("plural", "participle", "subjectNoun", "conjunction", "imperative")
@@ -455,16 +463,26 @@ class IrregularVerbs private constructor(table: Table) {
 
         /** The bundled table, read once; empty (and [loadError] set) when it is refused. */
         val shared: IrregularVerbs by lazy {
-            try {
-                val stream =
-                    IrregularVerbs::class.java.getResourceAsStream(RESOURCE)
-                        ?: throw IrregularVerbsException("$RESOURCE is missing")
-                load(stream.use { readAtMost(it, MAX_BYTES + 1) })
-            } catch (e: Exception) {
-                loadError = e
-                empty
-            }
+            val (table, error) = loadBundled { IrregularVerbs::class.java.getResourceAsStream(RESOURCE) }
+            loadError = error
+            table
         }
+
+        /**
+         * The table read from [open], or the empty table and why. Any failure counts, errors too
+         * (a class a shrinker dropped, a failed initializer): a reader never crashes over it, and
+         * the lazy [shared] never rethrows it on every word. Only the virtual machine's own
+         * failures (out of memory, stack overflow) go on up.
+         */
+        internal fun loadBundled(open: () -> java.io.InputStream?): Pair<IrregularVerbs, Throwable?> =
+            try {
+                val stream = open() ?: throw IrregularVerbsException("$RESOURCE is missing")
+                load(stream.use { readAtMost(it, MAX_BYTES + 1) }) to null
+            } catch (e: VirtualMachineError) {
+                throw e
+            } catch (e: Throwable) {
+                empty to e
+            }
 
         /**
          * At most [max] bytes of [stream]: a bigger file is cut there (and then refused), never
@@ -489,7 +507,11 @@ class IrregularVerbs private constructor(table: Table) {
             if (bytes.size > MAX_BYTES) throw IrregularVerbsException("larger than $MAX_BYTES bytes")
             val text = bytes.toString(Charsets.UTF_8)
             if (!JsonGuard.isShallow(text, maxDepth = MAX_DEPTH)) throw IrregularVerbsException("nested too deeply")
-            val table = json.decodeFromString(Table.serializer(), text)
+            val element = json.parseToJsonElement(text)
+            // First: a future schema is refused as such, whatever else it holds.
+            val version = ((element as? JsonObject)?.get("schemaVersion") as? JsonPrimitive)?.takeUnless { it.isString }?.intOrNull
+            if (version != SCHEMA_VERSION) throw IrregularVerbsException("schema version $version")
+            val table = json.decodeFromJsonElement(Table.serializer(), element)
             validate(table)
             return IrregularVerbs(table)
         }
@@ -503,23 +525,29 @@ class IrregularVerbs private constructor(table: Table) {
 
         private fun validate(table: Table) {
             check(table.schemaVersion == SCHEMA_VERSION) { "schema version ${table.schemaVersion}" }
+            check(table.about.codePointCount(0, table.about.length) <= MAX_ABOUT) { "about" }
             val groups = table.groups.map { it.id }
             check(groups.size == groups.toSet().size) { "duplicate group" }
+            for (group in table.groups) {
+                check(groupPattern.matches(group.id)) { "group ${group.id}" }
+                check(listOf(group.example, group.title.en, group.title.es).all(::isText)) { "group ${group.id} text" }
+            }
             val bases = table.verbs.map { it.base }
             check(bases.size == bases.toSet().size) { "duplicate base" }
             for (verb in table.verbs) {
                 for (form in verb.forms()) check(formPattern.matches(form)) { "${verb.base}: bad form" }
-                check(verb.past.size in 1..2 && verb.past.toSet().size == verb.past.size) { "${verb.base}: past" }
-                check(verb.participle.size in 1..2 && verb.participle.toSet().size == verb.participle.size) { "${verb.base}: participle" }
-                check(verb.es.size in 1..2 && verb.es.none { it.isBlank() }) { "${verb.base}: es" }
+                check(isFormList(verb.past)) { "${verb.base}: past" }
+                check(isFormList(verb.participle)) { "${verb.base}: participle" }
+                check(isMeanings(verb.es)) { "${verb.base}: es" }
+                check(verb.present.orEmpty().size <= 2 && (verb.freq ?: 0) >= 0) { "${verb.base}: present or freq" }
                 check(verb.group in groups) { "${verb.base}: group" }
                 check(verb.level in levels) { "${verb.base}: level" }
                 verb.spokenAs?.forEach { (slot, spoken) ->
                     check(slot in slots && formPattern.matches(spoken)) { "${verb.base}: spokenAs" }
                 }
                 verb.homonym?.let { h ->
-                    check(h.past.size in 1..2 && h.participle.size in 1..2) { "${verb.base}: homonym forms" }
-                    check(h.es.size in 1..2 && h.es.none { it.isBlank() }) { "${verb.base}: homonym es" }
+                    check(isFormList(h.past) && isFormList(h.participle)) { "${verb.base}: homonym forms" }
+                    check(isMeanings(h.es)) { "${verb.base}: homonym es" }
                 }
             }
             val forms = table.homographs.map { it.form }
@@ -534,8 +562,31 @@ class IrregularVerbs private constructor(table: Table) {
                 check(h.verb in verbs || h.verb in Verbs.regular) { "homograph ${h.form}: verb ${h.verb}" }
                 verbs[h.verb]?.let { check(h.form == it.base || h.form in it.forms()) { "homograph ${h.form}: not a form of ${h.verb}" } }
             }
-            for (list in table.context.lists()) for (word in list) check(contextPattern.matches(word)) { "context: bad word" }
+            for (list in table.context.lists()) for (word in list) check(isContextWord(word)) { "context: bad word" }
         }
+
+        private fun isFormList(forms: List<String>) = forms.size in 1..2 && forms.toSet().size == forms.size
+
+        private fun isMeanings(es: List<String>) = es.size in 1..2 && es.all(::isText)
+
+        /**
+         * Shown text (meanings, group names): not blank, at most [MAX_TEXT] characters, no control
+         * or invisible formatting characters (bidi overrides, zero-width).
+         */
+        private fun isText(s: String): Boolean {
+            if (s.isBlank() || s.codePointCount(0, s.length) > MAX_TEXT) return false
+            var i = 0
+            while (i < s.length) {
+                val codePoint = s.codePointAt(i)
+                val type = Character.getType(codePoint).toByte()
+                if (type == Character.CONTROL || type == Character.FORMAT) return false
+                i += Character.charCount(codePoint)
+            }
+            return true
+        }
+
+        /** A context word: a–z with apostrophes inside ("can't"), at most [MAX_FORM] characters. */
+        private fun isContextWord(s: String) = s.length <= MAX_FORM && s.split('\'').all { formPattern.matches(it) }
     }
 }
 

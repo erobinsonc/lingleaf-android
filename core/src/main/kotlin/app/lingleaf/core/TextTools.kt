@@ -3,6 +3,9 @@ package app.lingleaf.core
 /** A word inside a paragraph as UTF-16 offsets, the units Android text layout uses. */
 data class WordRange(val start: Int, val end: Int) {
     operator fun contains(offset: Int): Boolean = offset in start until end
+
+    /** Inside [text] (possibly empty): safe to cut out of it. */
+    fun fitsIn(text: String): Boolean = start in 0..end && end <= text.length
 }
 
 private val wordPattern = Regex("[A-Za-z]+(?:['’][A-Za-z]+)*")
@@ -309,6 +312,7 @@ object TextTools {
         text: String,
         range: WordRange,
     ): List<String> {
+        if (!range.fitsIn(text) || range.start == range.end) return emptyList()
         val words = wordRanges(text)
         val index = words.indexOf(range)
         if (index < 0) return baseFormCandidates(text.substring(range.start, range.end))
@@ -321,7 +325,7 @@ object TextTools {
         words: List<WordRange>,
         index: Int,
     ): Pair<Reading?, List<String>> {
-        val range = words[index]
+        val range = words[index] // checked by the callers
         val word = text.substring(range.start, range.end)
         val verbs = IrregularVerbs.shared
         val reading = verbs.resolve(text, words, index)
@@ -372,6 +376,7 @@ object TextTools {
         text: String,
         range: WordRange,
     ): Set<String> {
+        if (!range.fitsIn(text) || range.start == range.end) return emptySet()
         val words = wordRanges(text)
         val index = words.indexOf(range)
         if (index < 0) return matchKeys(text.substring(range.start, range.end))
@@ -384,7 +389,7 @@ object TextTools {
         words: List<WordRange>,
         index: Int,
     ): Set<String> {
-        val range = words[index]
+        val range = words.getOrNull(index)?.takeIf { it.fitsIn(text) } ?: return emptySet()
         val word = normalize(text.substring(range.start, range.end))
         val (reading, candidates) = readingAndCandidates(text, words, index)
         val claimed = reading != null && reading.kind != Reading.Kind.UNSURE && reading.base != word
