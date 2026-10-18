@@ -471,7 +471,7 @@ class IrregularVerbsTest {
         assertReading("She wore a felt hat.", "felt", noun, "felt", Reading.Step.FIXED)
         assertReading("He looked left and right.", "left", noun, "left", Reading.Step.FIXED)
         assertReading("This tears easily.", "tears", verb, "tear", Reading.Step.SUBJECT)
-        assertReading("Left alone, she cried.", "Left", Reading.Kind.UNSURE, "left", Reading.Step.UNSURE)
+        assertReading("Left alone, she cried.", "Left", verb, "leave", Reading.Step.PARTICIPLE_OPEN)
         assertReading("Tom's leaves are green.", "leaves", noun, "leaf", Reading.Step.NOUN)
         assertReading("When the old moon rose, we left.", "rose", verb, "rise", Reading.Step.SUBJECT_NOUN)
         assertReading("We lay the cloth on the grass.", "lay", verb, "lay", Reading.Step.SUBJECT)
@@ -503,5 +503,106 @@ class IrregularVerbsTest {
         assertEquals(emptyList(), TextTools.baseFormCandidates(s, WordRange(0, 99)))
         assertEquals(emptyList(), TextTools.baseFormCandidates(s, WordRange(3, 3)))
         assertEquals(emptyList(), TextTools.marked(s, listOf(WordRange(4, 99)), setOf("leave")))
+    }
+
+    @Test
+    fun `v2 steps`() {
+        val noun = Reading.Kind.NOUN
+        val verb = Reading.Kind.VERB
+        assertReading("We checked the lost and found box.", "found", noun, "found", Reading.Step.PHRASE)
+        assertReading("She lost and found her keys.", "found", verb, "find", Reading.Step.CONJUNCTION)
+        assertReading("Found guilty, he went to prison.", "Found", verb, "find", Reading.Step.PARTICIPLE_OPEN)
+        assertReading("Felt hats, gloves and scarves were sold.", "Felt", noun, "felt", Reading.Step.FIXED)
+        assertReading("Tom lives in a small house.", "lives", verb, "live", Reading.Step.NAME_S)
+        assertReading("Double lives in fiction are common.", "lives", Reading.Kind.UNSURE, "lives", Reading.Step.UNSURE)
+        assertReading("The old man lives alone.", "lives", verb, "live", Reading.Step.NOUN_S)
+        assertReading("The bus leaves at six.", "leaves", verb, "leave", Reading.Step.NOUN_S)
+        assertReading("Many people left early.", "left", verb, "leave", Reading.Step.QUANTIFIER)
+        assertReading("Some of the guests left.", "left", verb, "leave", Reading.Step.QUANTIFIER)
+        assertReading("All the girls saw it.", "saw", verb, "see", Reading.Step.QUANTIFIER)
+        assertReading("The dog bit him.", "bit", verb, "bite", Reading.Step.SUBJECT_NOUN)
+        assertReading("The funny bit was the end.", "bit", Reading.Kind.UNSURE, "bit", Reading.Step.UNSURE)
+        assertReading("Holly leaves at six.", "leaves", Reading.Kind.UNSURE, "leaves", Reading.Step.UNSURE)
+    }
+
+    @Test
+    fun `unsure homographs offer two readings`() {
+        fun choices(
+            sentence: String,
+            word: String,
+        ): List<Pair<Reading.Kind, String>> {
+            val words = TextTools.wordRanges(sentence)
+            return verbs.choices(sentence, words, words.indexOf(sentence.rangeOf(word))).map { it.kind to it.base }
+        }
+        val verb = Reading.Kind.VERB
+        val noun = Reading.Kind.NOUN
+        assertEquals(listOf(verb to "leave", noun to "left"), choices("Left is fine.", "Left"))
+        assertEquals(listOf(noun to "wind", verb to "wind"), choices("Wind is strong.", "Wind"), "mostly a noun: the noun first")
+        assertEquals(listOf(verb to "lie", verb to "lay"), choices("They lay bricks.", "lay"))
+        assertEquals(listOf(verb to "find", verb to "found"), choices("Found it.", "Found"), "no noun: its two verbs")
+        assertEquals(emptyList(), choices("She left early.", "left"), "certain: no choice")
+        assertEquals(emptyList(), choices("A dog.", "dog"))
+        val words = TextTools.wordRanges("Left is fine.")
+        assertEquals(emptyList(), verbs.choices("Left is fine.", words, 9))
+        assertTrue(choices("Left is fine.", "Left").isNotEmpty())
+    }
+
+    @Test
+    fun `slots, spoken forms, IPA and meanings`() {
+        val chosenWind = Reading(Reading.Kind.VERB, "wind", Reading.Step.CHOSEN)
+        assertNull(verbs.slot("wound", chosenWind), "past or participle")
+        assertEquals("wownd", verbs.spokenOf("wound", chosenWind), "both slots sound the same")
+        assertEquals("waʊnd", verbs.ipaOf("wound", chosenWind))
+        assertEquals("base", verbs.slot("wind", chosenWind))
+        assertEquals("wined", verbs.spokenOf("wind", chosenWind))
+        assertNull(verbs.spokenOf("wind", Reading(Reading.Kind.NOUN, "wind", Reading.Step.CHOSEN)))
+        assertNull(verbs.ipaOf("left", Reading(Reading.Kind.VERB, "leave", Reading.Step.CHOSEN)))
+        assertNull(verbs.spokenOf("tearing", Reading(Reading.Kind.VERB, "zzz", Reading.Step.CHOSEN)))
+        assertNull(verbs.slot("left", Reading(Reading.Kind.NOUN, "left", Reading.Step.CHOSEN)))
+        assertNull(verbs.slot("left", Reading(Reading.Kind.VERB, "zzz", Reading.Step.CHOSEN)))
+        assertEquals("participle", verbs.slot("left", Reading(Reading.Kind.VERB, "leave", Reading.Step.PARTICIPLE_OPEN)))
+        assertEquals("wownd", verbs.spokenAs("wind", "past"))
+        assertNull(verbs.spokenAs("leave", "past"))
+        assertEquals("rɛd", verbs.ipa("read", "past"))
+        assertNull(verbs.ipa("leave", "past"))
+        assertEquals("mentir", verbs.meanings("lie", homonym = true).first())
+        assertTrue(verbs.meanings("leave").isNotEmpty())
+        assertEquals(emptyList(), verbs.meanings("zzz"))
+        assertEquals(emptyList(), verbs.meanings("leave", homonym = true))
+        assertTrue(verbs.isHomonymForm("lied", "lie"))
+        assertFalse(verbs.isHomonymForm("lying", "lie"), "both verbs")
+        assertFalse(verbs.isHomonymForm("lay", "lie"))
+        assertFalse(verbs.isHomonymForm("left", "leave"))
+        assertFalse(verbs.isHomonymForm("x", "zzz"))
+    }
+
+    @Test
+    fun `v2 fields are checked`() {
+        refused(withVerb { it.with("ipa", JsonObject(mapOf("past" to JsonPrimitive("/pʊt/")))) })
+        refused(withVerb { it.with("ipa", JsonObject(mapOf("future" to JsonPrimitive("pʊt")))) })
+        refused(withVerb { it.with("ipa", JsonObject(mapOf("past" to JsonPrimitive("")))) })
+        refused(withVerb { it.with("ipa", JsonObject(mapOf("past" to JsonPrimitive("p".repeat(41))))) })
+        refused(withVerb { it.with("ipa", JsonObject(mapOf("past" to JsonPrimitive("pʊ\u202Et")))) })
+        refused(withVerb { it.with("ipa", JsonObject(mapOf("past" to JsonPrimitive("e\u0301")))) })
+        IrregularVerbs.load(withVerb { it.with("ipa", JsonObject(mapOf("past" to JsonPrimitive("ˈpʊt")))) }.toString().toByteArray())
+
+        fun withLl(vararg bases: String) = table.with("llBases", strings(*bases)).toString().toByteArray()
+        IrregularVerbs.load(withLl("install"))
+        for (bad in listOf("Install", "ll", "ball", "insta", "install install", "fall")) assertTrue(
+            runCatching {
+                IrregularVerbs.load(withLl(bad))
+            }.isFailure,
+            bad,
+        )
+        assertTrue(runCatching { IrregularVerbs.load(withLl("install", "install")) }.isFailure, "duplicate")
+        refused(table.with("llBases", null))
+        refused(withHomograph("found") { it.with("nounPhrases", JsonArray(listOf(strings("lost", "and")))) })
+        refused(withHomograph("found") { it.with("nounPhrases", JsonArray(listOf(strings("found")))) })
+        refused(withHomograph("found") { it.with("nounPhrases", JsonArray(listOf(strings("a", "b", "c", "d", "found")))) })
+        refused(withHomograph("found") { it.with("nounPhrases", JsonArray(listOf(strings("Lost", "found")))) })
+        refused(withHomograph("bit") { it.with("subjectNounNext", strings("Him")) })
+        refused(withHomograph("left") { it.with("rules", strings("sverb")) })
+        refused(table.with("context", table["context"]!!.jsonObject.with("finiteVerbs", null)))
+        refused(table.with("context", table["context"]!!.jsonObject.with("quantifiers", strings("Many"))))
     }
 }

@@ -18,7 +18,27 @@ data class Reading(
 ) {
     enum class Kind { NOUN, VERB, UNSURE }
 
-    enum class Step { NAME, FIXED, NOUN, BASE, PARTICIPLE, SUBJECT, SUBJECT_NOUN, CONJUNCTION, UNSURE }
+    /**
+     * The steps of the rule, in SPEC order, then [UNSURE] (no step applied) and [CHOSEN] (the
+     * learner picked this reading on the card).
+     */
+    enum class Step {
+        NAME,
+        PHRASE,
+        FIXED,
+        NOUN,
+        PARTICIPLE_OPEN,
+        BASE,
+        PARTICIPLE,
+        SUBJECT,
+        NAME_S,
+        SUBJECT_NOUN,
+        NOUN_S,
+        QUANTIFIER,
+        CONJUNCTION,
+        UNSURE,
+        CHOSEN,
+    }
 }
 
 /** Why the table was refused. */
@@ -46,9 +66,16 @@ class IrregularVerbs private constructor(table: Table) {
     /** Every base of the table, nouns-first ones included. */
     val allBases: Set<String>
 
+    /** US double-l bases tried before the single-l stem ("installed" → "install", then "instal"). */
+    val llBases: Set<String> = table.llBases.toSet()
+
     private val verbsByBase: Map<String, Verb> = table.verbs.associateBy { it.base }
     private val homographs: Map<String, Homograph> = table.homographs.associateBy { it.form }
     private val context = table.context
+
+    /** Past forms that are not also a base or a homograph ("shone", "told", "went"): finite verbs. */
+    private val pastForms: Set<String> =
+        table.verbs.flatMapTo(mutableSetOf()) { it.past }.filterTo(mutableSetOf()) { it !in verbsByBase && it !in homographs }
 
     init {
         val links = mutableMapOf<String, MutableSet<String>>()
@@ -174,20 +201,8 @@ class IrregularVerbs private constructor(table: Table) {
         val range = words.getOrNull(index)?.takeIf { it.fitsIn(text) } ?: return null
         val form = TextTools.normalize(text.substring(range.start, range.end))
         if (isHomograph(form)) {
-            val reading = resolve(text, words, index)?.takeIf { it.kind == Reading.Kind.VERB } ?: return null
-            val verb = verbsByBase[reading.base] ?: return null
-            val slot =
-                when (reading.step) {
-                    Reading.Step.BASE -> "base".takeIf { form == verb.base }
-                    Reading.Step.PARTICIPLE -> "participle".takeIf { form in verb.participle }
-                    else ->
-                        when (form) {
-                            in verb.past -> "past"
-                            verb.s -> "s"
-                            else -> null
-                        }
-                }
-            return slot?.let { verb.spokenAs?.get(it) }
+            val reading = resolve(text, words, index) ?: return null
+            return slot(form, reading)?.let { verbsByBase[reading.base]?.spokenAs?.get(it) }
         }
         val verb = verbsByBase[formToBase[form] ?: form] ?: return null
         val spoken = verb.spokenAs ?: return null
@@ -200,6 +215,118 @@ class IrregularVerbs private constructor(table: Table) {
                 else -> null
             }
         return slot?.let { spoken[it] }
+    }
+
+    /**
+     * The slot of [form] that [reading] proves (a verb reading only): the base after to, a modal
+     * or do (or opening a command), the participle after have or be or opening a sentence
+     * ("Left alone, …"), else the past or -s form it is. A chosen reading proves its form's slot
+     * when the form fills only one slot of the verb.
+     */
+    fun slot(
+        form: String,
+        reading: Reading,
+    ): String? {
+        if (reading.kind != Reading.Kind.VERB) return null
+        val verb = verbsByBase[reading.base] ?: return null
+        return when (reading.step) {
+            Reading.Step.BASE -> "base".takeIf { form == verb.base }
+            Reading.Step.PARTICIPLE, Reading.Step.PARTICIPLE_OPEN -> "participle".takeIf { form in verb.participle }
+            Reading.Step.CHOSEN -> verb.slots(form).singleOrNull()
+            else ->
+                when (form) {
+                    in verb.past -> "past"
+                    verb.s -> "s"
+                    else -> null
+                }
+        }
+    }
+
+    /**
+     * What the voice says for [form] in [reading] instead of its spelling, or null: the respelling
+     * of the slot the reading proves; a chosen reading whose form fills several slots ("wound":
+     * past and participle) only when they all sound the same.
+     */
+    fun spokenOf(
+        form: String,
+        reading: Reading,
+    ): String? = slotValue(form, reading) { it.spokenAs }
+
+    /** The table's IPA of [form] in [reading], on the same terms as [spokenOf]. */
+    fun ipaOf(
+        form: String,
+        reading: Reading,
+    ): String? = slotValue(form, reading) { it.ipa }
+
+    private fun slotValue(
+        form: String,
+        reading: Reading,
+        values: (Verb) -> Map<String, String>?,
+    ): String? {
+        if (reading.kind != Reading.Kind.VERB) return null
+        val verb = verbsByBase[reading.base] ?: return null
+        val map = values(verb) ?: return null
+        slot(form, reading)?.let { return map[it] }
+        if (reading.step != Reading.Step.CHOSEN) return null
+        val all = verb.slots(form).map { map[it] }
+        return all.firstOrNull()?.takeIf { first -> all.all { it == first } }
+    }
+
+    /** What the voice says for [slot] of the verb [base] instead of its spelling, or null. */
+    fun spokenAs(
+        base: String,
+        slot: String,
+    ): String? = verbsByBase[base]?.spokenAs?.get(slot)
+
+    /** The table's IPA for [slot] of the verb [base] (no slashes), or null. */
+    fun ipa(
+        base: String,
+        slot: String,
+    ): String? = verbsByBase[base]?.ipa?.get(slot)
+
+    /** The table's Spanish meanings of the verb [base] (its regular twin's with [homonym]). */
+    fun meanings(
+        base: String,
+        homonym: Boolean = false,
+    ): List<String> = verbsByBase[base]?.let { if (homonym) it.homonym?.es else it.es }.orEmpty()
+
+    /** Whether [form] is only a form of [base]'s regular twin ("lied", "hanged"). */
+    fun isHomonymForm(
+        form: String,
+        base: String,
+    ): Boolean {
+        val verb = verbsByBase[base] ?: return false
+        val twin = verb.homonym ?: return false
+        val own = listOf(verb.base, verb.ing, verb.s) + verb.past + verb.participle + verb.present.orEmpty()
+        return form !in own && form in (listOf(twin.ing, twin.s) + twin.past + twin.participle)
+    }
+
+    /**
+     * The two readings an unsure homograph offers the learner, most common first: a verb and its
+     * noun ("to leave", "the left"; the noun first when the verb is mostly a noun, `nounFirst`), or
+     * its two verbs when it has no noun ("to find", "to found") or is "lay" after I/you/we/they
+     * ("to lie", "to lay"). Empty when the word at [index] isn't an unsure homograph.
+     */
+    fun choices(
+        text: String,
+        words: List<WordRange>,
+        index: Int,
+    ): List<Reading> {
+        val range = words.getOrNull(index)?.takeIf { it.fitsIn(text) } ?: return emptyList()
+        val surface = text.substring(range.start, range.end)
+        val form = TextTools.normalize(surface)
+        val h = homographs[form] ?: return emptyList()
+        val resolver = Resolver(text, words, index, surface, form, h)
+        if (resolver.resolve().kind != Reading.Kind.UNSURE) return emptyList()
+        val verb = Reading(Reading.Kind.VERB, h.verb, Reading.Step.CHOSEN)
+        if (resolver.lieOrLay) return listOf(verb, Reading(Reading.Kind.VERB, "lay", Reading.Step.CHOSEN))
+        val noun = h.noun?.takeIf { it.isNotEmpty() }
+        if (noun == null) {
+            val other = h.baseVerb?.takeIf { it != h.verb } ?: return listOf(verb)
+            return listOf(verb, Reading(Reading.Kind.VERB, other, Reading.Step.CHOSEN))
+        }
+        val nounReading = Reading(Reading.Kind.NOUN, noun, Reading.Step.CHOSEN)
+        return if (verbsByBase[h.verb]?.nounFirst == true) listOf(nounReading, verb) else listOf(verb, nounReading)
     }
 
     /**
@@ -303,6 +430,11 @@ class IrregularVerbs private constructor(table: Table) {
     ) : Window(text, words, i) {
         private val rules = h.rules.toSet()
         private val plural = "plural" in rules
+        private val end = words[i].end
+
+        /** Set when "lay" after I/you/we/they was left unsure: present "lay" or past "lie". */
+        var lieOrLay = false
+            private set
 
         fun noun(step: Reading.Step) = Reading(Reading.Kind.NOUN, h.noun!!, step)
 
@@ -315,7 +447,10 @@ class IrregularVerbs private constructor(table: Table) {
                 val n1 = next(1)
                 val n2 = next(2)
                 val obj = n1 in context.objectStarts && !(n1 in articles && n2 in context.layTime)
-                if (subject in plainSubjects && !obj && n1 !in context.lieAfter) return unsure()
+                if (subject in plainSubjects && !obj && n1 !in context.lieAfter) {
+                    lieOrLay = true
+                    return unsure()
+                }
                 base = if (obj) "lay" else "lie"
             }
             return Reading(Reading.Kind.VERB, base, step)
@@ -335,9 +470,12 @@ class IrregularVerbs private constructor(table: Table) {
             val n1 = next(1)
             val n2 = next(2)
             val hasNoun = !h.noun.isNullOrEmpty()
-            // 2. Fixed phrases.
+            // 2. A listed noun phrase ("the lost and found"), unless what is before it makes it a verb.
+            nounPhrase()?.let { return it }
+            // 2. Fixed phrases. A capitalised plant word that is also a name ("Holly leaves at six") is not the plant.
             if (hasNoun) {
-                if (p1 != null && p1 in h.nounAfter) return noun(Reading.Step.FIXED)
+                val plantName = p1 in context.nameOrPlant && titlecase(i - 1)
+                if (p1 != null && p1 in h.nounAfter && !plantName) return noun(Reading.Step.FIXED)
                 if (n1 != null && n1 in h.nounBefore) return noun(Reading.Step.FIXED)
                 val pair = h.nounPair
                 if (!pair.isNullOrEmpty() && ((p1 in andOr && p2 == pair) || (n1 in andOr && n2 == pair))) return noun(Reading.Step.FIXED)
@@ -353,6 +491,14 @@ class IrregularVerbs private constructor(table: Table) {
                 // A possessive ("the soldier's") too, unless the form can follow "has" ("John's left").
                 fun det(t: String?) = t != null && (t in dets || (t.endsWith("'s") && t !in context.haveAndBe && "participle" !in rules))
                 if (det(p1) || (p1 in adjectives && det(p2))) return noun(Reading.Step.NOUN)
+            }
+            // 3b. A participle opening the sentence, then a listed word, then a comma later in the
+            // sentence ("Left alone, she cried"; not "Felt hats, …", "Thought, like speech, …").
+            if ("participle" in rules && startsSentence(i) && n1 != null && n2 != f &&
+                (n1 in context.participleOpenNext || (n1.endsWith("ly") && n1.length > 3))
+            ) {
+                val rest = text.substring(end).split(sentenceMark, limit = 2)[0]
+                if (',' in rest) return verb(Reading.Step.PARTICIPLE_OPEN)
             }
             val k = head()
             val t = k?.let(::tok)
@@ -380,11 +526,15 @@ class IrregularVerbs private constructor(table: Table) {
             // "one" is a subject in "no one saw", not in "with one bound" or "One spoke had come loose".
             val oneOk = t != "one" || (k >= 1 && gapOk(k - 1, k) && tok(k - 1) in context.oneAfter)
             if ((t in context.subjects && oneOk) || (plural && t in context.singularSubjects)) return verb(Reading.Step.SUBJECT, t)
+            val n1 = next(1)
+            val sNext = n1 != null && n1 != "of" && (n1 in context.sFormNext || (n1.endsWith("ly") && n1.length > 3))
             if (titlecase(k) && t != "i" && t !in context.subjects) {
                 val first = startsSentence(k)
                 if (!first || (t !in context.notNames && t !in context.adjectives && !t.endsWith("ly") && !plural)) {
                     return verb(Reading.Step.SUBJECT)
                 }
+                // A name opening the sentence + an -s form + a preposition or adverb ("Tom lives in…").
+                if (first && "sVerb" in rules && sNext && looksLikeName(k) && !finiteVerbLater()) return verb(Reading.Step.NAME_S)
             }
             if ("subjectNoun" in rules && !titlecase(k) && t !in closedClass && !t.endsWith("ly") && k >= 1 && gapOk(k - 1, k)) {
                 val d =
@@ -394,11 +544,116 @@ class IrregularVerbs private constructor(table: Table) {
                             tok(k - 2) in context.subjectDeterminers -> k - 2
                         else -> null
                     }
-                if (d != null && opensClause(d)) return verb(Reading.Step.SUBJECT_NOUN)
+                val need = h.subjectNounNext
+                if (d != null && opensClause(d) && (need == null || n1 in need)) return verb(Reading.Step.SUBJECT_NOUN)
+            }
+            // A determiner (+ adjective) + a singular noun + an -s form + a preposition or adverb, the
+            // determiner opening the sentence or a clause ("The old man lives alone").
+            if ("sVerb" in rules && sNext && !titlecase(k) && isNounWord(t) && !isPlural(t)) {
+                val d = nounPhraseStart(k)
+                if (d != null && opensClause(d) && !finiteVerbLater()) return verb(Reading.Step.NOUN_S)
+            }
+            // A quantifier or number (+ of (+ determiner)) (+ adjective) + a plural noun ("Many people left").
+            if ("quantifier" in rules && !titlecase(k) && isNounWord(t) && isPlural(t)) {
+                val q = quantifierStart(k)
+                if (q != null && opensClause(q)) return verb(Reading.Step.QUANTIFIER, "they")
             }
             if ("conjunction" in rules && t in context.conjunctions) return verb(Reading.Step.CONJUNCTION)
             return null
         }
+
+        /** A listed noun phrase around the form ("the lost and found") that nothing makes a verb. */
+        private fun nounPhrase(): Reading? {
+            for (phrase in h.nounPhrases) {
+                val at = phrase.indexOf(f)
+                if (at < 0) continue
+                val first = i - at
+                val last = first + phrase.size - 1
+                if (first < 0 || last >= words.size || (first until last).any { !gapOk(it, it + 1) }) continue
+                if ((first..last).map(::tok) != phrase) continue
+                val before = if (first >= 1 && gapOk(first - 1, first)) tok(first - 1) else null
+                val after = if (last + 1 < words.size && gapOk(last, last + 1)) tok(last + 1) else null
+                val verbal =
+                    before != null &&
+                        (
+                            before in context.subjects || before in context.haveAndBe || isSkip(first - 1) ||
+                                (titlecase(first - 1) && !startsSentence(first - 1))
+                        )
+                if (!verbal && after !in context.objectStarts) return Reading(Reading.Kind.NOUN, h.noun ?: f, Reading.Step.PHRASE)
+            }
+            return null
+        }
+
+        /** A word that can head a noun phrase: not a listed function word or adjective, not in -ly or 's. */
+        private fun isNounWord(t: String) = t !in nounClosed && !t.endsWith("ly") && !t.endsWith("'s")
+
+        /** "men", "people", "girls", "buses"; not "bus", "glass", "news". */
+        private fun isPlural(t: String) =
+            t in context.pluralNouns ||
+                (t.length > 3 && t.endsWith("s") && pluralNotEndings.none { t.endsWith(it) } && t !in context.notPlural)
+
+        /** The index of the word before [k] when only spaces are between, else null. */
+        private fun back(k: Int): Int? = if (k >= 1 && gapOk(k - 1, k)) k - 1 else null
+
+        /** The determiner's index for "determiner (+ adjective) + the noun at [k]", else null. */
+        private fun nounPhraseStart(k: Int): Int? {
+            var j = back(k)
+            if (j != null && tok(j) in context.adjectives) j = back(j)
+            return j?.takeIf { tok(it) in context.subjectDeterminers }
+        }
+
+        /** The quantifier's index for "quantifier [of] [determiner] (+ adjective) + the plural noun at [k]", else null. */
+        private fun quantifierStart(k: Int): Int? {
+            var j = back(k)
+            if (j != null && (tok(j) in context.adjectives || tok(j) in context.pluralAdjectives) && tok(j) !in context.quantifiers) {
+                j = back(j)
+            }
+            if (j == null) return null
+            var q: Int? = null
+            if (tok(j) in context.quantifiers) {
+                q = j
+            } else if (tok(j) in context.determiners) {
+                val b = back(j)
+                if (b != null && tok(b) in context.quantifiersBeforeDeterminer) q = b
+                j = b
+            }
+            if (j == null) return q
+            val o = if (tok(j) == "of") j else back(j)
+            if (o != null && tok(o) == "of") {
+                val b = back(o)
+                if (b != null && (tok(b) in context.quantifiers || tok(b) in context.quantifiersBeforeOf)) return b
+            }
+            return q
+        }
+
+        /** A finite verb after the form in its clause: the form is then a noun ("Double lives in fiction are common"). */
+        private fun finiteVerbLater(): Boolean {
+            for (j in i + 1 until words.size) {
+                if (clauseEnd.containsMatchIn(text.substring(words[j - 1].end, words[j].start))) return false
+                val t = tok(j)
+                if (t in context.clauseOpeners || t in relativePronouns) return false
+                if (t in context.finiteVerbs || t in pastForms) return true
+            }
+            return false
+        }
+
+        /** A capitalised word opening the sentence that is probably a name ("Tom"; not "Wasted", "Double"). */
+        private fun looksLikeName(k: Int): Boolean {
+            val t = tok(k)
+            if (t in nounClosed || t in context.notNameStarts || t in context.nameOrPlant) return false
+            if (nameNotEndings.any { t.endsWith(it) }) return false
+            for ((suffix, cut) in verbSuffixes) {
+                if (!t.endsWith(suffix) || t.length <= suffix.length + 2) continue
+                val stem = t.dropLast(cut)
+                val doubled = stem.length > 2 && stem.last() == stem[stem.length - 2] && isVerb(stem.dropLast(1))
+                if (isVerb(stem) || isVerb(stem + "e") || doubled) {
+                    return false
+                }
+            }
+            return true
+        }
+
+        private fun isVerb(s: String) = s in allBases || s in Verbs.regular
 
         /** The determiner at [d] starts the sentence or a clause. */
         private fun opensClause(d: Int): Boolean {
@@ -412,6 +667,9 @@ class IrregularVerbs private constructor(table: Table) {
             determiners + pluralDeterminers + adjectives + subjects + notNames + skip + prepositions + toAndModals + haveAndBe +
                 conjunctions
         }
+
+    /** [closedClass] and the plural adjectives: words that can't head a noun phrase. */
+    private val nounClosed: Set<String> = closedClass + context.pluralAdjectives
 
     companion object {
         /** Largest table accepted, in bytes: today's is about 43 KB. */
@@ -430,9 +688,20 @@ class IrregularVerbs private constructor(table: Table) {
         private const val MAX_ABOUT = 4000
         private val levels = setOf("A1", "A2", "B1", "B2", "C1", "C2")
         private val slots = setOf("base", "past", "participle", "ing", "s")
-        private val ruleNames = setOf("plural", "participle", "subjectNoun", "conjunction", "imperative")
+        private val ruleNames = setOf("plural", "participle", "subjectNoun", "conjunction", "imperative", "sVerb", "quantifier")
         private val sentenceStart = Regex("[.!?:;“\"‘(]")
         private val clauseMark = Regex("[,;—–]")
+        private val clauseEnd = Regex("[,;:.!?—–()]")
+        private val sentenceMark = Regex("[.!?]")
+        private val relativePronouns = setOf("who", "which", "whose", "whom")
+        private val pluralNotEndings = listOf("ss", "us", "is", "'s")
+        private val nameNotEndings = listOf("ly", "ful", "less", "ous")
+        private val verbSuffixes = listOf("ed" to 2, "ed" to 1, "ing" to 3)
+        private const val MAX_IPA = 40
+
+        /** IPA letters and marks the table may use, and the combining syllabic and nasal marks. */
+        private val ipaChars: Set<Int> =
+            ("abcdefghijklmnopqrstuvwxyz" + "æðŋɑɒɔəɚɛɜɝɡɪɹɾʃʊʌʒʔθʤʧˈˌːˑ." + "\u0329\u0303").codePoints().toArray().toSet()
         private val articles = setOf("the", "a", "an")
         private val andOr = setOf("and", "or")
         private val plainSubjects = setOf("i", "you", "we", "they")
@@ -545,6 +814,7 @@ class IrregularVerbs private constructor(table: Table) {
                 verb.spokenAs?.forEach { (slot, spoken) ->
                     check(slot in slots && formPattern.matches(spoken)) { "${verb.base}: spokenAs" }
                 }
+                verb.ipa?.forEach { (slot, ipa) -> check(slot in slots && isIpa(ipa)) { "${verb.base}: ipa" } }
                 verb.homonym?.let { h ->
                     check(isFormList(h.past) && isFormList(h.participle)) { "${verb.base}: homonym forms" }
                     check(isMeanings(h.es)) { "${verb.base}: homonym es" }
@@ -557,12 +827,41 @@ class IrregularVerbs private constructor(table: Table) {
                 val words = listOfNotNull(h.form, h.noun, h.verb, h.baseVerb, h.nounPair) + h.nounAfter + h.nounBefore + h.verbAfter
                 for (word in words) check(formPattern.matches(word)) { "homograph ${h.form}: bad word" }
                 check(h.rules.all { it in ruleNames }) { "homograph ${h.form}: rule" }
+                for (phrase in h.nounPhrases) {
+                    check(
+                        phrase.size in 2..4 && phrase.all(formPattern::matches) && h.form in phrase,
+                    ) { "homograph ${h.form}: noun phrase" }
+                }
+                h.subjectNounNext?.let { next -> check(next.all(formPattern::matches)) { "homograph ${h.form}: subjectNounNext" } }
                 check("imperative" !in h.rules || !h.baseVerb.isNullOrEmpty()) { "homograph ${h.form}: imperative without its verb" }
                 // Its verb is a known verb, and the form one of its forms.
                 check(h.verb in verbs || h.verb in Verbs.regular) { "homograph ${h.form}: verb ${h.verb}" }
                 verbs[h.verb]?.let { check(h.form == it.base || h.form in it.forms()) { "homograph ${h.form}: not a form of ${h.verb}" } }
             }
             for (list in table.context.lists()) for (word in list) check(isContextWord(word)) { "context: bad word" }
+            val allForms = table.verbs.flatMapTo(mutableSetOf()) { it.forms() }
+            check(table.llBases.size == table.llBases.toSet().size) { "duplicate llBase" }
+            for (base in table.llBases) {
+                val ok = llPattern.matches(base) && base.endsWith("ll") && vowelGroups(base.dropLast(1)) >= 2 && base !in allForms
+                check(ok) { "llBase $base" }
+            }
+        }
+
+        private val llPattern = Regex("^[a-z]{3,$MAX_FORM}$")
+
+        private fun vowelGroups(s: String) = Regex("[aeiouy]+").findAll(s).count()
+
+        /** IPA without slashes: 1–[MAX_IPA] characters of [ipaChars], in NFC. */
+        private fun isIpa(s: String): Boolean {
+            val count = s.codePointCount(0, s.length)
+            if (count !in 1..MAX_IPA || !java.text.Normalizer.isNormalized(s, java.text.Normalizer.Form.NFC)) return false
+            var i = 0
+            while (i < s.length) {
+                val codePoint = s.codePointAt(i)
+                if (codePoint !in ipaChars) return false
+                i += Character.charCount(codePoint)
+            }
+            return true
         }
 
         private fun isFormList(forms: List<String>) = forms.size in 1..2 && forms.toSet().size == forms.size
@@ -600,9 +899,10 @@ internal data class Table(
     val verbs: List<Verb>,
     val homographs: List<Homograph>,
     val context: Context,
+    val llBases: List<String>,
 ) {
     companion object {
-        val EMPTY = Table(IrregularVerbs.SCHEMA_VERSION, "", emptyList(), emptyList(), emptyList(), Context.EMPTY)
+        val EMPTY = Table(IrregularVerbs.SCHEMA_VERSION, "", emptyList(), emptyList(), emptyList(), Context.EMPTY, emptyList())
     }
 }
 
@@ -624,6 +924,7 @@ internal data class Verb(
     val es: List<String>,
     val present: List<String>? = null,
     val spokenAs: Map<String, String>? = null,
+    val ipa: Map<String, String>? = null,
     val homonym: Homonym? = null,
     val nounFirst: Boolean = false,
     val freq: Int? = null,
@@ -632,6 +933,16 @@ internal data class Verb(
     fun forms(): List<String> =
         listOf(base, ing, s) + past + participle + present.orEmpty() +
             homonym?.let { listOf(it.ing, it.s) + it.past + it.participle }.orEmpty()
+
+    /** The slots [form] fills ("read": base, past, participle). */
+    fun slots(form: String): List<String> =
+        listOfNotNull(
+            "base".takeIf { form == base },
+            "past".takeIf { form in past },
+            "participle".takeIf { form in participle },
+            "ing".takeIf { form == ing },
+            "s".takeIf { form == s },
+        )
 }
 
 @Serializable
@@ -655,6 +966,8 @@ internal data class Homograph(
     val nounPair: String? = null,
     val verbAfter: List<String> = emptyList(),
     val noTo: Boolean = false,
+    val nounPhrases: List<List<String>> = emptyList(),
+    val subjectNounNext: List<String>? = null,
 )
 
 /** The word lists of the verb-or-noun rule. */
@@ -679,17 +992,31 @@ internal data class Context(
     val objectStarts: Set<String>,
     val layTime: Set<String>,
     val boundAdjective: Set<String>,
+    val sFormNext: Set<String>,
+    val notNameStarts: Set<String>,
+    val nameOrPlant: Set<String>,
+    val pluralNouns: Set<String>,
+    val notPlural: Set<String>,
+    val quantifiers: Set<String>,
+    val quantifiersBeforeDeterminer: Set<String>,
+    val quantifiersBeforeOf: Set<String>,
+    val finiteVerbs: Set<String>,
+    val participleOpenNext: Set<String>,
 ) {
     fun lists() =
         listOf(
             determiners, pluralDeterminers, prepositions, adjectives, pluralAdjectives, subjects, singularSubjects, skip,
             toAndModals, haveAndBe, subjectDeterminers, oneAfter, clauseOpeners, lieAfter, conjunctions, notNames,
-            objectStarts, layTime, boundAdjective,
+            objectStarts, layTime, boundAdjective, sFormNext, notNameStarts, nameOrPlant, pluralNouns, notPlural, quantifiers,
+            quantifiersBeforeDeterminer, quantifiersBeforeOf, finiteVerbs, participleOpenNext,
         )
 
     companion object {
         private val none = emptySet<String>()
         val EMPTY =
-            Context(none, none, none, none, none, none, none, none, none, none, none, none, none, none, none, none, none, none, none)
+            Context(
+                none, none, none, none, none, none, none, none, none, none, none, none, none, none, none, none, none, none, none,
+                none, none, none, none, none, none, none, none, none, none,
+            )
     }
 }

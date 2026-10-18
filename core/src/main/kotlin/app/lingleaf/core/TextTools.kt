@@ -285,6 +285,11 @@ object TextTools {
 
         fun stemRules(stem: String) {
             when {
+                // US double-l bases first, then the single l: install, instal.
+                stem in verbs.llBases -> {
+                    add(stem)
+                    add(stem.dropLast(1))
+                }
                 // travell → travel, controll → control; not call, fill (one vowel group).
                 stem.endsWith("ll") && vowelGroups(stem.dropLast(1)) >= 2 -> add(stem.dropLast(1))
                 isDoubled(stem) -> add(stem.dropLast(1))
