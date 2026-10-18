@@ -18,6 +18,8 @@ import androidx.compose.foundation.layout.padding
 import androidx.compose.foundation.layout.size
 import androidx.compose.foundation.layout.width
 import androidx.compose.foundation.rememberScrollState
+import androidx.compose.foundation.selection.selectable
+import androidx.compose.foundation.selection.selectableGroup
 import androidx.compose.foundation.verticalScroll
 import androidx.compose.material.icons.Icons
 import androidx.compose.material.icons.automirrored.filled.VolumeUp
@@ -36,7 +38,9 @@ import androidx.compose.material3.Icon
 import androidx.compose.material3.IconButton
 import androidx.compose.material3.MaterialTheme
 import androidx.compose.material3.ModalBottomSheet
+import androidx.compose.material3.RadioButton
 import androidx.compose.material3.SuggestionChip
+import androidx.compose.material3.Surface
 import androidx.compose.material3.Text
 import androidx.compose.material3.TextButton
 import androidx.compose.material3.rememberModalBottomSheetState
@@ -46,11 +50,13 @@ import androidx.compose.runtime.getValue
 import androidx.compose.runtime.mutableStateOf
 import androidx.compose.runtime.remember
 import androidx.compose.runtime.rememberCoroutineScope
+import androidx.compose.runtime.saveable.rememberSaveable
 import androidx.compose.runtime.setValue
 import androidx.compose.runtime.snapshotFlow
 import androidx.compose.ui.Alignment
 import androidx.compose.ui.Modifier
 import androidx.compose.ui.graphics.Color
+import androidx.compose.ui.platform.LocalDensity
 import androidx.compose.ui.res.stringResource
 import androidx.compose.ui.semantics.Role
 import androidx.compose.ui.semantics.clearAndSetSemantics
@@ -75,6 +81,9 @@ import app.lingleaf.TRANSLATION_LANGUAGES
 import app.lingleaf.core.DictionaryEntry
 import app.lingleaf.core.FunctionWord
 import app.lingleaf.core.IrregularVerbs
+import app.lingleaf.core.Reading
+import app.lingleaf.core.SavedMeaning
+import app.lingleaf.core.Sense
 import app.lingleaf.core.TextTools
 import app.lingleaf.core.TranslationLanguages
 import app.lingleaf.core.VocabWord
@@ -87,17 +96,18 @@ import kotlinx.coroutines.launch
 import kotlinx.coroutines.withContext
 
 /**
- * What a card button did to [word], so the reader can say so (naming it [label]) and
- * offer Undo with [previous].
+ * What a card button did to [word] (its key), so the reader can say so (naming it [label]) and
+ * offer Undo with [previous]; [replaced] is the same form saved unsure that it replaced.
  */
 data class WordChange(
     val word: String,
     @StringRes val message: Int,
     val previous: VocabWord?,
     val label: String = word,
+    val replaced: VocabWord? = null,
 )
 
-/** A translation still on its way, and the [word] it is the translation of. */
+/** A translation still on its way, and the [word] (saved key) it is the translation of. */
 private class PendingTranslation(
     val word: String,
     val result: Deferred<String?>,
@@ -108,6 +118,8 @@ private class PendingTranslation(
  * language), definition, the sentence in context, and I know it / Save word.
  * Translation starts as soon as the card opens and keeps going after the word
  * is saved, so saving never waits for it (SPEC S3, S4, S5, S12, S14, S15).
+ * A homograph its sentence can't tell ("Left is fine") shows its two readings as a single
+ * choice instead of guessing; the learner's choice decides the rest (SPEC S3).
  */
 @Composable
 fun WordSheet(
@@ -126,56 +138,84 @@ fun WordSheet(
     val chunk = function?.chunk?.let { sentence.substring(it.start, it.end) }
     val container = LocalContainer.current
     val library = container.library
+    val verbs = IrregularVerbs.shared
     val state by library.state.collectAsStateWithLifecycle()
     val sheetState = rememberModalBottomSheetState(skipPartiallyExpanded = true)
     val scope = rememberCoroutineScope()
-    var entry by remember(word) { mutableStateOf<DictionaryEntry?>(null) }
-    var entryLoaded by remember(word) { mutableStateOf(false) }
+    val form = TextTools.normalize(word)
     val target = container.targetLanguage(state.settings)
-    // The headword's own translation: the only one saved with the word.
-    var translation by remember(word, target) { mutableStateOf<String?>(null) }
-    // The tapped form's ("animals"), shown while the base form's ("animal") is on its way.
-    var tappedTranslation by remember(word, target) { mutableStateOf<String?>(null) }
-    var translationFailed by remember(word, target) { mutableStateOf(false) }
-    var sentenceTranslation by remember(word, target) { mutableStateOf<String?>(null) }
-    var modelStatus by remember(word, target) { mutableStateOf(ModelStatus.READY) }
-    // Runs in the app's scope, so a translation that arrives after saving is still recorded.
-    var pendingTranslation by remember(word, target) { mutableStateOf<PendingTranslation?>(null) }
 
     // A form that is also another word ("left", "saw") is read from its sentence (SPEC S3).
-    val reading =
-        remember(word, sentence, rangeInSentence) {
-            rangeInSentence?.takeIf { function == null }?.let { IrregularVerbs.shared.resolve(sentence, it) }
-        }
+    val words = remember(sentence) { TextTools.wordRanges(sentence) }
+    val index = rangeInSentence?.takeIf { function == null }?.let(words::indexOf)?.takeIf { it >= 0 }
+    val reading = remember(sentence, index) { index?.let { verbs.resolve(sentence, words, it) } }
+    // Unsure: its two readings, none chosen until the learner picks one.
+    val choices = remember(sentence, index) { index?.let { verbs.choices(sentence, words, it) }.orEmpty() }
+    val unsure = reading?.kind == Reading.Kind.UNSURE && choices.size == 2
+    var chosen by rememberSaveable(word, sentence) { mutableStateOf<Int?>(null) }
+    // The reading the card follows: the sentence's, or the learner's choice.
+    val effective: Reading? = if (unsure) chosen?.let(choices::getOrNull) else reading?.takeIf { it.kind != Reading.Kind.UNSURE }
+    val undecided = unsure && effective == null
+
+    var entry by remember(word, effective) { mutableStateOf<DictionaryEntry?>(null) }
+    var entryLoaded by remember(word, effective) { mutableStateOf(false) }
+    // The headword's own translation: the only one saved with the word.
+    var translation by remember(word, target, effective) { mutableStateOf<String?>(null) }
+    // The tapped form's ("animals"), shown while the base form's ("animal") is on its way.
+    var tappedTranslation by remember(word, target, effective) { mutableStateOf<String?>(null) }
+    var translationFailed by remember(word, target, effective) { mutableStateOf(false) }
+    var sentenceTranslation by remember(word, target) { mutableStateOf<String?>(null) }
+    var modelStatus by remember(word, target) { mutableStateOf(ModelStatus.READY) }
+    // The unsure rows' meanings ("irse, salir", "izquierda"), in the rows' order.
+    var rowMeanings by remember(word, target, choices) { mutableStateOf<List<String?>>(choices.map { null }) }
+    var rowsLoading by remember(word, target, choices) { mutableStateOf(unsure && target != null) }
+    // Runs in the app's scope, so a translation that arrives after saving is still recorded.
+    var pendingTranslation by remember(word, target, effective) { mutableStateOf<PendingTranslation?>(null) }
+
     // The irregular-verb table's base ("stolen" → "steal", "she left" → "leave"): the base form
     // when the dictionary can't be reached or doesn't know the word (SPEC S3). Not over an entry
     // the dictionary has for the form itself ("a human being").
     val tableBase =
-        remember(word, sentence, rangeInSentence) {
+        remember(word, sentence, rangeInSentence, effective) {
             when {
                 function != null -> null
-                rangeInSentence != null -> IrregularVerbs.shared.baseAt(sentence, rangeInSentence)
-                else -> IrregularVerbs.shared.formToBase[TextTools.normalize(word)]
+                effective != null -> effective.base.takeIf { it != form }
+                index != null -> verbs.baseAt(sentence, words, index)
+                else -> verbs.formToBase[form]
             }
         }
     // The dictionary's base form ("animal") when it differs from the tapped word ("animals").
-    val baseForm = entry?.word?.takeIf { it != TextTools.normalize(word) } ?: tableBase?.takeIf { entryLoaded && entry == null }
-    val headword = function?.base ?: baseForm ?: word
-    val savedKey = if (function == null) headword else chunk ?: sentence
-    // How messages name it: "did not go"; without a verb group, the start of the sentence.
+    val baseForm = entry?.word?.takeIf { it != form } ?: tableBase?.takeIf { entryLoaded && entry == null }
+    // Unsure: the tapped form stays the headword, chosen or not.
+    val headword = function?.base ?: if (unsure) form else baseForm ?: word
+    // What is saved: the reading's base with its sense, the tapped form unsure, else the headword.
+    val linkBase = verbs.formToBase[form]
+    val sense =
+        when {
+            function != null || undecided -> null
+            effective != null -> Sense.of(effective)
+            linkBase != null && headword == linkBase && verbs.isHomonymForm(form, linkBase) -> Sense.HOMONYM
+            else -> null
+        }
     val savedName =
         when {
+            function == null && undecided -> form
+            function == null && effective != null -> effective.base
             function == null -> headword
             chunk != null -> chunk
             sentence.length > 30 -> sentence.take(30) + "…"
             else -> sentence
         }
+    val savedWord = if (function == null) savedName else chunk ?: sentence
+    val savedKey = VocabWord.keyOf(TextTools.normalize(savedWord), sense)
     val saved = state.word(savedKey)
+    // The same form saved unsure before: saving a reading replaces it (SPEC S4).
+    val unsureSaved = state.word(form)?.takeIf { it.isUnsure && savedKey != it.key && function == null }
 
-    LaunchedEffect(word) {
+    LaunchedEffect(word, effective) {
         // A helper or modal verb needs no dictionary: its definition and IPA would be the
-        // base form's ("do"), not what the learner sees ("didn't go").
-        if (function == null) entry = withContext(container.io) { container.dictionary.lookup(word, reading) }
+        // base form's ("do"), not what the learner sees ("didn't go"). Unsure: nothing until chosen.
+        if (function == null && !undecided) entry = withContext(container.io) { container.dictionary.lookup(word, effective) }
         entryLoaded = true
     }
 
@@ -183,6 +223,17 @@ fun WordSheet(
         if (target == null) return@LaunchedEffect
         launch { modelStatus = runCatching { container.translator.modelStatus(target) }.getOrDefault(ModelStatus.READY) }
         launch { sentenceTranslation = container.translateOrNull(sentence, target) }
+        if (!unsure) return@LaunchedEffect
+        // Both readings' meanings start right away, so the rows can be told apart.
+        rowMeanings =
+            choices.map { choice ->
+                container.appScope.async { container.meaningOf(Sense.of(choice) ?: Sense.VERB, choice.base, target, first = true) }
+            }.map { it.await() }
+        rowsLoading = false
+    }
+
+    LaunchedEffect(word, target, effective) {
+        if (target == null || undecided) return@LaunchedEffect
         if (function != null) {
             // Alone the helper means little ("did" → "hizo"): only its verb group is translated.
             if (chunk == null) return@LaunchedEffect
@@ -192,11 +243,20 @@ fun WordSheet(
             translationFailed = translation == null
             return@LaunchedEffect
         }
+        if (effective != null) {
+            // A reading: its meaning, "to leave" → "irse, salir · dejar" (SPEC S3, L1).
+            val readingSense = Sense.of(effective) ?: Sense.VERB
+            val meaning = container.appScope.async { container.meaningOf(readingSense, effective.base, target) }
+            pendingTranslation = PendingTranslation(savedKey, meaning)
+            translation = meaning.await()
+            translationFailed = translation == null
+            return@LaunchedEffect
+        }
         // The tapped form starts right away, alongside the dictionary lookup.
         val tapped = container.appScope.async { container.translateOrNull(word, target) }
-        pendingTranslation = PendingTranslation(word, tapped)
+        pendingTranslation = PendingTranslation(VocabWord.keyOf(form, null), tapped)
         snapshotFlow { entryLoaded }.first { it }
-        val base = entry?.word?.takeIf { it != TextTools.normalize(word) } ?: tableBase?.takeIf { entry == null }
+        val base = entry?.word?.takeIf { it != form } ?: tableBase?.takeIf { entry == null }
         if (base == null) {
             translation = tapped.await()
             translationFailed = translation == null
@@ -204,7 +264,7 @@ fun WordSheet(
         }
         // The base form is saved only with its own translation; the tapped form's is shown meanwhile.
         val baseTranslation = container.appScope.async { container.translateOrNull(base, target) }
-        pendingTranslation = PendingTranslation(base, baseTranslation)
+        pendingTranslation = PendingTranslation(VocabWord.keyOf(base, sense), baseTranslation)
         val showTapped = launch { tappedTranslation = tapped.await() }
         translation = baseTranslation.await()
         if (translation == null) showTapped.join()
@@ -230,38 +290,82 @@ fun WordSheet(
         val shown = if (function != null && chunk == null) sentenceTranslation else translation
         // Only a translation of the word being saved may be written to it later.
         val pending = pendingTranslation?.takeIf { it.word == key }?.result
-        val phonetic = entry?.phonetic
+        val phonetic = phonetic(entry, effective, form, headword)
+        val meanings =
+            if (undecided) {
+                choices.mapIndexed { i, choice -> SavedMeaning.of(choice).copy(meaning = rowMeanings.getOrNull(i).orEmpty()) }
+            } else {
+                null
+            }
+        val replaced = unsureSaved
+        val tapped = rangeInSentence?.takeIf { function == null }
         scope.launch {
             val previous =
                 withContext(container.io) {
                     library.saveWord(
-                        word = key,
+                        word = savedWord,
                         learned = learned,
                         translation = shown,
                         phonetic = phonetic,
                         context = sentence,
                         source = source,
-                        translationLanguage = language.takeIf { shown != null },
+                        translationLanguage = language.takeIf { shown != null || meanings != null },
                         kind = function?.kind,
                         base = function?.base,
                         contextTranslation = sentenceTranslation,
+                        sense = sense,
+                        form = tapped?.let { word },
+                        formRange = tapped,
+                        meanings = meanings,
+                        replacing = replaced?.key,
                     )
                 }
             if (shown == null && language != null && pending != null) {
                 container.appScope.launch { pending.await()?.let { library.setTranslation(key, it, language) } }
             }
-            close(WordChange(key, if (learned) R.string.word_known_message else R.string.word_saved_message, previous, savedName))
+            val message = if (learned) R.string.word_known_message else R.string.word_saved_message
+            close(WordChange(key, message, previous, savedName, replaced))
         }
     }
 
     fun remove(previous: VocabWord) {
         scope.launch {
-            withContext(container.io) { library.deleteWord(previous.word) }
+            withContext(container.io) { library.deleteWord(previous.key) }
             close(WordChange(savedKey, R.string.word_removed_message, previous, savedName))
         }
     }
 
     fun chooseLanguage(code: String) = library.updateSettings { it.copy(targetLanguage = code) }
+
+    // What Listen says (SPEC S6): the headword, then the form as in the text when it differs,
+    // each respelled for its proven slot; unsure, the form in each reading (once if alike).
+    val spoken =
+        remember(word, sentence, index, effective, headword, chunk) {
+            when {
+                function != null -> chunk ?: word
+                undecided -> choices.map { verbs.spokenOf(form, it) ?: form }.distinct().joinToString(", ")
+                else -> {
+                    val formSpoken =
+                        effective?.let { verbs.spokenOf(form, it) }
+                            ?: index?.let { verbs.spokenAt(sentence, words, it) }
+                            ?: form
+                    if (TextTools.normalize(headword) == form) {
+                        formSpoken
+                    } else {
+                        val headSpoken =
+                            effective?.takeIf { it.kind == Reading.Kind.VERB }?.let { verbs.spokenAs(it.base, "base") } ?: headword
+                        "$headSpoken, $formSpoken"
+                    }
+                }
+            }
+        }
+    val listenLabel =
+        when {
+            function != null -> chunk ?: word
+            undecided || TextTools.normalize(headword) == form -> headword
+            else -> "$headword, $form"
+        }
+    val shownPhonetic = if (undecided) null else phonetic(entry, effective, form, headword)
 
     ModalBottomSheet(onDismissRequest = onDismiss, sheetState = sheetState) {
         Column(Modifier.navigationBarsPadding()) {
@@ -274,16 +378,8 @@ fun WordSheet(
                 verticalArrangement = Arrangement.spacedBy(6.dp),
             ) {
                 Row(verticalAlignment = Alignment.CenterVertically) {
-                    // A helper or modal verb: how the verb group sounds ("didn't go", not "do").
-                    val shown = if (function == null) headword else chunk ?: word
-                    // The tapped form itself, with the table's respelling where its sentence proves
-                    // the form ("she had read" → "red"); never for the label.
-                    val respelled =
-                        rangeInSentence
-                            ?.takeIf { function == null && TextTools.normalize(headword) == TextTools.normalize(word) }
-                            ?.let { IrregularVerbs.shared.spokenAt(sentence, it) }
-                    FilledTonalIconButton(onClick = { container.speaker.speak(respelled ?: shown, state.settings.speechRate) }) {
-                        Icon(Icons.AutoMirrored.Filled.VolumeUp, contentDescription = stringResource(R.string.listen_word, shown))
+                    FilledTonalIconButton(onClick = { container.speaker.speak(spoken, state.settings.speechRate) }) {
+                        Icon(Icons.AutoMirrored.Filled.VolumeUp, contentDescription = stringResource(R.string.listen_word, listenLabel))
                     }
                     Spacer(Modifier.width(12.dp))
                     // A screen reader says "he had or he would", not "slash".
@@ -300,73 +396,62 @@ fun WordSheet(
                             },
                     )
                 }
-                entry?.phonetic?.let {
+                shownPhonetic?.let {
                     Text(it, style = MaterialTheme.typography.titleMedium, color = MaterialTheme.colorScheme.onSurfaceVariant)
                 }
-                // A helper or modal verb shows its form in the verb group just below.
-                if (function == null && headword != word) {
-                    Text(stringResource(R.string.in_text, word), color = MaterialTheme.colorScheme.onSurfaceVariant)
-                }
-                function?.kind?.label?.let {
+                if (unsure) {
+                    // The sentence first: its translation tells which reading it is (SPEC S3).
+                    SentenceBlock(sentence, rangeInSentence, null, sentenceTranslation, onReadFromHere = null)
+                    if (target != null && !rowsLoading && rowMeanings.any { it == null } && sentenceTranslation == null) {
+                        Text(stringResource(R.string.translation_unavailable), color = MaterialTheme.colorScheme.onSurfaceVariant)
+                    }
                     Text(
-                        stringResource(it),
-                        style = MaterialTheme.typography.titleSmall,
+                        stringResource(R.string.unsure_guide),
                         color = MaterialTheme.colorScheme.onSurfaceVariant,
+                        modifier = Modifier.fillMaxWidth(),
                     )
-                }
-                if (target == null) {
-                    LanguagePrompt(onPick = ::chooseLanguage)
+                    ReadingChoices(
+                        choices = choices,
+                        meanings = rowMeanings,
+                        loading = rowsLoading,
+                        language = target,
+                        chosen = chosen,
+                        onChoose = { chosen = it },
+                    )
+                    if (chosen != null) Definition(entry, entryLoaded)
+                    if (target == null) LanguagePrompt(onPick = ::chooseLanguage) else LanguageButton(target, onPick = ::chooseLanguage)
+                    onReadFromHere?.let { ReadFromHereButton(it) }
                 } else {
-                    // The verb group it belongs to, then its translation (as on iOS, once a language is set).
-                    // Not when it is just the tapped word ("That's"): the headword and note explain it.
-                    chunk?.takeIf { it != word }?.let {
-                        Text(it, style = MaterialTheme.typography.titleMedium, textAlign = TextAlign.Center)
+                    // A helper or modal verb shows its form in the verb group just below.
+                    if (function == null && headword != word) {
+                        Text(stringResource(R.string.in_text, word), color = MaterialTheme.colorScheme.onSurfaceVariant)
                     }
-                    if (function == null || chunk != null) {
-                        TranslationText(translation ?: tappedTranslation, translationFailed, modelStatus, target)
-                    }
-                    LanguageButton(target, onPick = ::chooseLanguage)
-                }
-                function?.let {
-                    Text(functionNote(it, word), color = MaterialTheme.colorScheme.onSurfaceVariant, textAlign = TextAlign.Center)
-                }
-                entry?.definition?.let { definition ->
-                    Text(
-                        buildAnnotatedString {
-                            entry?.partOfSpeech?.let { withStyle(SpanStyle(fontStyle = FontStyle.Italic)) { append("$it · ") } }
-                            append(definition)
-                        },
-                        color = MaterialTheme.colorScheme.onSurfaceVariant,
-                        textAlign = TextAlign.Center,
-                    )
-                }
-                if (function == null && entryLoaded && entry == null) {
-                    Text(stringResource(R.string.no_definition), color = MaterialTheme.colorScheme.onSurfaceVariant)
-                }
-                HorizontalDivider(Modifier.padding(vertical = 10.dp))
-                Row(Modifier.fillMaxWidth(), verticalAlignment = Alignment.Top) {
-                    Column(Modifier.weight(1f)) {
+                    function?.kind?.label?.let {
                         Text(
-                            markedSentence(sentence, rangeInSentence, function?.chunk),
-                            fontStyle = FontStyle.Italic,
-                            fontFamily = ReadingFont,
+                            stringResource(it),
+                            style = MaterialTheme.typography.titleSmall,
+                            color = MaterialTheme.colorScheme.onSurfaceVariant,
                         )
-                        sentenceTranslation?.let {
-                            Spacer(Modifier.height(6.dp))
-                            Text(it, color = MaterialTheme.colorScheme.onSurfaceVariant)
-                        }
-                        // Back to an earlier point, or on from this one (SPEC S6).
-                        onReadFromHere?.let {
-                            TextButton(onClick = it, contentPadding = ButtonDefaults.TextButtonWithIconContentPadding) {
-                                Icon(Icons.Filled.PlayArrow, contentDescription = null, modifier = Modifier.size(ButtonDefaults.IconSize))
-                                Spacer(Modifier.width(ButtonDefaults.IconSpacing))
-                                Text(stringResource(R.string.read_from_here))
-                            }
-                        }
                     }
-                    IconButton(onClick = { container.speaker.speak(sentence, state.settings.speechRate) }) {
-                        Icon(Icons.Filled.RecordVoiceOver, contentDescription = stringResource(R.string.listen_sentence))
+                    if (target == null) {
+                        LanguagePrompt(onPick = ::chooseLanguage)
+                    } else {
+                        // The verb group it belongs to, then its translation (as on iOS, once a language is set).
+                        // Not when it is just the tapped word ("That's"): the headword and note explain it.
+                        chunk?.takeIf { it != word }?.let {
+                            Text(it, style = MaterialTheme.typography.titleMedium, textAlign = TextAlign.Center)
+                        }
+                        if (function == null || chunk != null) {
+                            TranslationText(translation ?: tappedTranslation, translationFailed, modelStatus, target)
+                        }
+                        LanguageButton(target, onPick = ::chooseLanguage)
                     }
+                    function?.let {
+                        Text(functionNote(it, word), color = MaterialTheme.colorScheme.onSurfaceVariant, textAlign = TextAlign.Center)
+                    }
+                    if (function == null) Definition(entry, entryLoaded)
+                    HorizontalDivider(Modifier.padding(vertical = 10.dp))
+                    SentenceBlock(sentence, rangeInSentence, function?.chunk, sentenceTranslation, onReadFromHere)
                 }
             }
             val known = saved?.learned == true
@@ -404,6 +489,150 @@ fun WordSheet(
                         fontWeight = FontWeight.SemiBold,
                         textAlign = TextAlign.Center,
                     )
+                }
+            }
+        }
+    }
+}
+
+/**
+ * The IPA shown under the headword: the table's for the slot a reading proves (a chosen
+ * reading's form, "wound" → waʊnd; a verb reading's base when it is the headword), over the
+ * dictionary's, which may be another reading's (SPEC S3).
+ */
+private fun phonetic(
+    entry: DictionaryEntry?,
+    reading: Reading?,
+    form: String,
+    headword: String,
+): String? {
+    val verbs = IrregularVerbs.shared
+    val table =
+        when {
+            reading == null -> null
+            reading.step == Reading.Step.CHOSEN -> verbs.ipaOf(form, reading)
+            reading.kind == Reading.Kind.VERB && TextTools.normalize(headword) == reading.base -> verbs.ipa(reading.base, "base")
+            else -> null
+        }
+    return table?.let { "/$it/" } ?: entry?.phonetic
+}
+
+/** The dictionary's definition with its part of speech, or that there is none once it has answered. */
+@Composable
+private fun Definition(
+    entry: DictionaryEntry?,
+    loaded: Boolean,
+) {
+    entry?.definition?.let { definition ->
+        Text(
+            buildAnnotatedString {
+                entry?.partOfSpeech?.let { withStyle(SpanStyle(fontStyle = FontStyle.Italic)) { append("$it · ") } }
+                append(definition)
+            },
+            color = MaterialTheme.colorScheme.onSurfaceVariant,
+            textAlign = TextAlign.Center,
+        )
+    }
+    if (loaded && entry == null) {
+        Text(stringResource(R.string.no_definition), color = MaterialTheme.colorScheme.onSurfaceVariant)
+    }
+}
+
+/** The sentence (the tapped word marked), its translation and a button to hear it. */
+@Composable
+private fun SentenceBlock(
+    sentence: String,
+    word: WordRange?,
+    chunk: WordRange?,
+    translation: String?,
+    onReadFromHere: (() -> Unit)?,
+) {
+    val container = LocalContainer.current
+    val state by container.library.state.collectAsStateWithLifecycle()
+    Row(Modifier.fillMaxWidth(), verticalAlignment = Alignment.Top) {
+        Column(Modifier.weight(1f)) {
+            Text(
+                markedSentence(sentence, word, chunk),
+                fontStyle = FontStyle.Italic,
+                fontFamily = ReadingFont,
+            )
+            translation?.let {
+                Spacer(Modifier.height(6.dp))
+                Text(it, color = MaterialTheme.colorScheme.onSurfaceVariant)
+            }
+            // Back to an earlier point, or on from this one (SPEC S6).
+            onReadFromHere?.let { ReadFromHereButton(it) }
+        }
+        IconButton(onClick = { container.speaker.speak(sentence, state.settings.speechRate) }) {
+            Icon(Icons.Filled.RecordVoiceOver, contentDescription = stringResource(R.string.listen_sentence))
+        }
+    }
+}
+
+@Composable
+private fun ReadFromHereButton(onClick: () -> Unit) {
+    TextButton(onClick = onClick, contentPadding = ButtonDefaults.TextButtonWithIconContentPadding) {
+        Icon(Icons.Filled.PlayArrow, contentDescription = null, modifier = Modifier.size(ButtonDefaults.IconSize))
+        Spacer(Modifier.width(ButtonDefaults.IconSpacing))
+        Text(stringResource(R.string.read_from_here))
+    }
+}
+
+/**
+ * An unsure word's two readings as a single choice, none preselected (SPEC S3): "to leave —
+ * irse, salir", "the left — izquierda". Rows are radio buttons for TalkBack and Switch Access;
+ * with large text the meaning goes on its own line.
+ */
+@Composable
+private fun ReadingChoices(
+    choices: List<Reading>,
+    meanings: List<String?>,
+    loading: Boolean,
+    language: String?,
+    chosen: Int?,
+    onChoose: (Int) -> Unit,
+) {
+    val stacked = LocalDensity.current.fontScale >= 1.5f
+    val translating = stringResource(R.string.translating)
+    Column(
+        Modifier
+            .fillMaxWidth()
+            .selectableGroup(),
+        verticalArrangement = Arrangement.spacedBy(8.dp),
+    ) {
+        choices.forEachIndexed { i, choice ->
+            val selected = chosen == i
+            val label = SavedMeaning.of(choice).label
+            val meaning = meanings.getOrNull(i).orEmpty()
+            Surface(
+                shape = MaterialTheme.shapes.medium,
+                color = if (selected) MaterialTheme.colorScheme.secondaryContainer else MaterialTheme.colorScheme.surfaceContainerHigh,
+                contentColor = if (selected) MaterialTheme.colorScheme.onSecondaryContainer else MaterialTheme.colorScheme.onSurface,
+                modifier =
+                    Modifier
+                        .fillMaxWidth()
+                        .heightIn(min = 56.dp)
+                        .selectable(selected = selected, role = Role.RadioButton, onClick = { onChoose(i) }),
+            ) {
+                Row(Modifier.padding(horizontal = 12.dp, vertical = 8.dp), verticalAlignment = Alignment.CenterVertically) {
+                    RadioButton(selected = selected, onClick = null)
+                    Spacer(Modifier.width(12.dp))
+                    Column(Modifier.weight(1f)) {
+                        if (stacked) {
+                            Text(label, fontWeight = FontWeight.SemiBold)
+                            if (meaning.isNotBlank()) Text(meaningsLine(listOf(meaning), language))
+                        } else {
+                            Text(readingLine(label, meaning, language))
+                        }
+                    }
+                    if (loading && meaning.isBlank()) {
+                        CircularProgressIndicator(
+                            Modifier
+                                .size(20.dp)
+                                .semantics { contentDescription = translating },
+                            strokeWidth = 2.dp,
+                        )
+                    }
                 }
             }
         }

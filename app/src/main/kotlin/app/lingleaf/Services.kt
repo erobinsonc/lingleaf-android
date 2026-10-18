@@ -28,7 +28,10 @@ import app.lingleaf.core.HttpFetcher
 import app.lingleaf.core.HttpResponse
 import app.lingleaf.core.IrregularVerbs
 import app.lingleaf.core.Library
+import app.lingleaf.core.Meanings
 import app.lingleaf.core.NetworkException
+import app.lingleaf.core.Reading
+import app.lingleaf.core.Sense
 import app.lingleaf.core.Settings
 import app.lingleaf.core.Storage
 import app.lingleaf.core.StorageNames
@@ -239,18 +242,49 @@ class AppContainer(
         appScope.launch {
             try {
                 for (word in library.wordsNeedingTranslation(target)) {
-                    val translation = translateOrNull(word.word, target) ?: break
-                    library.setTranslation(word.word, translation, target)
+                    val meanings = word.meanings
+                    if (word.isUnsure && meanings != null) {
+                        // Saved unsure: each reading's meaning, as on the card (SPEC S3).
+                        val translated = meanings.map { meaningOf(it.kind, it.base, target, first = true) }
+                        if (translated.any { it == null }) break
+                        library.setMeanings(word.key, translated.filterNotNull(), target)
+                        continue
+                    }
+                    val sense = word.sense
+                    val translation =
+                        when (sense) {
+                            null -> translateOrNull(word.word, target)
+                            else -> meaningOf(sense, word.word, target, homonym = sense == Sense.HOMONYM)
+                        } ?: break
+                    library.setTranslation(word.key, translation, target)
                 }
                 // The saved sentences too, shown under the meaning in Review (SPEC S7).
                 for (word in library.contextsNeedingTranslation(target)) {
                     val translation = translateOrNull(word.context, target) ?: break
-                    library.setContextTranslation(word.word, translation, target)
+                    library.setContextTranslation(word.key, translation, target)
                 }
             } finally {
                 filling.set(false)
             }
         }
+    }
+
+    /**
+     * The meaning of a reading in [target] (SPEC S3): for a verb in Spanish the table's meanings
+     * (the first group alone with [first]), else the translation of "to {base}" / "the {noun}"
+     * without the article or infinitive marker the query added. Null if translation fails.
+     */
+    suspend fun meaningOf(
+        sense: String,
+        base: String,
+        target: String,
+        first: Boolean = false,
+        homonym: Boolean = false,
+    ): String? {
+        val reading = Reading(if (sense == Sense.NOUN) Reading.Kind.NOUN else Reading.Kind.VERB, base, Reading.Step.CHOSEN)
+        Meanings.fromTable(reading, target, first, homonym)?.let { return it }
+        val translated = translateOrNull(Meanings.query(reading), target) ?: return null
+        return Meanings.clean(translated, noun = sense == Sense.NOUN, language = target)
     }
 
     companion object {
