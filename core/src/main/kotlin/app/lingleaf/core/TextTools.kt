@@ -257,6 +257,7 @@ object TextTools {
         word: String,
         reading: Reading?,
         irregular: Boolean,
+        homographs: Boolean = true,
     ): List<String> {
         val w = normalize(word)
         val out = mutableListOf<String>()
@@ -266,7 +267,7 @@ object TextTools {
         }
 
         val verbs = IrregularVerbs.shared
-        if (verbs.isHomograph(w)) {
+        if (homographs && verbs.isHomograph(w)) {
             val base = if (reading == null || reading.kind == Reading.Kind.UNSURE) verbs.sharedBase(w) else reading.base
             base?.let(::add)
             return out
@@ -368,6 +369,87 @@ object TextTools {
         if (saved.isEmpty()) return emptyList()
         return words.filterIndexed { index, _ -> matchKeys(text, words, index).any { it in saved } }
     }
+
+    /**
+     * The words of [text] ([words], its word ranges) that are forms of a word being learned in
+     * [learning], homographs read in their sentence and senses kept apart (SPEC S4): "the wind"
+     * doesn't mark "She wound the clock", a word saved unsure marks its exact form. One pass.
+     */
+    fun marked(
+        text: String,
+        words: List<WordRange>,
+        learning: LearningIndex,
+    ): List<WordRange> {
+        if (learning.isEmpty) return emptyList()
+        return words.filterIndexed { index, _ ->
+            senseKeys(text, words, index)?.let { (surface, keys) -> learning.matches(surface, keys) } == true
+        }
+    }
+
+    /**
+     * Where the saved [word] appears in [sentence]: its forms read in its sense (or a saved
+     * group of words, as [occurrences] with a string).
+     */
+    fun occurrences(
+        word: VocabWord,
+        sentence: String,
+    ): List<WordRange> {
+        if (' ' in word.word || (word.sense == null && word.meanings == null)) return occurrences(word.word, sentence)
+        return marked(sentence, wordRanges(sentence), LearningIndex.of(listOf(word.copy(learned = false))))
+    }
+
+    /**
+     * Word [index] of [words] (the word ranges of [text]), normalised, and the base forms it
+     * leads to with the sense of each: a homograph's reading ("she left" → leave as a verb), an
+     * irregular form's verb ("stolen" → steal; "lied" → lie, the twin), a regular form's any.
+     */
+    internal fun senseKeys(
+        text: String,
+        words: List<WordRange>,
+        index: Int,
+    ): Pair<String, List<MatchKey>>? {
+        val range = words.getOrNull(index)?.takeIf { it.fitsIn(text) && it.start < it.end } ?: return null
+        val surface = normalize(text.substring(range.start, range.end))
+        val verbs = IrregularVerbs.shared
+        val reading = verbs.resolve(text, words, index)
+        if (reading != null) {
+            val keys =
+                if (reading.kind == Reading.Kind.UNSURE || reading.step == Reading.Step.NAME) {
+                    // Unsure (or a name, "Aunt Rose"): the spelling, for words saved without a sense only.
+                    listOf(surface, verbs.sharedBase(surface)).filterNotNull().distinct().map { MatchKey(it, LearningIndex.UNSURE) }
+                } else {
+                    listOf(MatchKey(reading.base, Sense.of(reading)))
+                }
+            return surface to keys
+        }
+        val name = verbs.isName(text, words, index)
+        val keys = mutableListOf(MatchKey(surface, null))
+        val link = if (name) null else verbs.formToBase[surface]
+        if (link != null) keys += MatchKey(link, verbs.linkSense(surface, link))
+        for (candidate in candidates(
+            surface,
+            null,
+            irregular = false,
+        )) if (keys.none { it.word == candidate }) keys += MatchKey(candidate, null)
+        return surface to keys
+    }
+
+    /**
+     * Base forms [word] had before the irregular-verb table read homographs in their sentence:
+     * the old context-free links ("left" → "leave", "lives" → "life", "live"). For correcting
+     * words saved then (SPEC S18).
+     */
+    internal fun oldCandidates(word: String): Set<String> {
+        val w = normalize(word)
+        return setOfNotNull(OLD_HOMOGRAPH_LINKS[w]) + candidates(w, null, irregular = false, homographs = false)
+    }
+
+    /** The links the hand-written table gave homographs before the table existed. */
+    private val OLD_HOMOGRAPH_LINKS =
+        mapOf(
+            "saw" to "see", "thought" to "think", "found" to "find", "felt" to "feel", "left" to "leave",
+            "spoke" to "speak", "fell" to "fall", "rose" to "rise", "lives" to "life", "leaves" to "leaf",
+        )
 
     /** The word plus its likely base forms: what to match against saved words. Homographs are unsure. */
     fun matchKeys(word: String): Set<String> = setOf(normalize(word)) + baseFormCandidates(word)

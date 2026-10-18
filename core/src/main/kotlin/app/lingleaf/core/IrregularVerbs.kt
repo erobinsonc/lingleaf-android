@@ -290,6 +290,19 @@ class IrregularVerbs private constructor(table: Table) {
         homonym: Boolean = false,
     ): List<String> = verbsByBase[base]?.let { if (homonym) it.homonym?.es else it.es }.orEmpty()
 
+    /**
+     * The sense in which the irregular [form] leads to [base]: the regular twin's ("lied" → lie,
+     * to say what isn't true), any ("lying": both), else the verb's.
+     */
+    fun linkSense(
+        form: String,
+        base: String,
+    ): String? {
+        val twin = verbsByBase[base]?.homonym ?: return Sense.VERB
+        if (isHomonymForm(form, base)) return Sense.HOMONYM
+        return if (form in (listOf(twin.ing, twin.s) + twin.past + twin.participle)) null else Sense.VERB
+    }
+
     /** Whether [form] is only a form of [base]'s regular twin ("lied", "hanged"). */
     fun isHomonymForm(
         form: String,
