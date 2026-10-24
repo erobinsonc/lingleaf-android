@@ -1,8 +1,8 @@
 [versions]
 agp = "8.7.3"
-kotlin = "2.1.0"
-coroutines = "1.9.0"
-serialization = "1.7.3"
+kotlin = "2.4.21"
+coroutines = "1.11.0"
+serialization = "1.12.0"
 compose-bom = "2024.12.01"
 activity-compose = "1.9.3"
 navigation-compose = "2.8.5"
@@ -13,7 +13,7 @@ junit = "4.13.2"
 robolectric = "4.14.1"
 androidx-test-core = "1.6.1"
 ktlint-plugin = "12.1.2"
-kover = "0.9.0"
+kover = "0.9.11"
 
 [libraries]
 kotlinx-coroutines-core = { module = "org.jetbrains.kotlinx:kotlinx-coroutines-core", version.ref = "coroutines" }
