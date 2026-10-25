@@ -315,6 +315,50 @@ class IrregularVerbs private constructor(table: Table) {
         return all.firstOrNull()?.takeIf { first -> all.all { it == first } }
     }
 
+    /**
+     * What Listen says on Review and Words for a saved [word] in [sense] (SPEC S7): a verb or the
+     * regular twin with the table's spoken form of its base ("tare" for "tear"), a noun (or a word
+     * without a sense) as written.
+     */
+    fun spokenHeadword(
+        word: String,
+        sense: String?,
+    ): String = if (sense == Sense.VERB || sense == Sense.HOMONYM) spokenAs(TextTools.normalize(word), "base") ?: word else word
+
+    /**
+     * What the card's Listen says (SPEC S6): the [headword], then the word at [range] of [text]
+     * as written there when it differs ("wind", "wound"), each respelled for its proven slot (a
+     * verb's headword is its base); unsure, the tapped form in each reading in the rows' order,
+     * once when they sound the same, or only the [chosen] one.
+     */
+    fun listenText(
+        headword: String,
+        text: String,
+        range: WordRange,
+        chosen: Reading? = null,
+    ): String {
+        if (!range.fitsIn(text) || range.start >= range.end) return headword
+        val form = text.substring(range.start, range.end)
+        val normalized = TextTools.normalize(form)
+        val words = TextTools.wordRanges(text)
+        val index = words.indexOf(range).takeIf { it >= 0 }
+        val rows = index?.let { choices(text, words, it) }.orEmpty()
+        if (rows.isNotEmpty()) {
+            return (chosen?.let(::listOf) ?: rows).map { spokenOf(normalized, it) ?: form }.distinct().joinToString(", ")
+        }
+        val formSpoken = index?.let { spokenAt(text, words, it) } ?: form
+        if (TextTools.normalize(headword) == normalized) return formSpoken
+        val reading = index?.let { resolve(text, words, it) }
+        val verb =
+            if (reading != null) {
+                reading.kind == Reading.Kind.VERB || reading.kind == Reading.Kind.HOMONYM
+            } else {
+                index?.let { baseAt(text, words, it) } != null
+            }
+        val head = if (verb) spokenAs(TextTools.normalize(headword), "base") ?: headword else headword
+        return "$head, $formSpoken"
+    }
+
     /** What the voice says for [slot] of the verb [base] instead of its spelling, or null. */
     fun spokenAs(
         base: String,

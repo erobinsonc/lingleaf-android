@@ -84,7 +84,7 @@ data class LearningIndex(
                     when (key.sense) {
                         null -> true
                         UNSURE -> false
-                        NOT_VERB -> Sense.NOUN in senses
+                        NOT_VERB -> false
                         else -> key.sense in senses
                     }
                 } == true
@@ -95,7 +95,7 @@ data class LearningIndex(
         /** A key from an unsure homograph: never marks a word saved with a sense. */
         internal const val UNSURE = "unsure"
 
-        /** A key from an ordinary word ("the lights"): marks a noun saved with a sense, never a verb. */
+        /** A key from an ordinary word ("the lights"): no sense, so it marks no word saved with one (as on iOS). */
         internal const val NOT_VERB = "notVerb"
 
         fun of(words: Collection<VocabWord>): LearningIndex {

@@ -16,6 +16,8 @@ data class DictionaryEntry(
     val phonetic: String?,
     val partOfSpeech: String?,
     val definition: String?,
+    /** Every pronunciation the entry gives (US and UK), to tell its etymology apart ("wind" /waɪnd/). */
+    val phonetics: List<String> = emptyList(),
 ) {
     companion object {
         /**
@@ -36,7 +38,7 @@ data class DictionaryEntry(
         fun parseAll(answer: JsonArray): List<DictionaryEntry> =
             answer.take(MAX_ENTRIES).mapNotNull { it as? JsonObject }.flatMap { json ->
                 val meanings = (json["meanings"] as? JsonArray)?.take(MAX_MEANINGS)?.mapNotNull { it as? JsonObject }.orEmpty()
-                val first = parse(json)
+                val first = parse(json).copy(phonetics = pronunciations(json))
                 if (meanings.isEmpty()) {
                     listOf(first)
                 } else {
@@ -60,6 +62,30 @@ data class DictionaryEntry(
                     }
                 }
             }
+
+        /** The entry's pronunciations: its phonetic, then each in its phonetics, at most [MAX_MEANINGS]. */
+        private fun pronunciations(json: JsonObject): List<String> {
+            val all =
+                listOfNotNull((json["phonetic"] as? JsonPrimitive)?.contentOrNull) +
+                    (json["phonetics"] as? JsonArray)
+                        ?.take(MAX_MEANINGS)
+                        ?.mapNotNull { ((it as? JsonObject)?.get("text") as? JsonPrimitive)?.contentOrNull }
+                        .orEmpty()
+            return all.filter { it.isNotEmpty() }.map { TextTools.truncated(it, MAX_SHORT_FIELD) }.distinct().take(MAX_MEANINGS)
+        }
+
+        /** IPA compared without slashes, stress, syllable dots or spaces, and with r for ɹ and g for ɡ. */
+        internal fun sameIpa(
+            a: String,
+            b: String,
+        ): Boolean = ipaKey(a).isNotEmpty() && ipaKey(a) == ipaKey(b)
+
+        private fun ipaKey(ipa: String): String =
+            java.text.Normalizer
+                .normalize(ipa, java.text.Normalizer.Form.NFC)
+                .filterNot { it in "/[]()ˈˌ. " }
+                .replace('ɹ', 'r')
+                .replace('ɡ', 'g')
 
         fun parse(json: JsonObject): DictionaryEntry {
             val phonetic =
@@ -104,10 +130,16 @@ class DictionaryClient(private val http: HttpFetcher) {
         reading: Reading? = null,
     ): DictionaryEntry? {
         val w = TextTools.normalize(word)
-        if (reading != null && reading.kind != Reading.Kind.UNSURE) {
+        // The regular twin's sense ("lied": to say what isn't true) has no definition of its own here.
+        if (reading?.kind == Reading.Kind.HOMONYM) return null
+        val certain = reading != null && reading.step != Reading.Step.NAME
+        if (certain && (reading?.kind == Reading.Kind.VERB || reading?.kind == Reading.Kind.NOUN)) {
             val base = TextTools.normalize(reading.base)
-            val pos = if (reading.kind == Reading.Kind.VERB) "verb" else "noun"
-            return get(base, pos) ?: if (base != w) get(w, pos) else null
+            val verb = reading.kind == Reading.Kind.VERB
+            val pos = if (verb) "verb" else "noun"
+            // The table's IPA of the base tells which entry (etymology) is this verb ("wind" /waɪnd/).
+            val ipa = if (verb) IrregularVerbs.shared.ipa(base, "base") else null
+            return meaning(base, pos, ipa) ?: if (base != w) meaning(w, pos, null) else null
         }
         val direct = get(w)
         if (direct != null) {
@@ -118,6 +150,20 @@ class DictionaryClient(private val http: HttpFetcher) {
             get(candidate)?.let { return it }
         }
         return null
+    }
+
+    /**
+     * The first meaning of [word] in [partOfSpeech], from the entry whose pronunciation is [ipa]
+     * when one is; none of another part of speech.
+     */
+    private suspend fun meaning(
+        word: String,
+        partOfSpeech: String,
+        ipa: String?,
+    ): DictionaryEntry? {
+        val matching = entries(word)?.filter { it.partOfSpeech == partOfSpeech } ?: return null
+        if (ipa != null) matching.firstOrNull { e -> e.phonetics.any { DictionaryEntry.sameIpa(it, ipa) } }?.let { return it }
+        return matching.firstOrNull()
     }
 
     /** The first meaning of [word] in [partOfSpeech] (any when null). */

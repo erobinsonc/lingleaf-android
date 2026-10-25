@@ -14,7 +14,24 @@ data class Correction(
     val original: VocabWord,
     val key: String,
     val merged: Boolean,
-)
+    /** The entry as the correction wrote it (null when merged): Undo only removes it if unchanged. */
+    val result: VocabWord? = null,
+) {
+    /** As read back from storage: names cleaned and short, the key bounded, both words through [word]. */
+    internal fun bounded(word: (VocabWord) -> VocabWord): Correction =
+        copy(
+            from = TextTools.truncated(TextTools.cleanLabel(from), MAX_NAME),
+            to = TextTools.truncated(TextTools.cleanLabel(to), MAX_NAME),
+            key = TextTools.truncated(TextTools.normalize(key), MAX_KEY),
+            original = word(original),
+            result = result?.let(word),
+        )
+
+    companion object {
+        const val MAX_NAME = 40
+        private const val MAX_KEY = 100
+    }
+}
 
 /** Reads a word saved before homographs were read in their sentence against that sentence again. */
 internal object Corrections {
@@ -24,7 +41,10 @@ internal object Corrections {
      * The tapped occurrence is the homograph of the sentence that led to [word] then ("left" for
      * "leave"); a word that some other word of the sentence still leads to is left alone.
      */
-    fun correct(word: VocabWord): VocabWord? {
+    fun correct(
+        word: VocabWord,
+        language: String? = null,
+    ): VocabWord? {
         if (word.kind != null || word.sense != null || word.meanings != null || word.context.isBlank() || ' ' in word.word) return null
         val text = word.context
         val words = TextTools.wordRanges(text)
@@ -54,15 +74,31 @@ internal object Corrections {
             )
         return when {
             reading.kind == Reading.Kind.UNSURE -> {
-                if (word.word == surface) return null
-                val choices = verbs.choices(text, words, index).map(SavedMeaning::of)
+                // Saved as the form itself, or as the base both readings share ("tear" from "Tears fell."): it stays.
+                if (word.word == surface || word.word in TextTools.matchKeys(text, words, index)) return null
+                val choices = verbs.choices(text, words, index)
                 if (choices.isEmpty()) return null
-                fresh.copy(word = surface, sense = null, meanings = choices)
+                // A verb's meaning is the table's in Spanish; the others come with the translation.
+                val meanings = choices.map { SavedMeaning.of(it).copy(meaning = Meanings.fromTable(it, language, first = true).orEmpty()) }
+                fresh.copy(word = surface, sense = null, meanings = meanings, translationLanguage = language)
             }
             reading.base == word.word -> null
             // A name ("Aunt Rose") is the word itself, with no sense.
             reading.step == Reading.Step.NAME -> fresh.copy(word = reading.base, sense = null, meanings = null)
-            else -> fresh.copy(word = reading.base, sense = Sense.of(reading), meanings = null)
+            else -> {
+                val sense = Sense.of(reading)
+                val verb = sense == Sense.VERB || sense == Sense.HOMONYM
+                // A verb gets the table's IPA for its base, and in Spanish the table's meaning now.
+                val meaning = Meanings.fromTable(reading, language).orEmpty()
+                fresh.copy(
+                    word = reading.base,
+                    sense = sense,
+                    meanings = null,
+                    phonetic = if (verb) verbs.ipa(reading.base, "base")?.let { "/$it/" }.orEmpty() else "",
+                    translation = meaning,
+                    translationLanguage = language.takeIf { meaning.isNotEmpty() },
+                )
+            }
         }
     }
 }

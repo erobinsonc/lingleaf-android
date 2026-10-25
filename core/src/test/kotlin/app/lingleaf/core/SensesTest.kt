@@ -90,6 +90,7 @@ class SensesTest {
 
     @Test
     fun `two senses of one spelling are named apart`() {
+        storage.files["settings.json"] = """{"targetLanguage": "es"}"""
         val library = library()
         library.saveWord("wind", learned = false, sense = Sense.NOUN)
         val state1 = library.state.value
@@ -280,13 +281,14 @@ class SensesTest {
             )
         storage.files["words.json"] = Json.encodeToString(ListSerializer(VocabWord.serializer()), old.distinctBy { it.key })
         val library = library()
+        library.correctWordsOnce()
         val state = library.state.value
         val byKey = state.words.associateBy { it.key }
         // "leave" from "Turn left" → "left", the noun; due now, translated again.
         val left = byKey.getValue("left#noun")
         assertEquals("", left.translation)
         assertEquals("2026-10-09T09:00", left.nextReview)
-        assertEquals(3, left.box)
+        assertEquals(0, left.box, "from the first box again")
         assertEquals(WordRange(5, 9), left.formRange)
         // Unsure, its base from the old table → the tapped form with both readings; known stays known.
         val leaves = byKey.getValue("leaves")
@@ -305,7 +307,7 @@ class SensesTest {
         assertTrue(("leaf" to "leaves") in names)
         // Once only.
         storage.files["words.json"] = Json.encodeToString(ListSerializer(VocabWord.serializer()), old.take(1))
-        assertEquals(1, library().state.value.words.size, "not corrected again")
+        assertEquals(1, library().apply { correctWordsOnce() }.state.value.words.size, "not corrected again")
         // The card survives a restart until closed; Undo puts all back.
         storage.files["words.json"] = Json.encodeToString(ListSerializer(VocabWord.serializer()), state.words)
         val again = library()
@@ -330,6 +332,7 @@ class SensesTest {
             )
         storage.files["words.json"] = Json.encodeToString(ListSerializer(VocabWord.serializer()), old)
         val library = library()
+        library.correctWordsOnce()
         assertEquals(listOf("left#noun"), library.state.value.words.map { it.key })
         assertEquals("izquierda", library.state.value.words.single().translation, "the saved entry stays")
         assertTrue(library.state.value.corrections.single().merged)
@@ -340,6 +343,7 @@ class SensesTest {
         storage.files.remove("corrected-homographs")
         storage.files["words.json"] = Json.encodeToString(ListSerializer(VocabWord.serializer()), old)
         val again = library()
+        again.correctWordsOnce()
         again.undoCorrections()
         assertEquals(setOf("leave", "left#noun"), again.state.value.words.map { it.key }.toSet())
     }
@@ -349,9 +353,10 @@ class SensesTest {
         val cat = VocabWord("cat", context = "A cat.", createdAt = "2026-10-01T09:00", nextReview = "2026-10-01T09:00")
         storage.files["words.json"] = Json.encodeToString(ListSerializer(VocabWord.serializer()), listOf(cat))
         val library = library()
+        library.correctWordsOnce()
         assertTrue(library.state.value.corrections.isEmpty())
         assertNull(storage.files["corrections.json"])
-        assertEquals("1", storage.files["corrected-homographs"])
+        assertEquals("done", storage.files["corrected-homographs"])
     }
 
     @Test
