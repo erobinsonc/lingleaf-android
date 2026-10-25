@@ -154,7 +154,9 @@ fun WordSheet(
     val unsure = reading?.kind == Reading.Kind.UNSURE && choices.size == 2
     var chosen by rememberSaveable(word, sentence) { mutableStateOf<Int?>(null) }
     // The reading the card follows: the sentence's, or the learner's choice.
-    val effective: Reading? = if (unsure) chosen?.let(choices::getOrNull) else reading?.takeIf { it.kind != Reading.Kind.UNSURE }
+    // A certain verb, noun or twin reading; an ordinary word ("the lights") or a name is looked up as tapped.
+    val certain = reading?.takeIf { it.step != Reading.Step.NAME && it.kind in certainKinds }
+    val effective: Reading? = if (unsure) chosen?.let(choices::getOrNull) else certain
     val undecided = unsure && effective == null
 
     var entry by remember(word, effective) { mutableStateOf<DictionaryEntry?>(null) }
@@ -189,12 +191,10 @@ fun WordSheet(
     // Unsure: the tapped form stays the headword, chosen or not.
     val headword = function?.base ?: if (unsure) form else baseForm ?: word
     // What is saved: the reading's base with its sense, the tapped form unsure, else the headword.
-    val linkBase = verbs.formToBase[form]
     val sense =
         when {
             function != null || undecided -> null
             effective != null -> Sense.of(effective)
-            linkBase != null && headword == linkBase && verbs.isHomonymForm(form, linkBase) -> Sense.HOMONYM
             else -> null
         }
     val savedName =
@@ -208,7 +208,8 @@ fun WordSheet(
         }
     val savedWord = if (function == null) savedName else chunk ?: sentence
     val savedKey = VocabWord.keyOf(TextTools.normalize(savedWord), sense)
-    val saved = state.word(savedKey)
+    // A word saved before senses existed counts as this sense too; saving converts it.
+    val saved = if (function == null) state.saved(savedWord, sense) else state.word(savedKey)
     // The same form saved unsure before: saving a reading replaces it (SPEC S4).
     val unsureSaved = state.word(form)?.takeIf { it.isUnsure && savedKey != it.key && function == null }
 
@@ -340,23 +341,11 @@ fun WordSheet(
     // What Listen says (SPEC S6): the headword, then the form as in the text when it differs,
     // each respelled for its proven slot; unsure, the form in each reading (once if alike).
     val spoken =
-        remember(word, sentence, index, effective, headword, chunk) {
+        remember(word, sentence, rangeInSentence, effective, headword, chunk) {
             when {
                 function != null -> chunk ?: word
-                undecided -> choices.map { verbs.spokenOf(form, it) ?: form }.distinct().joinToString(", ")
-                else -> {
-                    val formSpoken =
-                        effective?.let { verbs.spokenOf(form, it) }
-                            ?: index?.let { verbs.spokenAt(sentence, words, it) }
-                            ?: form
-                    if (TextTools.normalize(headword) == form) {
-                        formSpoken
-                    } else {
-                        val headSpoken =
-                            effective?.takeIf { it.kind == Reading.Kind.VERB }?.let { verbs.spokenAs(it.base, "base") } ?: headword
-                        "$headSpoken, $formSpoken"
-                    }
-                }
+                rangeInSentence == null -> headword
+                else -> verbs.listenText(headword, sentence, rangeInSentence, chosen = effective.takeIf { unsure })
             }
         }
     val listenLabel =
@@ -495,6 +484,9 @@ fun WordSheet(
     }
 }
 
+/** Readings the card follows as certain: a verb, a noun or the regular twin. */
+private val certainKinds = setOf(Reading.Kind.VERB, Reading.Kind.NOUN, Reading.Kind.HOMONYM)
+
 /**
  * The IPA shown under the headword: the table's for the slot a reading proves (a chosen
  * reading's form, "wound" → waʊnd; a verb reading's base when it is the headword), over the
@@ -510,7 +502,10 @@ private fun phonetic(
     val table =
         when {
             reading == null -> null
-            reading.step == Reading.Step.CHOSEN -> verbs.ipaOf(form, reading)
+            // Chosen: the table's IPA of the form in that reading, else the dictionary's only for the base itself.
+            reading.step == Reading.Step.CHOSEN -> return verbs.ipaOf(form, reading)?.let {
+                "/$it/"
+            } ?: entry?.phonetic?.takeIf { form == reading.base }
             reading.kind == Reading.Kind.VERB && TextTools.normalize(headword) == reading.base -> verbs.ipa(reading.base, "base")
             else -> null
         }

@@ -54,6 +54,7 @@ import androidx.compose.ui.unit.dp
 import androidx.lifecycle.compose.collectAsStateWithLifecycle
 import app.lingleaf.R
 import app.lingleaf.core.Correction
+import app.lingleaf.core.IrregularVerbs
 import app.lingleaf.core.TextTools
 import app.lingleaf.core.VocabWord
 import kotlinx.coroutines.launch
@@ -210,7 +211,8 @@ private fun WordRow(
         },
         trailingContent = {
             Row {
-                IconButton(onClick = { container.speaker.speak(word.word, state.settings.speechRate) }) {
+                val spoken = IrregularVerbs.shared.spokenHeadword(word.word, word.sense)
+                IconButton(onClick = { container.speaker.speak(spoken, state.settings.speechRate) }) {
                     Icon(Icons.AutoMirrored.Filled.VolumeUp, contentDescription = stringResource(R.string.listen_word, word.word))
                 }
                 IconButton(onClick = { library.setLearned(word.key, !word.learned) }) {

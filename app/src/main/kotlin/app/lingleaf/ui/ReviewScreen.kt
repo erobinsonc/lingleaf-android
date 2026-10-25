@@ -60,6 +60,7 @@ import androidx.compose.ui.text.style.TextAlign
 import androidx.compose.ui.unit.dp
 import androidx.lifecycle.compose.collectAsStateWithLifecycle
 import app.lingleaf.R
+import app.lingleaf.core.IrregularVerbs
 import app.lingleaf.core.TextTools
 import app.lingleaf.core.VocabWord
 
@@ -226,7 +227,11 @@ private fun ReviewCard(
                         Row(verticalAlignment = Alignment.CenterVertically) {
                             Text(name, style = MaterialTheme.typography.headlineMedium, fontWeight = FontWeight.SemiBold)
                             IconButton(
-                                onClick = { container.speaker.speak(word.word, container.library.state.value.settings.speechRate) },
+                                onClick = {
+                                    // A verb with its base's spoken form ("tare"), a noun as written (SPEC S7).
+                                    val spoken = IrregularVerbs.shared.spokenHeadword(word.word, word.sense)
+                                    container.speaker.speak(spoken, container.library.state.value.settings.speechRate)
+                                },
                             ) {
                                 Icon(
                                     Icons.AutoMirrored.Filled.VolumeUp,

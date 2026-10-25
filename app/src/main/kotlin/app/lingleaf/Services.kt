@@ -282,7 +282,8 @@ class AppContainer(
         homonym: Boolean = false,
     ): String? {
         val reading = Reading(if (sense == Sense.NOUN) Reading.Kind.NOUN else Reading.Kind.VERB, base, Reading.Step.CHOSEN)
-        Meanings.fromTable(reading, target, first, homonym)?.let { return it }
+        // The regular twin's sense ("lied": mentir) has the twin's meanings.
+        Meanings.fromTable(reading, target, first, homonym || sense == Sense.HOMONYM)?.let { return it }
         val translated = translateOrNull(Meanings.query(reading), target) ?: return null
         return Meanings.clean(translated, noun = sense == Sense.NOUN, language = target)
     }
