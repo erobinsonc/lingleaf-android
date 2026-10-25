@@ -272,7 +272,17 @@ object TextTools {
             base?.let(::add)
             return out
         }
-        ((if (irregular) verbs.formToBase[w] else null) ?: NON_VERB[w])?.let(::add)
+        when (reading?.kind) {
+            // The twin's sense ("lied" → lie, to say what isn't true): its base only.
+            Reading.Kind.HOMONYM -> {
+                verbs.formToBase[w]?.let(::add)
+                return out
+            }
+            // An -s or -ing form no step proved: an ordinary word, no table link ("the lights";
+            // "a meeting" is the word itself).
+            Reading.Kind.WORD -> if (w.endsWith("ing")) return out
+            else -> ((if (irregular) verbs.formToBase[w] else null) ?: NON_VERB[w])?.let(::add)
+        }
 
         when {
             w.endsWith("'s") -> add(w.dropLast(2))
@@ -335,7 +345,8 @@ object TextTools {
         val word = text.substring(range.start, range.end)
         val verbs = IrregularVerbs.shared
         val reading = verbs.resolve(text, words, index)
-        return reading to candidates(word, reading, irregular = reading != null || !verbs.isName(text, words, index))
+        // A name ("Uncle Drew") has no irregular link.
+        return reading to candidates(word, reading, irregular = reading?.step != Reading.Step.NAME)
     }
 
     /**
@@ -413,24 +424,24 @@ object TextTools {
         val verbs = IrregularVerbs.shared
         val reading = verbs.resolve(text, words, index)
         if (reading != null) {
+            val name = reading.step == Reading.Step.NAME
+            val spellings = (listOf(surface) + candidates(surface, reading, irregular = !name)).distinct()
             val keys =
-                if (reading.kind == Reading.Kind.UNSURE || reading.step == Reading.Step.NAME) {
-                    // Unsure (or a name, "Aunt Rose"): the spelling, for words saved without a sense only.
-                    listOf(surface, verbs.sharedBase(surface)).filterNotNull().distinct().map { MatchKey(it, LearningIndex.UNSURE) }
-                } else {
-                    listOf(MatchKey(reading.base, Sense.of(reading)))
+                when {
+                    // Unsure (or a name, "Aunt Rose"): the spellings, for words saved without a sense only.
+                    reading.kind == Reading.Kind.UNSURE || name -> spellings.map { MatchKey(it, LearningIndex.UNSURE) }
+                    // An ordinary word ("the lights"): never a verb's sense.
+                    reading.kind == Reading.Kind.WORD -> spellings.map { MatchKey(it, LearningIndex.NOT_VERB) }
+                    // A form of the table that is no other word ("torn") also matches its own spelling.
+                    !verbs.isHomograph(surface) -> listOf(MatchKey(reading.base, Sense.of(reading)), MatchKey(surface, null))
+                    else -> listOf(MatchKey(reading.base, Sense.of(reading)))
                 }
             return surface to keys
         }
-        val name = verbs.isName(text, words, index)
         val keys = mutableListOf(MatchKey(surface, null))
-        val link = if (name) null else verbs.formToBase[surface]
-        if (link != null) keys += MatchKey(link, verbs.linkSense(surface, link))
-        for (candidate in candidates(
-            surface,
-            null,
-            irregular = false,
-        )) if (keys.none { it.word == candidate }) keys += MatchKey(candidate, null)
+        for (candidate in candidates(surface, null, irregular = true)) {
+            if (keys.none { it.word == candidate }) keys += MatchKey(candidate, null)
+        }
         return surface to keys
     }
 

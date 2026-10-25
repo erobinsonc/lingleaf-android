@@ -14,11 +14,13 @@ object Sense {
 
     val all = setOf(VERB, NOUN, HOMONYM)
 
-    /** The sense of a certain or chosen reading; null for unsure. */
+    /** The sense of a certain or chosen reading; null for unsure, an ordinary word or a name ("Aunt Rose"). */
     fun of(reading: Reading?): String? =
-        when (reading?.kind) {
-            Reading.Kind.VERB -> VERB
-            Reading.Kind.NOUN -> NOUN
+        when {
+            reading == null || reading.step == Reading.Step.NAME -> null
+            reading.kind == Reading.Kind.VERB -> VERB
+            reading.kind == Reading.Kind.NOUN -> NOUN
+            reading.kind == Reading.Kind.HOMONYM -> HOMONYM
             else -> null
         }
 }
@@ -42,10 +44,13 @@ data class SavedMeaning(
 
         fun of(reading: Reading): SavedMeaning = SavedMeaning(Sense.of(reading) ?: Sense.VERB, reading.base)
 
-        /** [meanings] as read back from storage: at most 2, each a known kind and a–z base, its meaning cleaned. */
+        /**
+         * [meanings] as read back from storage: at most 2, each a known kind (verb, noun or the
+         * twin) and an a–z base, its meaning cleaned. The label is never stored: it comes from these.
+         */
         fun bounded(meanings: List<SavedMeaning>?): List<SavedMeaning>? =
             meanings
-                ?.filter { (it.kind == Sense.VERB || it.kind == Sense.NOUN) && basePattern.matches(it.base) }
+                ?.filter { it.kind in Sense.all && basePattern.matches(it.base) }
                 ?.take(2)
                 ?.map { it.copy(meaning = TextTools.truncated(TextTools.cleanLabel(it.meaning), MAX_MEANING)) }
                 ?.takeIf { it.isNotEmpty() }
@@ -79,6 +84,7 @@ data class LearningIndex(
                     when (key.sense) {
                         null -> true
                         UNSURE -> false
+                        NOT_VERB -> Sense.NOUN in senses
                         else -> key.sense in senses
                     }
                 } == true
@@ -88,6 +94,9 @@ data class LearningIndex(
     companion object {
         /** A key from an unsure homograph: never marks a word saved with a sense. */
         internal const val UNSURE = "unsure"
+
+        /** A key from an ordinary word ("the lights"): marks a noun saved with a sense, never a verb. */
+        internal const val NOT_VERB = "notVerb"
 
         fun of(words: Collection<VocabWord>): LearningIndex {
             val learning = words.filter { !it.learned }
@@ -112,6 +121,17 @@ object Meanings {
     /** What to translate for [reading]: "to leave", "the left". */
     fun query(reading: Reading): String = if (reading.kind == Reading.Kind.NOUN) "the ${reading.base}" else "to ${reading.base}"
 
+    /** What to translate for a saved word in [sense]. */
+    fun query(
+        word: String,
+        sense: String?,
+    ): String =
+        when (sense) {
+            null -> word
+            Sense.NOUN -> "the $word"
+            else -> "to $word"
+        }
+
     /** What to translate for a saved meaning. */
     fun query(meaning: SavedMeaning): String = meaning.label
 
@@ -126,8 +146,9 @@ object Meanings {
         first: Boolean = false,
         homonym: Boolean = false,
     ): String? {
-        if (reading.kind != Reading.Kind.VERB || language?.substringBefore('-') != "es") return null
-        val meanings = IrregularVerbs.shared.meanings(reading.base, homonym)
+        val verb = reading.kind == Reading.Kind.VERB || reading.kind == Reading.Kind.HOMONYM
+        if (!verb || language?.substringBefore('-') != "es") return null
+        val meanings = IrregularVerbs.shared.meanings(reading.base, homonym || reading.kind == Reading.Kind.HOMONYM)
         if (meanings.isEmpty()) return null
         return if (first) meanings.first() else meanings.joinToString(" · ")
     }

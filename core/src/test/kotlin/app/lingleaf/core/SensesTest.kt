@@ -33,7 +33,8 @@ class SensesTest {
         library.saveWord("wind", learned = false, sense = Sense.VERB)
         assertEquals(listOf("wind", "wound"), marked("The wind was cold. She wound the clock.", library.state.value))
         assertEquals(2, library.state.value.words.size, "one entry per sense")
-        assertEquals(listOf("winding"), marked("A winding road.", library.state.value), "regular forms: any sense")
+        assertEquals(listOf("winding"), marked("She is winding the clock.", library.state.value), "an -ing form a step proves")
+        assertEquals(emptyList(), marked("A winding road.", library.state.value), "after a determiner: an ordinary word")
     }
 
     @Test
@@ -59,7 +60,8 @@ class SensesTest {
     fun `old words without a sense mark any reading of their forms, as before`() {
         val library = library()
         library.saveWord("leave", learned = false)
-        assertEquals(listOf("left", "leaving"), marked("She left, leaving.", library.state.value))
+        assertEquals(listOf("left", "leaving"), marked("She left, leaving the room.", library.state.value))
+        assertEquals(listOf("left"), marked("She left, leaving.", library.state.value), "an -ing form nothing proves")
         assertEquals(emptyList(), marked("Turn left.", library.state.value))
     }
 
@@ -67,9 +69,11 @@ class SensesTest {
     fun `irregular links lead to the verb, a twin's forms to the twin`() {
         val library = library()
         library.saveWord("lie", learned = false, sense = Sense.HOMONYM)
-        assertEquals(listOf("lied", "lying"), marked("He lied, lying again; she lay down.", library.state.value))
+        assertEquals(listOf("lied", "lying"), marked("He lied, lying to us; she lay down.", library.state.value))
+        assertEquals(listOf("lied"), marked("He lied, lying again.", library.state.value), "unsure: no sensed word")
         library.saveWord("lie", learned = false, sense = Sense.VERB)
-        assertEquals(listOf("lied", "lying", "lay"), marked("He lied, lying again; she lay down.", library.state.value))
+        assertEquals(listOf("lied", "lying", "lay"), marked("He lied, lying to us; she lay down.", library.state.value))
+        assertEquals(listOf("lying"), library().state.value.let { marked("She was lying on the bed.", library.state.value) })
         assertEquals(
             listOf("drew"),
             marked(
