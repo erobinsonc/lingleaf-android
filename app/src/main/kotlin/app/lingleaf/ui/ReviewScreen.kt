@@ -52,6 +52,7 @@ import androidx.compose.ui.semantics.liveRegion
 import androidx.compose.ui.semantics.progressBarRangeInfo
 import androidx.compose.ui.semantics.semantics
 import androidx.compose.ui.semantics.stateDescription
+import androidx.compose.ui.text.AnnotatedString
 import androidx.compose.ui.text.SpanStyle
 import androidx.compose.ui.text.buildAnnotatedString
 import androidx.compose.ui.text.font.FontStyle
@@ -108,7 +109,8 @@ fun ReviewScreen(onBack: () -> Unit) {
             ReviewCard(
                 // The saved word, so a translation filled in meanwhile shows up.
                 word = state.word(current.key) ?: current,
-                name = state.displayName(state.word(current.key) ?: current),
+                // Before "Show meaning", two senses are named without their meaning: recall first (SPEC S7).
+                name = state.displayName(state.word(current.key) ?: current, withMeaning = revealed),
                 target = target,
                 reviewed = reviewed,
                 total = total,
@@ -228,8 +230,9 @@ private fun ReviewCard(
                             Text(name, style = MaterialTheme.typography.headlineMedium, fontWeight = FontWeight.SemiBold)
                             IconButton(
                                 onClick = {
-                                    // A verb with its base's spoken form ("tare"), a noun as written (SPEC S7).
-                                    val spoken = IrregularVerbs.shared.spokenHeadword(word.word, word.sense)
+                                    // A verb with its base's spoken form ("tare"), a noun as written, a word
+                                    // saved unsure in each reading (SPEC S7).
+                                    val spoken = IrregularVerbs.shared.spokenSaved(word)
                                     container.speaker.speak(spoken, container.library.state.value.settings.speechRate)
                                 },
                             ) {
@@ -265,15 +268,32 @@ private fun ReviewCard(
                                             )
                                         }
                                     } else {
-                                        Text(
-                                            word.translation.ifEmpty { stringResource(R.string.no_translation) },
-                                            style = MaterialTheme.typography.headlineSmall,
-                                            textAlign = TextAlign.Center,
-                                        )
+                                        // In its language, so TalkBack reads it with that voice.
+                                        val shown =
+                                            if (word.translation.isEmpty()) {
+                                                AnnotatedString(stringResource(R.string.no_translation))
+                                            } else {
+                                                meaningsLine(listOf(word.translation), word.translationLanguage)
+                                            }
+                                        Text(shown, style = MaterialTheme.typography.headlineSmall, textAlign = TextAlign.Center)
                                     }
                                 }
                             } else {
-                                FilledTonalButton(onClick = onReveal) { Text(stringResource(R.string.show_meaning)) }
+                                Column(
+                                    horizontalAlignment = Alignment.CenterHorizontally,
+                                    verticalArrangement = Arrangement.spacedBy(12.dp),
+                                ) {
+                                    // Two senses of one spelling ("to lie"): the sentence tells which, its translation not yet.
+                                    if (name != word.word && word.context.isNotEmpty()) {
+                                        Text(
+                                            markedSentence(word),
+                                            fontStyle = FontStyle.Italic,
+                                            fontFamily = ReadingFont,
+                                            textAlign = TextAlign.Center,
+                                        )
+                                    }
+                                    FilledTonalButton(onClick = onReveal) { Text(stringResource(R.string.show_meaning)) }
+                                }
                             }
                         }
                         // Outside the live region: TalkBack reads the meaning, not the whole sentence too.

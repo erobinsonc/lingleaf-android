@@ -137,6 +137,17 @@ class IrregularVerbs private constructor(table: Table) {
     /** Whether [word] (normalised) is a homograph of the table, read from its sentence. */
     fun isHomograph(word: String) = word in homographs
 
+    /**
+     * Whether a word saved with a sense is always named by it in Words and Review ("to wind",
+     * "the left", "to lie"; SPEC S4): a homograph of the table, a base used mostly as a noun
+     * (`nounFirst`) or one with a regular twin.
+     */
+    fun namesItsSense(word: String): Boolean {
+        val w = TextTools.normalize(word)
+        val verb = verbsByBase[w]
+        return w in homographs || verb?.nounFirst == true || verb?.homonym != null
+    }
+
     /** The base both readings of a homograph share ("tears" → "tear"), else null. */
     fun sharedBase(word: String): String? = homographs[word]?.takeIf { it.noun == it.verb }?.verb
 
@@ -324,6 +335,27 @@ class IrregularVerbs private constructor(table: Table) {
         word: String,
         sense: String?,
     ): String = if (sense == Sense.VERB || sense == Sense.HOMONYM) spokenAs(TextTools.normalize(word), "base") ?: word else word
+
+    /**
+     * What Listen says on Review and Words for [word] (SPEC S7): a word saved unsure, its form in
+     * each saved reading (once when they sound the same), as on the card; else [spokenHeadword].
+     */
+    fun spokenSaved(word: VocabWord): String {
+        val meanings = word.meanings
+        if (!word.isUnsure || meanings == null) return spokenHeadword(word.word, word.sense)
+        val shown = word.form ?: word.word
+        return meanings
+            .map { meaning ->
+                val kind =
+                    when (meaning.kind) {
+                        Sense.NOUN -> Reading.Kind.NOUN
+                        Sense.HOMONYM -> Reading.Kind.HOMONYM
+                        else -> Reading.Kind.VERB
+                    }
+                spokenOf(word.word, Reading(kind, meaning.base, Reading.Step.CHOSEN)) ?: shown
+            }.distinct()
+            .joinToString(", ")
+    }
 
     /**
      * What the card's Listen says (SPEC S6): the [headword], then the word at [range] of [text]

@@ -113,12 +113,15 @@ data class VocabWord(
         val cleanForm = form?.takeIf { it.length <= MAX_FORM && formPattern.matches(it) }
         val withForm = copy(sense = sense?.takeIf { it in Sense.all }, form = cleanForm)
         val range = withForm.formRange
-        return withForm.copy(
-            formStart = range?.start,
-            formEnd = range?.end,
-            form = cleanForm.takeIf { range != null },
-            meanings = if (withForm.sense != null) null else SavedMeaning.bounded(meanings),
-        )
+        val bounded =
+            withForm.copy(
+                formStart = range?.start,
+                formEnd = range?.end,
+                form = cleanForm.takeIf { range != null },
+                meanings = if (withForm.sense != null) null else SavedMeaning.bounded(meanings),
+            )
+        // A word that has its meaning waits for nothing, however it got it.
+        return if (bounded.waitsForMeaning && bounded.hasMeaning) bounded.copy(waitsForMeaning = false) else bounded
     }
 
     companion object {
@@ -193,18 +196,24 @@ data class LibraryState(
     fun word(key: String) = words.firstOrNull { it.key == TextTools.normalize(key) }
 
     /**
-     * How Words and Review name [word]: its spelling, or "to wind" / "the wind" when another
-     * sense of the same spelling is saved too (SPEC S4).
+     * How Words and Review name [word] (SPEC S4): its spelling, or "to wind" / "the wind" when
+     * another sense of the same spelling is saved too, or always for a spelling that is also
+     * another word (a homograph, a base mostly a noun, a verb with a twin); two verb senses add
+     * their first meaning, except [withMeaning] false (Review's prompt).
      */
-    fun displayName(word: VocabWord): String {
+    fun displayName(
+        word: VocabWord,
+        withMeaning: Boolean = true,
+    ): String {
         val sense = word.sense ?: return word.word
         val others = words.filter { it.word == word.word && it.sense != null && it.sense != sense }
-        if (others.isEmpty()) return word.word
+        if (others.isEmpty() && !IrregularVerbs.shared.namesItsSense(word.word)) return word.word
         val name = if (sense == Sense.NOUN) "the ${word.word}" else "to ${word.word}"
         // Two verbs ("to lie": recline, say what isn't true): their first meanings tell them apart,
         // the table's in Spanish, else the translated one.
         val twin = others.any { it.sense != Sense.NOUN } && sense != Sense.NOUN
-        if (!twin) return name
+        // Review's prompt names it without its meaning: recall comes first (SPEC S7).
+        if (!twin || !withMeaning) return name
         val spanish = settings.targetLanguage?.substringBefore('-') == "es"
         val meaning =
             if (spanish) {
@@ -267,6 +276,9 @@ class Library(
     private val readingLogSerializer = MapSerializer(String.serializer(), Int.serializer())
     private val _state = MutableStateFlow(LibraryState())
     val state: StateFlow<LibraryState> = _state.asStateFlow()
+
+    /** Runs between planning the corrections and applying them (tests change a word there). */
+    internal var beforeApply: () -> Unit = {}
 
     /** Whether the irregular-verb table loaded; the corrections need it (tests can say it didn't). */
     internal var tableReady: () -> Boolean = { IrregularVerbs.loadError == null && IrregularVerbs.shared.formToBase.isNotEmpty() }
@@ -335,21 +347,43 @@ class Library(
      * it. Words shows the corrections until closed, with Undo. The app runs this off the main
      * thread after [load]; at most [MAX_CORRECTED_PER_RUN] words are read per run.
      */
-    @Synchronized
     fun correctWordsOnce() {
         val progress = storage.read(CORRECTED)
         if (progress == DONE || progress == LEGACY_DONE) return
         // Only with the table: a refused table would read every word as unsure.
         if (!tableReady()) return
-        val after = progress?.removePrefix(PARTIAL)?.takeIf { progress.startsWith(PARTIAL) }
-        val language = _state.value.settings.targetLanguage
-        val eligible = _state.value.words.filter { after == null || it.createdAt < after }
-        val batch = eligible.take(MAX_CORRECTED_PER_RUN)
+        // Plan on a snapshot, outside the lock: reading thousands of sentences must not hold up
+        // the screens' saves and answers. The plan is applied under the lock, word by word, only
+        // to entries still exactly as they were read.
+        val snapshot = _state.value
+        val cursor = Cursor.parse(progress)
+        val eligible = snapshot.words.sortedWith(Cursor.order).filter { cursor == null || cursor.isBefore(it) }
+        val room = MAX_CORRECTIONS - snapshot.corrections.size
+        val plan = mutableListOf<Pair<VocabWord, VocabWord>>()
+        var read = 0
+        for (original in eligible) {
+            if (read == MAX_CORRECTED_PER_RUN || plan.size >= room) break
+            read++
+            Corrections.correct(original, snapshot.settings.targetLanguage)?.let { plan += original to it }
+        }
+        val done = read == eligible.size
+        val last = eligible.getOrNull(read - 1)
+        beforeApply()
+        apply(plan, if (done || last == null) DONE else Cursor(LocalDateTime.parse(last.createdAt), last.key).toString())
+    }
+
+    @Synchronized
+    private fun apply(
+        plan: List<Pair<VocabWord, VocabWord>>,
+        progress: String,
+    ) {
         val items = mutableListOf<Correction>()
         var words = _state.value.words
-        for (original in batch) {
-            val corrected = Corrections.correct(original, language) ?: continue
-            val merged = words.any { it.key == corrected.key && it !== original }
+        for ((original, corrected) in plan) {
+            // Changed or deleted while the plan was made: left alone.
+            val current = words.firstOrNull { it.key == original.key }
+            if (current != original) continue
+            val merged = words.any { it.key == corrected.key && it !== current }
             val next =
                 if (original.learned) {
                     corrected
@@ -357,35 +391,50 @@ class Library(
                     // Rehearsed with a wrong meaning: from the first box, due now, once it has a meaning.
                     corrected.copy(box = 0, nextReview = now().toString(), waitsForMeaning = !corrected.hasMeaning)
                 }.bounded()
-            words = words.filterNot { it === original }
+            words = words.filterNot { it === current }
             if (!merged) words = words + next
-            val from = original.word
-            items +=
-                Correction(
-                    from = from, to = corrected.word, original = original, key = next.key, merged = merged,
-                    result =
-                        next.takeUnless {
-                            merged
-                        },
-                )
+            items += Correction(original.word, corrected.word, original, next.key, merged, next.takeUnless { merged })
         }
         // The flag is written before the result is saved: a crash while saving can't make every
         // start run (and crash in) the migration again.
-        val done = batch.size == eligible.size
-        storage.write(CORRECTED, if (done) DONE else PARTIAL + batch.last().createdAt)
+        storage.write(CORRECTED, progress)
         if (items.isEmpty()) return
-        _state.update {
-            it.copy(
-                words =
-                    words.sortedByDescending {
-                            w ->
-                        w.createdAt
-                    },
-                corrections = (it.corrections + items).take(MAX_CORRECTIONS),
-            )
-        }
+        _state.update { it.copy(words = words.sortedByDescending { w -> w.createdAt }, corrections = it.corrections + items) }
         saveWords()
         saveCorrections()
+    }
+
+    /**
+     * Where a run of [correctWordsOnce] stopped: words are read newest first, ties by key, so the
+     * next run starts right after ([createdAt], [key]); "after:" followed by both. A value that
+     * isn't one starts over.
+     */
+    private data class Cursor(
+        val createdAt: LocalDateTime,
+        val key: String,
+    ) {
+        fun isBefore(word: VocabWord): Boolean {
+            val at = LocalDateTime.parse(word.createdAt)
+            return at < createdAt || (at == createdAt && word.key > key)
+        }
+
+        override fun toString() = "$PARTIAL$createdAt$SEPARATOR$key"
+
+        companion object {
+            private const val SEPARATOR = "\t"
+            private const val MAX_KEY = 200
+
+            val order: Comparator<VocabWord> =
+                compareByDescending<VocabWord> { LocalDateTime.parse(it.createdAt) }.thenBy { it.key }
+
+            fun parse(progress: String?): Cursor? {
+                val value = progress?.takeIf { it.startsWith(PARTIAL) }?.removePrefix(PARTIAL) ?: return null
+                val at = value.substringBefore(SEPARATOR, "")
+                val key = value.substringAfter(SEPARATOR, "")
+                if (key.isEmpty() || key.length > MAX_KEY) return null
+                return runCatching { Cursor(LocalDateTime.parse(at), key) }.getOrNull()
+            }
+        }
     }
 
     /**
@@ -400,7 +449,10 @@ class Library(
         if (items.isEmpty()) return
         var words = _state.value.words
         for (item in items.asReversed()) {
-            if (!item.merged) {
+            if (item.merged) {
+                // The entry it was merged into was deleted since: the word is gone, as the learner left it.
+                if (words.none { it.key == item.key }) continue
+            } else {
                 val result = item.result ?: continue
                 val current = words.firstOrNull { it.key == result.key }
                 if (current == null || current.changedSince(result)) continue

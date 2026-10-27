@@ -94,7 +94,7 @@ class SensesTest {
         val library = library()
         library.saveWord("wind", learned = false, sense = Sense.NOUN)
         val state1 = library.state.value
-        assertEquals("wind", state1.displayName(state1.words.single()))
+        assertEquals("the wind", state1.displayName(state1.words.single()), "a homograph: always its sense")
         library.saveWord("wind", learned = false, sense = Sense.VERB)
         val state = library.state.value
         assertEquals("the wind", state.displayName(state.word("wind#noun")!!))

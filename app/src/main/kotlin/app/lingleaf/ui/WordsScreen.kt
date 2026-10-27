@@ -196,7 +196,7 @@ private fun WordRow(
                     val line = meaningsLine(meanings.map { it.meaning }, word.translationLanguage)
                     if (line.isNotEmpty()) Text(line)
                 } else if (word.translation.isNotEmpty()) {
-                    Text(word.translation)
+                    Text(meaningsLine(listOf(word.translation), word.translationLanguage))
                 }
                 if (word.context.isNotEmpty() && TextTools.normalize(word.context) != word.word) {
                     Text(
@@ -211,7 +211,7 @@ private fun WordRow(
         },
         trailingContent = {
             Row {
-                val spoken = IrregularVerbs.shared.spokenHeadword(word.word, word.sense)
+                val spoken = IrregularVerbs.shared.spokenSaved(word)
                 IconButton(onClick = { container.speaker.speak(spoken, state.settings.speechRate) }) {
                     Icon(Icons.AutoMirrored.Filled.VolumeUp, contentDescription = stringResource(R.string.listen_word, word.word))
                 }

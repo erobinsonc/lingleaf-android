@@ -139,7 +139,10 @@ class DictionaryClient(private val http: HttpFetcher) {
             val pos = if (verb) "verb" else "noun"
             // The table's IPA of the base tells which entry (etymology) is this verb ("wind" /waɪnd/).
             val ipa = if (verb) IrregularVerbs.shared.ipa(base, "base") else null
-            return meaning(base, pos, ipa) ?: if (base != w) meaning(w, pos, null) else null
+            // The tapped form only when the base has no entry of this part of speech at all.
+            val ofBase = entries(base)?.filter { it.partOfSpeech == pos }.orEmpty()
+            if (ofBase.isNotEmpty() || base == w) return pick(ofBase, ipa)
+            return pick(entries(w)?.filter { it.partOfSpeech == pos }.orEmpty(), null)
         }
         val direct = get(w)
         if (direct != null) {
@@ -153,16 +156,15 @@ class DictionaryClient(private val http: HttpFetcher) {
     }
 
     /**
-     * The first meaning of [word] in [partOfSpeech], from the entry whose pronunciation is [ipa]
-     * when one is; none of another part of speech.
+     * The first of [matching] (meanings of one part of speech), from the entry whose pronunciation
+     * is [ipa] when the table gives one (else none: nothing proves which it is).
      */
-    private suspend fun meaning(
-        word: String,
-        partOfSpeech: String,
+    private fun pick(
+        matching: List<DictionaryEntry>,
         ipa: String?,
     ): DictionaryEntry? {
-        val matching = entries(word)?.filter { it.partOfSpeech == partOfSpeech } ?: return null
-        if (ipa != null) matching.firstOrNull { e -> e.phonetics.any { DictionaryEntry.sameIpa(it, ipa) } }?.let { return it }
+        // The table knows this verb's pronunciation: only an entry with it is this verb; none, no definition.
+        if (ipa != null) return matching.firstOrNull { e -> e.phonetics.any { DictionaryEntry.sameIpa(it, ipa) } }
         return matching.firstOrNull()
     }
 
