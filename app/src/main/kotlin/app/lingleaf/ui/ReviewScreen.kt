@@ -111,6 +111,8 @@ fun ReviewScreen(onBack: () -> Unit) {
                 word = state.word(current.key) ?: current,
                 // Before "Show meaning", two senses are named without their meaning: recall first (SPEC S7).
                 name = state.displayName(state.word(current.key) ?: current, withMeaning = revealed),
+                // Two senses of its spelling saved: the prompt also shows the sentence (SPEC S7).
+                twoSenses = state.words.count { it.word == current.word && it.sense != null } >= 2,
                 target = target,
                 reviewed = reviewed,
                 total = total,
@@ -164,6 +166,7 @@ private fun ReviewCard(
     word: VocabWord,
     /** "to wind" / "the wind" when both senses are saved, else the word (SPEC S4). */
     name: String,
+    twoSenses: Boolean,
     target: String?,
     reviewed: Int,
     total: Int,
@@ -284,7 +287,7 @@ private fun ReviewCard(
                                     verticalArrangement = Arrangement.spacedBy(12.dp),
                                 ) {
                                     // Two senses of one spelling ("to lie"): the sentence tells which, its translation not yet.
-                                    if (name != word.word && word.context.isNotEmpty()) {
+                                    if (twoSenses && word.context.isNotEmpty()) {
                                         Text(
                                             markedSentence(word),
                                             fontStyle = FontStyle.Italic,

@@ -245,7 +245,18 @@ class AppContainer(
                     val meanings = word.meanings
                     if (word.isUnsure && meanings != null) {
                         // Saved unsure: each reading's meaning, as on the card (SPEC S3).
-                        val translated = meanings.map { meaningOf(it.kind, it.base, target, first = true) }
+                        val rows =
+                            meanings.map {
+                                val kind =
+                                    when (it.kind) {
+                                        Sense.NOUN -> Reading.Kind.NOUN
+                                        Sense.HOMONYM -> Reading.Kind.HOMONYM
+                                        else -> Reading.Kind.VERB
+                                    }
+                                Reading(kind, it.base, Reading.Step.CHOSEN)
+                            }
+                        // Two rows that read the same each add their sense's gloss.
+                        val translated = Meanings.distinguished(rows, rows.map { meaningOf(it, target, first = true) })
                         if (translated.any { it == null }) break
                         library.setMeanings(word.key, translated.filterNotNull(), target)
                         continue
@@ -253,7 +264,13 @@ class AppContainer(
                     val sense = word.sense
                     val translation =
                         when (sense) {
-                            null -> translateOrNull(word.word, target)
+                            // An expression saved as a unit ("bound for"): its own meanings and query.
+                            null ->
+                                if (IrregularVerbs.shared.expressionEs(word.word).isNotEmpty()) {
+                                    meaningOf(Reading(Reading.Kind.EXPRESSION, word.word, Reading.Step.EXPRESSION), target)
+                                } else {
+                                    translateOrNull(word.word, target)
+                                }
                             else -> meaningOf(sense, word.word, target, homonym = sense == Sense.HOMONYM)
                         } ?: break
                     library.setTranslation(word.key, translation, target)
@@ -281,11 +298,29 @@ class AppContainer(
         first: Boolean = false,
         homonym: Boolean = false,
     ): String? {
-        val reading = Reading(if (sense == Sense.NOUN) Reading.Kind.NOUN else Reading.Kind.VERB, base, Reading.Step.CHOSEN)
-        // The regular twin's sense ("lied": mentir) has the twin's meanings.
-        Meanings.fromTable(reading, target, first, homonym || sense == Sense.HOMONYM)?.let { return it }
+        // The regular twin's sense ("lied": mentir) has the twin's meanings and English query.
+        val kind =
+            when {
+                sense == Sense.NOUN -> Reading.Kind.NOUN
+                sense == Sense.HOMONYM || homonym -> Reading.Kind.HOMONYM
+                else -> Reading.Kind.VERB
+            }
+        return meaningOf(Reading(kind, base, Reading.Step.CHOSEN), target, first)
+    }
+
+    /**
+     * The meaning of [reading] in [target]: the table's Spanish (a verb, the twin, an expression,
+     * the twin's noun), else the translation of its English query ("to lie down", "the left",
+     * "heading for") without what only the query needed. Null if translation fails.
+     */
+    suspend fun meaningOf(
+        reading: Reading,
+        target: String,
+        first: Boolean = false,
+    ): String? {
+        Meanings.fromTable(reading, target, first)?.let { return it }
         val translated = translateOrNull(Meanings.query(reading), target) ?: return null
-        return Meanings.clean(translated, noun = sense == Sense.NOUN, language = target)
+        return Meanings.clean(translated, noun = reading.kind == Reading.Kind.NOUN, language = target)
     }
 
     companion object {

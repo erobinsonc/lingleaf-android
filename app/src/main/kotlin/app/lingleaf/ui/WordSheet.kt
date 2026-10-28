@@ -81,6 +81,7 @@ import app.lingleaf.TRANSLATION_LANGUAGES
 import app.lingleaf.core.DictionaryEntry
 import app.lingleaf.core.FunctionWord
 import app.lingleaf.core.IrregularVerbs
+import app.lingleaf.core.Meanings
 import app.lingleaf.core.Reading
 import app.lingleaf.core.SavedMeaning
 import app.lingleaf.core.Sense
@@ -189,7 +190,18 @@ fun WordSheet(
     // The dictionary's base form ("animal") when it differs from the tapped word ("animals").
     val baseForm = entry?.word?.takeIf { it != form } ?: tableBase?.takeIf { entryLoaded && entry == null }
     // Unsure: the tapped form stays the headword, chosen or not.
-    val headword = function?.base ?: if (unsure) form else baseForm ?: word
+    val headword =
+        function?.base ?: when {
+            unsure -> form
+            // An expression is shown as the unit ("bound for").
+            effective != null && effective.kind == Reading.Kind.EXPRESSION -> effective.base
+            else -> baseForm ?: word
+        }
+    // A noun of tear, lead or wind: its pronunciation as its sentence proves it (none: nothing proven).
+    val nounIpa =
+        remember(sentence, index, effective) {
+            index?.takeIf { effective?.kind == Reading.Kind.NOUN }?.let { verbs.nounIpa(sentence, words, it) }
+        }
     // What is saved: the reading's base with its sense, the tapped form unsure, else the headword.
     val sense =
         when {
@@ -216,7 +228,7 @@ fun WordSheet(
     LaunchedEffect(word, effective) {
         // A helper or modal verb needs no dictionary: its definition and IPA would be the
         // base form's ("do"), not what the learner sees ("didn't go"). Unsure: nothing until chosen.
-        if (function == null && !undecided) entry = withContext(container.io) { container.dictionary.lookup(word, effective) }
+        if (function == null && !undecided) entry = withContext(container.io) { container.dictionary.lookup(word, effective, nounIpa) }
         entryLoaded = true
     }
 
@@ -226,10 +238,12 @@ fun WordSheet(
         launch { sentenceTranslation = container.translateOrNull(sentence, target) }
         if (!unsure) return@LaunchedEffect
         // Both readings' meanings start right away, so the rows can be told apart.
-        rowMeanings =
-            choices.map { choice ->
-                container.appScope.async { container.meaningOf(Sense.of(choice) ?: Sense.VERB, choice.base, target, first = true) }
-            }.map { it.await() }
+        val meanings =
+            choices
+                .map { choice -> container.appScope.async { container.meaningOf(choice, target, first = true) } }
+                .map { it.await() }
+        // Two rows that still read the same each add their sense's short English gloss.
+        rowMeanings = Meanings.distinguished(choices, meanings)
         rowsLoading = false
     }
 
@@ -246,8 +260,7 @@ fun WordSheet(
         }
         if (effective != null) {
             // A reading: its meaning, "to leave" → "irse, salir · dejar" (SPEC S3, L1).
-            val readingSense = Sense.of(effective) ?: Sense.VERB
-            val meaning = container.appScope.async { container.meaningOf(readingSense, effective.base, target) }
+            val meaning = container.appScope.async { container.meaningOf(effective, target) }
             pendingTranslation = PendingTranslation(savedKey, meaning)
             translation = meaning.await()
             translationFailed = translation == null
@@ -291,7 +304,7 @@ fun WordSheet(
         val shown = if (function != null && chunk == null) sentenceTranslation else translation
         // Only a translation of the word being saved may be written to it later.
         val pending = pendingTranslation?.takeIf { it.word == key }?.result
-        val phonetic = phonetic(entry, effective, form, headword)
+        val phonetic = phonetic(entry, effective, form, headword, nounIpa)
         val meanings =
             if (undecided) {
                 choices.mapIndexed { i, choice -> SavedMeaning.of(choice).copy(meaning = rowMeanings.getOrNull(i).orEmpty()) }
@@ -354,7 +367,7 @@ fun WordSheet(
             undecided || TextTools.normalize(headword) == form -> headword
             else -> "$headword, $form"
         }
-    val shownPhonetic = if (undecided) null else phonetic(entry, effective, form, headword)
+    val shownPhonetic = if (undecided) null else phonetic(entry, effective, form, headword, nounIpa)
 
     ModalBottomSheet(onDismissRequest = onDismiss, sheetState = sheetState) {
         Column(Modifier.navigationBarsPadding()) {
@@ -485,7 +498,7 @@ fun WordSheet(
 }
 
 /** Readings the card follows as certain: a verb, a noun or the regular twin. */
-private val certainKinds = setOf(Reading.Kind.VERB, Reading.Kind.NOUN, Reading.Kind.HOMONYM)
+private val certainKinds = setOf(Reading.Kind.VERB, Reading.Kind.NOUN, Reading.Kind.HOMONYM, Reading.Kind.EXPRESSION)
 
 /**
  * The IPA shown under the headword: the table's for the slot a reading proves (a chosen
@@ -497,11 +510,16 @@ private fun phonetic(
     reading: Reading?,
     form: String,
     headword: String,
+    nounIpa: String?,
 ): String? {
     val verbs = IrregularVerbs.shared
+    // A noun of tear, lead or wind: only the pronunciation its sentence proves, never the dictionary's guess.
+    if (reading?.kind == Reading.Kind.NOUN && verbs.hasNounIpa(form)) return nounIpa?.let { "/$it/" }
     val table =
         when {
             reading == null -> null
+            // The regular twin ("lied"): the base's IPA from the table (lie /laɪ/).
+            reading.kind == Reading.Kind.HOMONYM -> verbs.ipa(reading.base, "base")
             // Chosen: the table's IPA of the form in that reading, else the dictionary's only for the base itself.
             reading.step == Reading.Step.CHOSEN -> return verbs.ipaOf(form, reading)?.let {
                 "/$it/"
