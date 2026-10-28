@@ -128,10 +128,21 @@ class DictionaryClient(private val http: HttpFetcher) {
     suspend fun lookup(
         word: String,
         reading: Reading? = null,
+        /** The noun's pronunciation its sentence proves (`IrregularVerbs.nounIpa`), for tear, lead, wind. */
+        nounIpa: String? = null,
     ): DictionaryEntry? {
         val w = TextTools.normalize(word)
-        // The regular twin's sense ("lied": to say what isn't true) has no definition of its own here.
+        // The regular twin's sense ("lied": to say what isn't true), or its noun ("lies": a lie): both
+        // spelled like the verb's, so no entry can be told to be theirs.
         if (reading?.kind == Reading.Kind.HOMONYM) return null
+        if (reading?.kind == Reading.Kind.NOUN && IrregularVerbs.shared.twinNounEs(reading.base) != null) return null
+        // An expression ("bound for"): the adjective's definition of the word.
+        if (reading?.kind == Reading.Kind.EXPRESSION) return pick(entries(w)?.filter { it.partOfSpeech == "adjective" }.orEmpty(), null)
+        // A noun of tear, lead or wind: the entry its sentence's pronunciation proves, or none.
+        if (reading?.kind == Reading.Kind.NOUN && IrregularVerbs.shared.hasNounIpa(w)) {
+            val ipa = nounIpa ?: return null
+            return pick(entries(TextTools.normalize(reading.base))?.filter { it.partOfSpeech == "noun" }.orEmpty(), ipa)
+        }
         val certain = reading != null && reading.step != Reading.Step.NAME
         if (certain && (reading?.kind == Reading.Kind.VERB || reading?.kind == Reading.Kind.NOUN)) {
             val base = TextTools.normalize(reading.base)

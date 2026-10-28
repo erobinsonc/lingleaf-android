@@ -85,6 +85,20 @@ internal object Corrections {
             reading.base == word.word -> null
             // A name ("Aunt Rose") is the word itself, with no sense.
             reading.step == Reading.Step.NAME -> fresh.copy(word = reading.base, sense = null, meanings = null)
+            // An expression ("bound for") becomes the unit, with its meaning in Spanish.
+            reading.kind == Reading.Kind.EXPRESSION -> {
+                val meaning = Meanings.fromTable(reading, language).orEmpty()
+                fresh.copy(
+                    word = reading.base,
+                    sense = null,
+                    meanings = null,
+                    translation = meaning,
+                    translationLanguage =
+                        language.takeIf {
+                            meaning.isNotEmpty()
+                        },
+                )
+            }
             else -> {
                 val sense = Sense.of(reading)
                 val verb = sense == Sense.VERB || sense == Sense.HOMONYM
@@ -94,7 +108,9 @@ internal object Corrections {
                     word = reading.base,
                     sense = sense,
                     meanings = null,
-                    phonetic = if (verb) verbs.ipa(reading.base, "base")?.let { "/$it/" }.orEmpty() else "",
+                    // A verb the table's IPA for its base; a noun of tear, lead or wind its sentence's.
+                    phonetic =
+                        (if (verb) verbs.ipa(reading.base, "base") else verbs.nounIpa(text, words, index))?.let { "/$it/" }.orEmpty(),
                     translation = meaning,
                     translationLanguage = language.takeIf { meaning.isNotEmpty() },
                 )

@@ -251,7 +251,7 @@ class DictionaryTest {
             assertEquals("To turn coils.", verb.definition)
             assertEquals("/waɪnd/", verb.phonetic)
             assertEquals("verb", verb.partOfSpeech)
-            val noun = client.lookup("wind", Reading(Reading.Kind.NOUN, "wind", Reading.Step.CHOSEN))!!
+            val noun = client.lookup("wind", Reading(Reading.Kind.NOUN, "wind", Reading.Step.CHOSEN), nounIpa = "wɪnd")!!
             assertEquals("Moving air.", noun.definition)
             assertEquals("/wɪnd/", noun.phonetic)
             val nounOnly = DictionaryClient { entry("breeze", "A light wind.") }

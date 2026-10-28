@@ -267,6 +267,13 @@ object TextTools {
         }
 
         val verbs = IrregularVerbs.shared
+        // An expression ("bound for") is saved as its text, with no base form; the twin's noun ("the
+        // lies") leads to its noun only.
+        if (reading?.kind == Reading.Kind.EXPRESSION) return out
+        if (reading?.step == Reading.Step.TWIN_NOUN) {
+            add(reading.base)
+            return out
+        }
         if (homographs && verbs.isHomograph(w)) {
             val base = if (reading == null || reading.kind == Reading.Kind.UNSURE) verbs.sharedBase(w) else reading.base
             base?.let(::add)
@@ -429,7 +436,8 @@ object TextTools {
             val keys =
                 when {
                     // Unsure (or a name, "Aunt Rose"): the spellings, for words saved without a sense only.
-                    reading.kind == Reading.Kind.UNSURE || name -> spellings.map { MatchKey(it, LearningIndex.UNSURE) }
+                    reading.kind == Reading.Kind.UNSURE || reading.kind == Reading.Kind.EXPRESSION || name ->
+                        spellings.map { MatchKey(it, LearningIndex.UNSURE) }
                     // An ordinary word ("the lights"): never a verb's sense.
                     reading.kind == Reading.Kind.WORD -> spellings.map { MatchKey(it, LearningIndex.NOT_VERB) }
                     // A form of the table that is no other word ("torn") also matches its own spelling.

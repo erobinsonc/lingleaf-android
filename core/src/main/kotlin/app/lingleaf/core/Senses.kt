@@ -119,7 +119,7 @@ internal data class MatchKey(val word: String, val sense: String?)
 /** The translation of a reading's meaning (SPEC S3, L1). */
 object Meanings {
     /** What to translate for [reading]: "to leave", "the left". */
-    fun query(reading: Reading): String = if (reading.kind == Reading.Kind.NOUN) "the ${reading.base}" else "to ${reading.base}"
+    fun query(reading: Reading): String = IrregularVerbs.shared.query(reading)
 
     /** What to translate for a saved word in [sense]. */
     fun query(
@@ -146,11 +146,31 @@ object Meanings {
         first: Boolean = false,
         homonym: Boolean = false,
     ): String? {
-        val verb = reading.kind == Reading.Kind.VERB || reading.kind == Reading.Kind.HOMONYM
-        if (!verb || language?.substringBefore('-') != "es") return null
-        val meanings = IrregularVerbs.shared.meanings(reading.base, homonym || reading.kind == Reading.Kind.HOMONYM)
+        if (language?.substringBefore('-') != "es") return null
+        val verbs = IrregularVerbs.shared
+        val meanings =
+            when (reading.kind) {
+                Reading.Kind.VERB -> verbs.sEs(reading.base, reading.form)?.let(::listOf) ?: verbs.meanings(reading.base, homonym)
+                Reading.Kind.HOMONYM -> verbs.meanings(reading.base, homonym = true)
+                Reading.Kind.EXPRESSION -> verbs.expressionEs(reading.base)
+                Reading.Kind.NOUN -> verbs.twinNounEs(reading.base).orEmpty()
+                else -> emptyList()
+            }
         if (meanings.isEmpty()) return null
         return if (first) meanings.first() else meanings.joinToString(" · ")
+    }
+
+    /**
+     * The two unsure rows' meanings, told apart: when both come out the same ("mentir" / "mentir"),
+     * each adds its sense's short English gloss ("mentir (say what isn't true)").
+     */
+    fun distinguished(
+        rows: List<Reading>,
+        meanings: List<String?>,
+    ): List<String?> {
+        val (a, b) = meanings.takeIf { it.size == 2 && rows.size == 2 } ?: return meanings
+        if (a == null || b == null || !a.equals(b, ignoreCase = true)) return meanings
+        return rows.zip(meanings) { row, meaning -> IrregularVerbs.shared.gloss(row)?.let { "$meaning ($it)" } ?: meaning }
     }
 
     /**

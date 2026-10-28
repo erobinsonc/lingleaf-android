@@ -49,7 +49,7 @@ class TableFormsTest {
         assertEquals(Sense.HOMONYM, Sense.of(read("He lied to us.", "lied")))
         assertNull(Sense.of(read("We met Uncle Drew.", "Drew")), "a name has no sense")
         assertEquals(IrregularVerbs.shared.meanings("lie", homonym = true).first(), Meanings.fromTable(read("He lied.", "lied")!!, "es"))
-        assertEquals("to lie", Meanings.query(read("He lied.", "lied")!!))
+        assertEquals("to tell a lie", Meanings.query(read("He lied.", "lied")!!), "the twin's own English query")
     }
 
     @Test
@@ -177,6 +177,7 @@ class TableFormsTest {
                 dictionary.lookup(
                     "wind",
                     Reading(Reading.Kind.NOUN, "wind", Reading.Step.NOUN),
+                    nounIpa = "wɪnd",
                 )!!.definition!!.startsWith("Real or perceived"),
             )
             val tear = dictionary.lookup("tore", Reading(Reading.Kind.VERB, "tear", Reading.Step.TABLE))!!

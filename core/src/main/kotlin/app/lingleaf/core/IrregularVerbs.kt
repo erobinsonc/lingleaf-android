@@ -15,12 +15,14 @@ data class Reading(
     val kind: Kind,
     val base: String,
     val step: Step,
+    /** For a chosen row: the form as tapped, when its slot changes the meaning ("lies": está, se encuentra). */
+    val form: String? = null,
 ) {
     /**
      * [HOMONYM]: the verb's regular twin ("lied" → lie, to say what isn't true); [WORD]: an
      * ordinary word, an -s or -ing form of the table no step proved ("the lights", "a meeting").
      */
-    enum class Kind { NOUN, VERB, HOMONYM, WORD, UNSURE }
+    enum class Kind { NOUN, VERB, HOMONYM, WORD, EXPRESSION, UNSURE }
 
     /**
      * The steps of the rule, in SPEC order, then [UNSURE] (no step applied) and [CHOSEN] (the
@@ -46,6 +48,10 @@ data class Reading(
         ING,
         SENSE,
         ORDINARY,
+        EXPRESSION,
+        TWIN_NOUN,
+        UNSURE_NOUN,
+        UNSURE_NOUN_FIRST,
         UNSURE,
         CHOSEN,
     }
@@ -220,7 +226,7 @@ class IrregularVerbs private constructor(table: Table) {
         val word = TextTools.normalize(text.substring(range.start, range.end))
         if (isHomograph(word) || word in tableForms) {
             val reading = resolve(text, words, index) ?: return null
-            val certain = reading.kind == Reading.Kind.VERB || reading.kind == Reading.Kind.NOUN || reading.kind == Reading.Kind.HOMONYM
+            val certain = reading.kind in certainKinds
             return reading.base.takeIf { certain && reading.step != Reading.Step.NAME && it != word }
         }
         return null
@@ -381,6 +387,8 @@ class IrregularVerbs private constructor(table: Table) {
         val formSpoken = index?.let { spokenAt(text, words, it) } ?: form
         if (TextTools.normalize(headword) == normalized) return formSpoken
         val reading = index?.let { resolve(text, words, it) }
+        // An expression ("bound for") is said as the unit.
+        if (reading?.kind == Reading.Kind.EXPRESSION) return headword
         val verb =
             if (reading != null) {
                 reading.kind == Reading.Kind.VERB || reading.kind == Reading.Kind.HOMONYM
@@ -420,6 +428,75 @@ class IrregularVerbs private constructor(table: Table) {
         return form !in own && form in (listOf(twin.ing, twin.s) + twin.past + twin.participle)
     }
 
+    private val certainKinds = setOf(Reading.Kind.VERB, Reading.Kind.NOUN, Reading.Kind.HOMONYM, Reading.Kind.EXPRESSION)
+
+    /** Whether the homograph [form]'s noun is pronounced as its sentence says (`nounIpa`: tear, lead, wind). */
+    fun hasNounIpa(form: String): Boolean = homographs[TextTools.normalize(form)]?.nounIpa?.isNotEmpty() == true
+
+    /**
+     * How the homograph at [index] is pronounced as a noun in its sentence ("tears in her eyes" →
+     * tɪr; "a tear in my shirt" → tɛr; "made of lead" → lɛd), or null when nothing proves it.
+     */
+    fun nounIpa(
+        text: String,
+        words: List<WordRange>,
+        index: Int,
+    ): String? {
+        val range = words.getOrNull(index)?.takeIf { it.fitsIn(text) } ?: return null
+        val h = homographs[TextTools.normalize(text.substring(range.start, range.end))] ?: return null
+        if (h.nounIpa.isEmpty()) return null
+        val window = Window(text, words, index)
+        val sentence = words.indices.filter { it != index }.mapTo(mutableSetOf(), window::tok)
+        for (rule in h.nounIpa) {
+            if (rule.after != null && window.prev(1) !in rule.after) continue
+            if (rule.before != null && window.next(1) !in rule.before) continue
+            if (rule.near != null && rule.near.none { it in sentence }) continue
+            return rule.ipa
+        }
+        return null
+    }
+
+    /** The twin's noun meanings in Spanish ("lie": mentira), when [noun] is a twin's noun. */
+    fun twinNounEs(noun: String): List<String>? =
+        verbsByBase.values.firstNotNullOfOrNull { v -> v.homonym?.takeIf { it.noun == noun }?.nounEs }
+
+    /** The English query for translating [reading] outside Spanish: the sense's own, else "to {base}" / "the {noun}". */
+    fun query(reading: Reading): String {
+        val verb = verbsByBase[reading.base]
+        return when (reading.kind) {
+            Reading.Kind.NOUN -> "the ${reading.base}"
+            Reading.Kind.HOMONYM -> verb?.homonym?.query ?: "to ${reading.base}"
+            Reading.Kind.EXPRESSION -> expressionOf(reading.base)?.query ?: reading.base
+            else -> verb?.query ?: "to ${reading.base}"
+        }
+    }
+
+    /** The sense's short English gloss ("recline", "say what isn't true"), for telling two rows apart. */
+    fun gloss(reading: Reading): String? {
+        val verb = verbsByBase[reading.base]
+        return when (reading.kind) {
+            Reading.Kind.HOMONYM -> verb?.homonym?.gloss
+            Reading.Kind.VERB -> verb?.gloss
+            Reading.Kind.EXPRESSION -> expressionOf(reading.base)?.gloss
+            else -> null
+        }
+    }
+
+    /** The Spanish meanings of an expression ("bound for": rumbo a, con destino a). */
+    fun expressionEs(unit: String): List<String> = expressionOf(unit)?.es.orEmpty()
+
+    /** The -s form's Spanish meaning of the verb [base] ("lies": estar, encontrarse), when [form] is that form. */
+    fun sEs(
+        base: String,
+        form: String?,
+    ): String? = verbsByBase[base]?.takeIf { form != null && it.s == form }?.sEs
+
+    private fun expressionOf(unit: String): Expression? {
+        val form = unit.substringBefore(' ')
+        val next = unit.substringAfter(' ', "")
+        return homographs[form]?.expressions?.firstOrNull { it.next == next }
+    }
+
     /**
      * The two readings an unsure homograph offers the learner, most common first: a verb and its
      * noun ("to leave", "the left"; the noun first when the verb is mostly a noun, `nounFirst`), or
@@ -434,14 +511,22 @@ class IrregularVerbs private constructor(table: Table) {
         val range = words.getOrNull(index)?.takeIf { it.fitsIn(text) } ?: return emptyList()
         val surface = text.substring(range.start, range.end)
         val form = TextTools.normalize(surface)
-        val shared = tableForms[form]?.takeIf { it.shared != null }
-        if (shared != null) {
-            // lying, lies, hanging, hangs left unsure: the verb's sense and the twin's ("to lie — mentir").
-            if (resolve(text, words, index)?.kind != Reading.Kind.UNSURE) return emptyList()
-            return listOf(
-                Reading(Reading.Kind.VERB, shared.base, Reading.Step.CHOSEN),
-                Reading(Reading.Kind.HOMONYM, shared.base, Reading.Step.CHOSEN),
-            )
+        val entry = tableForms[form]
+        if (entry != null) {
+            val reading = resolve(text, words, index)?.takeIf { it.kind == Reading.Kind.UNSURE } ?: return emptyList()
+            val verb = Reading(Reading.Kind.VERB, entry.base, Reading.Step.CHOSEN, form)
+            return when (reading.step) {
+                // "She tells lies": the twin's noun or the verb ("the lie — mentira" / "to lie — estar, encontrarse").
+                Reading.Step.UNSURE_NOUN -> listOf(Reading(Reading.Kind.NOUN, entry.shared?.noun ?: form, Reading.Step.CHOSEN), verb)
+                // "The bell rings": the verb or the word as a noun ("to ring" / "the rings").
+                Reading.Step.UNSURE_NOUN_FIRST -> listOf(verb, Reading(Reading.Kind.NOUN, form, Reading.Step.CHOSEN))
+                // lying, lies, hanging, hangs left unsure: the verb's sense and the twin's ("to lie — mentir").
+                else ->
+                    listOf(
+                        Reading(Reading.Kind.VERB, entry.base, Reading.Step.CHOSEN),
+                        Reading(Reading.Kind.HOMONYM, entry.base, Reading.Step.CHOSEN),
+                    )
+            }
         }
         val h = homographs[form] ?: return emptyList()
         val resolver = Resolver(text, words, index, surface, form, h)
@@ -677,6 +762,11 @@ class IrregularVerbs private constructor(table: Table) {
                                 Reading.Step.S_SUBJECT
                             !titlecase(k) && k == i - 1 && isNounWord(t) && !isPlural(t) && nextOk && objectOrNoFinite ->
                                 nounPhraseStart(k)?.takeIf(::opensClause)?.let { Reading.Step.S_SUBJECT }
+                            // "The bell rings": a subject but no object after a base that is mostly a noun: unsure
+                            // between the verb and the word as a noun ("to ring" / "the rings").
+                            nounLike && e.shared == null && !titlecase(k) && k == i - 1 && isNounWord(t) && !isPlural(t) &&
+                                !finiteVerbLater() && nounPhraseStart(k)?.takeIf(::opensClause) != null ->
+                                return Reading(Reading.Kind.UNSURE, e.base, Reading.Step.UNSURE_NOUN_FIRST)
                             else -> null
                         }
                 } else if (t in context.beForms || t in context.ingAfter) {
@@ -697,8 +787,15 @@ class IrregularVerbs private constructor(table: Table) {
             ) {
                 proven = Reading.Step.ING
             }
-            // lying, lies, hanging, hangs: the next word tells the sense, else unsure.
             val twin = e.shared
+            // "lies" can be the twin's noun ("a lie"): a noun after a determiner; unproven, unsure
+            // between that noun and the verb ("the lie — mentira" / "to lie — estar, encontrarse").
+            val twinNoun = twin?.noun
+            if (twinNoun != null && e.kind == TableForm.Kind.S) {
+                if (afterDet) return Reading(Reading.Kind.NOUN, twinNoun, Reading.Step.TWIN_NOUN)
+                if (proven == null) return Reading(Reading.Kind.UNSURE, e.base, Reading.Step.UNSURE_NOUN)
+            }
+            // lying, lies, hanging, hangs: the next word tells the sense, else unsure.
             if (twin != null && !afterDet) {
                 if (n1 in twin.homonymBefore) return Reading(Reading.Kind.HOMONYM, e.base, Reading.Step.SENSE)
                 if (n1 in twin.verbBefore) return Reading(Reading.Kind.VERB, e.base, Reading.Step.SENSE)
@@ -726,6 +823,12 @@ class IrregularVerbs private constructor(table: Table) {
             private set
 
         fun noun(step: Reading.Step) = Reading(Reading.Kind.NOUN, h.noun!!, step)
+
+        /** The form's expression the next words make ("bound for"; "bound to" + a base verb), else null. */
+        fun expression(
+            n1: String?,
+            n2: String?,
+        ): Expression? = h.expressions.firstOrNull { n1 == it.next && (!it.nextBase || n2 in allBases || n2 in Verbs.regular) }
 
         fun verb(
             step: Reading.Step,
@@ -769,9 +872,8 @@ class IrregularVerbs private constructor(table: Table) {
                 val pair = h.nounPair
                 if (!pair.isNullOrEmpty() && ((p1 in andOr && p2 == pair) || (n1 in andOr && n2 == pair))) return noun(Reading.Step.FIXED)
             }
-            if (f == "bound" && (n1 in context.boundAdjective || (n1 == "to" && (n2 in allBases || n2 in Verbs.regular)))) {
-                return Reading(Reading.Kind.NOUN, "bound", Reading.Step.FIXED)
-            }
+            // An expression of the form ("bound for", "bound to" + a base verb): a unit with its own meanings.
+            expression(n1, n2)?.let { return Reading(Reading.Kind.EXPRESSION, "$f ${it.next}", Reading.Step.EXPRESSION) }
             // 3. A noun after a determiner (+ one listed adjective); -s forms also after a quantifier or preposition.
             if (hasNoun) {
                 val dets = if (plural) context.determiners + context.pluralDeterminers + context.prepositions else context.determiners
@@ -784,7 +886,7 @@ class IrregularVerbs private constructor(table: Table) {
             // 3b. A participle opening the sentence, then a listed word, then a comma later in the
             // sentence ("Left alone, she cried"; not "Felt hats, …", "Thought, like speech, …").
             if ("participle" in rules && startsSentence(i) && n1 != null && n2 != f &&
-                !(f == "bound" && n1 in context.boundAdjective) &&
+                expression(n1, n2) == null &&
                 (n1 in context.participleOpenNext || (n1.endsWith("ly") && n1.length > 3))
             ) {
                 val rest = text.substring(end).split(sentenceMark, limit = 2)[0]
@@ -918,7 +1020,14 @@ class IrregularVerbs private constructor(table: Table) {
 
         /** IPA letters and marks the table may use, and the combining syllabic and nasal marks. */
         private val ipaChars: Set<Int> =
-            ("abcdefghijklmnopqrstuvwxyz" + "æðŋɑɒɔəɚɛɜɝɡɪɹɾʃʊʌʒʔθʤʧˈˌːˑ." + "\u0329\u0303").codePoints().toArray().toSet()
+            ("abdefghijklmnoprstuvwxz" + "æðŋɑɒɔəɚɛɜɝɡɪɹɾʃʊʌʒʔθʤʧˈˌːˑ." + "\u0329\u0303").codePoints().toArray().toSet()
+
+        /** An English query or gloss: lower-case words, apostrophes and spaces, 2–40 characters. */
+        private val englishPattern = Regex("^[a-z][a-z' ]{0,38}[a-z]$")
+
+        /** A Spanish meaning of the v4 fields: 1–100 characters, no surrounding space. */
+        private fun isSpanish(s: String) = s.length in 1..MAX_TEXT && s.trim() == s
+
         private val articles = setOf("the", "a", "an")
         private val andOr = setOf("and", "or")
         private val plainSubjects = setOf("i", "you", "we", "they")
@@ -1032,10 +1141,21 @@ class IrregularVerbs private constructor(table: Table) {
                     check(slot in slots && formPattern.matches(spoken)) { "${verb.base}: spokenAs" }
                 }
                 verb.ipa?.forEach { (slot, ipa) -> check(slot in slots && isIpa(ipa)) { "${verb.base}: ipa" } }
+                check(listOfNotNull(verb.query, verb.gloss).all(englishPattern::matches)) { "${verb.base}: query or gloss" }
+                check(verb.sEs?.let(::isSpanish) ?: true) { "${verb.base}: sEs" }
                 verb.homonym?.let { h ->
                     check(isFormList(h.past) && isFormList(h.participle)) { "${verb.base}: homonym forms" }
                     check(isMeanings(h.es)) { "${verb.base}: homonym es" }
                     check((h.homonymBefore + h.verbBefore).all(formPattern::matches)) { "${verb.base}: homonym words" }
+                    check(listOfNotNull(h.query, h.gloss).all(englishPattern::matches)) { "${verb.base}: homonym query or gloss" }
+                    // The twin's noun and its meanings come together.
+                    check((h.noun == null) == (h.nounEs == null)) { "${verb.base}: homonym noun" }
+                    h.noun?.let {
+                            noun ->
+                        check(
+                            formPattern.matches(noun) && h.nounEs!!.size in 1..2 && h.nounEs.all(::isSpanish),
+                        ) { "${verb.base}: homonym noun" }
+                    }
                 }
             }
             val forms = table.homographs.map { it.form }
@@ -1051,6 +1171,16 @@ class IrregularVerbs private constructor(table: Table) {
                     ) { "homograph ${h.form}: noun phrase" }
                 }
                 h.subjectNounNext?.let { next -> check(next.all(formPattern::matches)) { "homograph ${h.form}: subjectNounNext" } }
+                // Pronunciation rules: words a–z, a rule with no condition only as the last.
+                for ((n, rule) in h.nounIpa.withIndex()) {
+                    val conditions = listOfNotNull(rule.near, rule.after, rule.before)
+                    check(isIpa(rule.ipa) && conditions.flatten().all(formPattern::matches)) { "homograph ${h.form}: nounIpa" }
+                    check(conditions.isNotEmpty() || n == h.nounIpa.lastIndex) { "homograph ${h.form}: nounIpa default not last" }
+                }
+                for (x in h.expressions) {
+                    val ok = formPattern.matches(x.next) && x.es.size in 1..2 && x.es.all(::isSpanish) && englishPattern.matches(x.query)
+                    check(ok && englishPattern.matches(x.gloss)) { "homograph ${h.form}: expression" }
+                }
                 check("imperative" !in h.rules || !h.baseVerb.isNullOrEmpty()) { "homograph ${h.form}: imperative without its verb" }
                 // Its verb is a known verb, and the form one of its forms.
                 check(h.verb in verbs || h.verb in Verbs.regular) { "homograph ${h.form}: verb ${h.verb}" }
@@ -1144,6 +1274,11 @@ internal data class Verb(
     val spokenAs: Map<String, String>? = null,
     val ipa: Map<String, String>? = null,
     val homonym: Homonym? = null,
+    /** An unambiguous English query and a short gloss for the verb's own sense ("to lie down", "recline"). */
+    val query: String? = null,
+    val gloss: String? = null,
+    /** The Spanish meaning of the -s form ("lies": estar, encontrarse). */
+    val sEs: String? = null,
     val nounFirst: Boolean = false,
     val freq: Int? = null,
 ) {
@@ -1174,6 +1309,31 @@ internal data class Homonym(
     val homonymBefore: List<String> = emptyList(),
     /** Words after it that make it the verb ("lying on"). */
     val verbBefore: List<String> = emptyList(),
+    /** An unambiguous English query and a short gloss for this sense ("to tell a lie", "say what isn't true"). */
+    val query: String? = null,
+    val gloss: String? = null,
+    /** The twin's noun spelled like its -s form's base ("lies" → "lie": mentira), with its Spanish meanings. */
+    val noun: String? = null,
+    val nounEs: List<String>? = null,
+)
+
+/** How a homograph's noun is pronounced, when its sentence proves it (`nounIpa`). */
+@Serializable
+internal data class NounIpa(
+    val ipa: String,
+    val near: List<String>? = null,
+    val after: List<String>? = null,
+    val before: List<String>? = null,
+)
+
+/** An expression a homograph makes with the next word ("bound for"; "bound to" + a base verb). */
+@Serializable
+internal data class Expression(
+    val next: String,
+    val nextBase: Boolean = false,
+    val es: List<String>,
+    val query: String,
+    val gloss: String,
 )
 
 /** A form of the table that is not a homograph (see `tableForms`). */
@@ -1202,6 +1362,8 @@ internal data class Homograph(
     val noTo: Boolean = false,
     val nounPhrases: List<List<String>> = emptyList(),
     val subjectNounNext: List<String>? = null,
+    val nounIpa: List<NounIpa> = emptyList(),
+    val expressions: List<Expression> = emptyList(),
 )
 
 /** The word lists of the verb-or-noun rule. */
@@ -1225,7 +1387,6 @@ internal data class Context(
     val notNames: Set<String>,
     val objectStarts: Set<String>,
     val layTime: Set<String>,
-    val boundAdjective: Set<String>,
     val sFormNext: Set<String>,
     val notNameStarts: Set<String>,
     val nameOrPlant: Set<String>,
@@ -1244,7 +1405,7 @@ internal data class Context(
         listOf(
             determiners, pluralDeterminers, prepositions, adjectives, pluralAdjectives, subjects, singularSubjects, skip,
             toAndModals, haveAndBe, subjectDeterminers, oneAfter, clauseOpeners, lieAfter, conjunctions, notNames,
-            objectStarts, layTime, boundAdjective, sFormNext, notNameStarts, nameOrPlant, pluralNouns, notPlural, quantifiers,
+            objectStarts, layTime, sFormNext, notNameStarts, nameOrPlant, pluralNouns, notPlural, quantifiers,
             quantifiersBeforeDeterminer, quantifiersBeforeOf, finiteVerbs, participleOpenNext, sSubjects, beForms, ingAfter,
         )
 
@@ -1252,7 +1413,7 @@ internal data class Context(
         private val none = emptySet<String>()
         val EMPTY =
             Context(
-                none, none, none, none, none, none, none, none, none, none, none, none, none, none, none, none, none, none, none,
+                none, none, none, none, none, none, none, none, none, none, none, none, none, none, none, none, none, none,
                 none, none, none, none, none, none, none, none, none, none, none, none, none,
             )
     }

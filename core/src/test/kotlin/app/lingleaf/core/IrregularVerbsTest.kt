@@ -219,7 +219,7 @@ class IrregularVerbsTest {
         assertReading("Turn left at the bank.", "left", noun, "left", Reading.Step.FIXED)
         assertReading("Raise your left hand.", "left", noun, "left", Reading.Step.FIXED)
         assertReading("They looked right and left before crossing.", "left", noun, "left", Reading.Step.FIXED)
-        assertReading("The ship was bound for Spain.", "bound", noun, "bound", Reading.Step.FIXED)
+        assertReading("The ship was bound for Spain.", "bound", Reading.Kind.EXPRESSION, "bound for", Reading.Step.EXPRESSION)
         assertReading("It is a little bit cold.", "bit", noun, "bit", Reading.Step.NOUN)
         assertReading("The dead leaves fell.", "leaves", noun, "leaf", Reading.Step.NOUN)
         assertReading("Tom's bit was small.", "bit", noun, "bit", Reading.Step.NOUN)
@@ -467,7 +467,7 @@ class IrregularVerbsTest {
     fun `cases shared with iOS`() {
         val noun = Reading.Kind.NOUN
         val verb = Reading.Kind.VERB
-        assertReading("It is bound to rain.", "bound", noun, "bound", Reading.Step.FIXED)
+        assertReading("It is bound to rain.", "bound", Reading.Kind.EXPRESSION, "bound to", Reading.Step.EXPRESSION)
         assertReading("She wore a felt hat.", "felt", noun, "felt", Reading.Step.FIXED)
         assertReading("He looked left and right.", "left", noun, "left", Reading.Step.FIXED)
         assertReading("This tears easily.", "tears", verb, "tear", Reading.Step.SUBJECT)
