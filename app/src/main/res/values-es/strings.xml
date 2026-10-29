@@ -103,7 +103,7 @@
     <string name="retry">Reintentar</string>
     <string name="get">Obtener</string>
     <string name="get_book">Obtener %1$s</string>
-    <string name="gutenberg_credit">Clásicos gratuitos de dominio público de Project Gutenberg.</string>
+    <string name="gutenberg_credit">Clásicos gratuitos de Project Gutenberg.</string>
     <string name="unknown_author">Autor desconocido</string>
 
     <string name="words_title">Palabras</string>
@@ -161,7 +161,7 @@
     <string name="about">Acerca de</string>
     <string name="source_code">Código fuente</string>
     <string name="open_source_note">Lingleaf es open source (licencia MIT).</string>
-    <string name="credits">Libros: Project Gutenberg (dominio público). Definiciones: dictionaryapi.dev. Traducción: Google ML Kit, en el teléfono. Sin cuentas, sin anuncios, sin rastreo.</string>
+    <string name="credits">Libros: Project Gutenberg. Sin cuentas, sin anuncios, sin rastreo.</string>
     <string name="reading_progress">Progreso de lectura</string>
     <string name="review_progress">Progreso del repaso</string>
     <string name="review_count">%1$d de %2$d</string>
@@ -202,4 +202,15 @@
     <string name="note_whos">“who\'s” = “%1$s”; “whose” = de quién: “Whose book?”</string>
     <string name="note_had_or_would">“%1$s” puede ser “%2$s” o “%3$s”: la traducción de la frase dice cuál.</string>
     <string name="either_or">%1$s o %2$s</string>
+    <string name="public_domain_notice">Dominio público en EE. UU. Fuera de EE. UU., revisa las leyes de tu país.</string>
+    <string name="definitions_credit">Definiciones de Wiktionary, CC BY-SA 3.0/4.0, vía Free Dictionary API.</string>
+    <string name="definition_source">Definición: Wiktionary (CC BY-SA), puede estar abreviada</string>
+    <string name="privacy_policy">Política de privacidad</string>
+    <string name="translation_google_notice">La traducción usa el modelo de Google en el dispositivo; Google recibe datos de diagnóstico.</string>
+    <string name="open_source_licenses">Licencias de código abierto</string>
+    <string name="open_source_licenses_note">Las bibliotecas que usa esta app y sus licencias.</string>
+    <string name="license_apache">Licencia Apache 2.0</string>
+    <string name="license_mlkit">Condiciones del servicio de ML Kit</string>
+    <string name="license_android_sdk">Licencia del Android Software Development Kit</string>
+    <string name="apache_full_text">Licencia Apache 2.0, texto completo</string>
 </resources>

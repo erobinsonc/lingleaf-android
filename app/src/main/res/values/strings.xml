@@ -120,7 +120,7 @@
     <string name="get">Get</string>
     <!-- Screen readers: the Get button with the book it downloads. -->
     <string name="get_book">Get %1$s</string>
-    <string name="gutenberg_credit">Free public-domain classics from Project Gutenberg.</string>
+    <string name="gutenberg_credit">Free classics from Project Gutenberg.</string>
     <string name="unknown_author">Unknown author</string>
 
     <!-- Words -->
@@ -181,7 +181,7 @@
     <string name="about">About</string>
     <string name="source_code">Source code</string>
     <string name="open_source_note">Lingleaf is open source (MIT license).</string>
-    <string name="credits">Books: Project Gutenberg (public domain). Definitions: dictionaryapi.dev. Translation: Google ML Kit, on device. No accounts, no ads, no tracking.</string>
+    <string name="credits">Books: Project Gutenberg. No accounts, no ads, no tracking.</string>
     <string name="reading_progress">Reading progress</string>
     <string name="review_progress">Review progress</string>
     <string name="review_count">%1$d of %2$d</string>
@@ -222,4 +222,15 @@
     <string name="note_whos">“who\'s” = “%1$s”; “whose” = of whom: “Whose book?”</string>
     <string name="note_had_or_would">“%1$s” can be “%2$s” or “%3$s”: the sentence\'s translation tells which.</string>
     <string name="either_or">%1$s or %2$s</string>
+    <string name="public_domain_notice">Public domain in the US. Outside the US, check your country\'s laws.</string>
+    <string name="definitions_credit">Definitions from Wiktionary, CC BY-SA 3.0/4.0, via Free Dictionary API.</string>
+    <string name="definition_source">Definition: Wiktionary (CC BY-SA), may be shortened</string>
+    <string name="privacy_policy">Privacy policy</string>
+    <string name="translation_google_notice">Translation uses Google\'s on-device model; Google receives diagnostics.</string>
+    <string name="open_source_licenses">Open-source licenses</string>
+    <string name="open_source_licenses_note">The libraries inside this app and their licenses.</string>
+    <string name="license_apache">Apache License 2.0</string>
+    <string name="license_mlkit">ML Kit Terms of Service</string>
+    <string name="license_android_sdk">Android Software Development Kit License</string>
+    <string name="apache_full_text">Apache License 2.0, full text</string>
 </resources>

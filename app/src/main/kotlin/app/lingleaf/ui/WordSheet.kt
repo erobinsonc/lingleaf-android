@@ -138,6 +138,9 @@ fun WordSheet(
     var translationFailed by remember(word, target) { mutableStateOf(false) }
     var sentenceTranslation by remember(word, target) { mutableStateOf<String?>(null) }
     var modelStatus by remember(word, target) { mutableStateOf(ModelStatus.READY) }
+    // The learner's first word card ever, kept for as long as this card is open.
+    val firstCard = remember { !state.settings.translationStarted }
+    LaunchedEffect(Unit) { if (firstCard) library.updateSettings { it.copy(translationStarted = true) } }
     // Runs in the app's scope, so a translation that arrives after saving is still recorded.
     var pendingTranslation by remember(word, target) { mutableStateOf<PendingTranslation?>(null) }
 
@@ -303,6 +306,15 @@ fun WordSheet(
                     }
                     LanguageButton(target, onPick = ::chooseLanguage)
                 }
+                // ML Kit starts with the first word card: that card says who receives what, once.
+                if (firstCard) {
+                    Text(
+                        stringResource(R.string.translation_google_notice),
+                        style = MaterialTheme.typography.bodySmall,
+                        color = MaterialTheme.colorScheme.onSurfaceVariant,
+                        textAlign = TextAlign.Center,
+                    )
+                }
                 function?.let {
                     Text(functionNote(it, word), color = MaterialTheme.colorScheme.onSurfaceVariant, textAlign = TextAlign.Center)
                 }
@@ -312,6 +324,13 @@ fun WordSheet(
                             entry?.partOfSpeech?.let { withStyle(SpanStyle(fontStyle = FontStyle.Italic)) { append("$it · ") } }
                             append(definition)
                         },
+                        color = MaterialTheme.colorScheme.onSurfaceVariant,
+                        textAlign = TextAlign.Center,
+                    )
+                    // CC BY-SA asks for the source, the licence and whether it was changed (cut to 500 characters).
+                    Text(
+                        stringResource(R.string.definition_source),
+                        style = MaterialTheme.typography.bodySmall,
                         color = MaterialTheme.colorScheme.onSurfaceVariant,
                         textAlign = TextAlign.Center,
                     )

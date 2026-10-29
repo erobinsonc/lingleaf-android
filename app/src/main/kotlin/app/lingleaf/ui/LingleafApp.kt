@@ -76,8 +76,11 @@ fun LingleafApp(container: AppContainer) {
             }
             val target = container.targetLanguage(state.settings)
 
-            // Once the language is known, download its model in the background (over Wi‑Fi only).
-            LaunchedEffect(target) { target?.let(container.translator::prepare) }
+            // Google's ML Kit (download and diagnostics) starts only after the learner's first word
+            // tap, when the card translates; from then on the language downloads in the background
+            // when it's missing (over Wi‑Fi only).
+            val started = state.settings.translationStarted
+            LaunchedEffect(target, started) { if (started) target?.let(container.translator::prepare) }
 
             // Any Listen or Read aloud that found no English voice says so, on every screen (SPEC S6).
             val missedVoice by container.speaker.missedVoice.collectAsStateWithLifecycle()
@@ -125,7 +128,8 @@ fun LingleafApp(container: AppContainer) {
                     composable(Tab.Library.route) { LibraryScreen(onOpenBook = { navController.navigate("reader/$it") }) }
                     composable(Tab.Discover.route) { DiscoverScreen(onOpenBook = { navController.navigate("reader/$it") }) }
                     composable(Tab.Words.route) { WordsScreen(onReview = { navController.navigate("review") }) }
-                    composable(Tab.Settings.route) { SettingsScreen() }
+                    composable(Tab.Settings.route) { SettingsScreen(onOpenLicenses = { navController.navigate("licenses") }) }
+                    composable("licenses") { LicensesScreen(onBack = { navController.popBackStack() }) }
                     composable("reader/{bookId}") { entry ->
                         ReaderScreen(
                             bookId = entry.arguments?.getString("bookId").orEmpty(),
