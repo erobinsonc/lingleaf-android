@@ -101,11 +101,36 @@ class RoundThreeTest {
         assertEquals(Library.MAX_CORRECTIONS, library.state.value.corrections.size)
         assertNotNull(library.state.value.word("left#noun"))
         assertNotNull(library.state.value.word("feel"), "no room left to undo it: next run")
-        assertTrue(storage.files["corrected-homographs"]!!.startsWith("after:"))
+        val cursor = storage.files["corrected-homographs"]!!
+        assertTrue(cursor.startsWith("after:"))
+        library().correctWordsOnce()
+        assertNotNull(library().state.value.word("feel"), "no room at all: nothing read")
+        assertEquals(cursor, storage.files["corrected-homographs"], "and the cursor is kept")
         library.closeCorrections()
         library.correctWordsOnce()
         assertNotNull(library.state.value.word("felt#noun"))
         assertEquals("done", storage.files["corrected-homographs"])
+    }
+
+    /**
+     * The newer "leave" (from "Left.") becomes the unsure "left" while the older "left" (from
+     * "She left early.") becomes "leave": corrected first, the newer one must not merge into the
+     * "left" that is leaving. Undo then gives back both originals.
+     */
+    @Test
+    fun `two words that swap are both kept, and Undo gives both back`() {
+        val words = listOf(word("leave", "Left.", "2026-02-01T00:00"), word("left", "She left early.", "2026-01-01T00:00"))
+        save(words)
+        val library = library()
+        library.correctWordsOnce()
+        assertEquals(setOf("left", "leave#verb"), library.state.value.words.map { it.key }.toSet())
+        assertEquals("Left.", library.state.value.word("left")!!.context)
+        assertEquals("She left early.", library.state.value.word("leave#verb")!!.context)
+        assertEquals(2, library.state.value.corrections.size)
+        assertTrue(library.state.value.corrections.none { it.merged })
+
+        library.undoCorrections()
+        assertEquals(words.map { it.key to it.context }.toSet(), library.state.value.words.map { it.key to it.context }.toSet())
     }
 
     @Test

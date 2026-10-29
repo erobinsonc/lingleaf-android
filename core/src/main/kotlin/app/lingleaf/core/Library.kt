@@ -367,6 +367,8 @@ class Library(
             Corrections.correct(original, snapshot.settings.targetLanguage)?.let { plan += original to it }
         }
         val done = read == eligible.size
+        // No room at all for Undo (the card still holds a full run): nothing read, the cursor stays.
+        if (read == 0 && !done) return
         val last = eligible.getOrNull(read - 1)
         beforeApply()
         apply(plan, if (done || last == null) DONE else Cursor(LocalDateTime.parse(last.createdAt), last.key).toString())
@@ -379,11 +381,15 @@ class Library(
     ) {
         val items = mutableListOf<Correction>()
         var words = _state.value.words
-        for ((original, corrected) in plan) {
-            // Changed or deleted while the plan was made: left alone.
-            val current = words.firstOrNull { it.key == original.key }
-            if (current != original) continue
-            val merged = words.any { it.key == corrected.key && it !== current }
+        // Only words still exactly as they were read (one changed or deleted meanwhile is left
+        // alone). All of them leave first, so a word merges only into an entry that stays or that
+        // the plan adds: "leave" → "left" while that "left" itself becomes "leave".
+        val current = words.distinctBy { it.key }.associateBy { it.key }
+        val valid = plan.filter { (original, _) -> current[original.key] == original }
+        val leaving = valid.map { it.first.key }.toSet()
+        words = words.filterNot { it.key in leaving }
+        for ((original, corrected) in valid) {
+            val merged = words.any { it.key == corrected.key }
             val next =
                 if (original.learned) {
                     corrected
@@ -391,7 +397,6 @@ class Library(
                     // Rehearsed with a wrong meaning: from the first box, due now, once it has a meaning.
                     corrected.copy(box = 0, nextReview = now().toString(), waitsForMeaning = !corrected.hasMeaning)
                 }.bounded()
-            words = words.filterNot { it === current }
             if (!merged) words = words + next
             items += Correction(original.word, corrected.word, original, next.key, merged, next.takeUnless { merged })
         }
@@ -448,16 +453,22 @@ class Library(
         val items = _state.value.corrections
         if (items.isEmpty()) return
         var words = _state.value.words
-        for (item in items.asReversed()) {
-            if (item.merged) {
-                // The entry it was merged into was deleted since: the word is gone, as the learner left it.
-                if (words.none { it.key == item.key }) continue
-            } else {
-                val result = item.result ?: continue
-                val current = words.firstOrNull { it.key == result.key }
-                if (current == null || current.changedSince(result)) continue
-                words = words.filterNot { it === current }
+        // What can be undone: an entry still as the correction left it, or one merged into an
+        // entry still there (one deleted since stays gone, as the learner left it). Every such
+        // entry leaves first, so an original whose key another correction took ("left" saved
+        // from "leave" while that "left" became "leave") comes back too.
+        val undone =
+            items.filter { item ->
+                val result = item.result
+                if (item.merged) {
+                    words.any { it.key == item.key }
+                } else {
+                    result != null && words.firstOrNull { it.key == result.key }?.changedSince(result) == false
+                }
             }
+        val leaving = undone.mapNotNull { item -> item.result?.key.takeUnless { item.merged } }.toSet()
+        words = words.filterNot { it.key in leaving }
+        for (item in undone.asReversed()) {
             if (words.none { it.key == item.original.key }) words = words + item.original.bounded()
         }
         _state.update { it.copy(words = words.sortedByDescending { w -> w.createdAt }, corrections = emptyList()) }
