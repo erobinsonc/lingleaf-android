@@ -1224,6 +1224,21 @@ class IrregularVerbs private constructor(table: Table) {
             val forms = table.homographs.map { it.form }
             check(forms.size == forms.toSet().size) { "duplicate homograph" }
             val verbs = table.verbs.associateBy { it.base }
+            // A plural's pronunciation rules ("leads", "tears") have its singular's sounds, each spoken
+            // form being the singular's for the same IPA + "s" ("led" → "leds"), or neither has one.
+            val byForm = table.homographs.associateBy { it.form }
+            for (h in table.homographs) {
+                if (!h.form.endsWith("s") || h.nounIpa.isEmpty()) continue
+                val singular = byForm[h.form.removeSuffix("s")]?.takeIf { it.nounIpa.isNotEmpty() } ?: continue
+                for (rule in h.nounIpa) {
+                    val same = singular.nounIpa.filter { it.ipa == rule.ipa }
+                    check(same.isNotEmpty()) { "homograph ${h.form}: nounIpa without its singular's" }
+                    check(same.all { (it.spokenAs == null) == (rule.spokenAs == null) }) { "homograph ${h.form}: spokenAs" }
+                    check(
+                        rule.spokenAs == null || same.all { it.spokenAs + "s" == rule.spokenAs },
+                    ) { "homograph ${h.form}: plural spokenAs" }
+                }
+            }
             for (h in table.homographs) {
                 val words = listOfNotNull(h.form, h.noun, h.verb, h.baseVerb, h.nounPair) + h.nounAfter + h.nounBefore + h.verbAfter
                 for (word in words) check(formPattern.matches(word)) { "homograph ${h.form}: bad word" }

@@ -207,6 +207,13 @@ class RoundFiveTest {
         assertEquals("lead", listen("She was the lead singer.", "lead"), "liːd: the voice says it right")
         assertEquals("tare", listen("There is a tear in my shirt.", "tear"))
         assertEquals("tear", listen("A tear rolled down her cheek.", "tear"), "tɪr: as written")
+        // A plural says the plural; the headword the singular's spoken form for the same sound.
+        assertEquals("led, leds", listen("His leads were made of metal.", "leads", headword = "lead"))
+        // Unsure: the tapped form in each reading, the noun's as its sentence proves.
+        assertEquals("leads, leds", listen("We need lead pipes and old roof leads.", "leads", headword = "lead"))
+        assertEquals("tares", listen("There were tears in the sail.", "tears", headword = "tear"), "unsure: both readings sound alike")
+        assertEquals("tare, tares", listen("She mended two tears in her coat.", "tears", headword = "tear"))
+        assertEquals("tear, tears", listen("Her tears fell.", "tears", headword = "tear"), "tɪr: as written")
         // Next-word rules before previous-word ones: "with lead vocals" is the singer's lead.
         val text = "He sang with lead vocals."
         val words = TextTools.wordRanges(text)
@@ -247,15 +254,57 @@ class RoundFiveTest {
         )
 
         fun rule(vararg fields: Pair<String, JsonElement>) = JsonObject(fields.toMap())
+        // "leads" has /lɛd/ "leds" and /liːd/: the singular keeps both sounds, /lɛd/ said "led".
         val ipa = "ipa" to JsonPrimitive("lɛd")
+        val led = "spokenAs" to JsonPrimitive("led")
+        val leed = "ipa" to JsonPrimitive("liːd")
         val before = "before" to JsonArray(listOf(JsonPrimitive("pipes")))
         val after = "after" to JsonArray(listOf(JsonPrimitive("of")))
-        assertTrue(loads(withNounIpa("lead") { JsonArray(listOf(rule(ipa, before), rule(ipa, after), rule(ipa))) }))
-        assertFalse(loads(withNounIpa("lead") { JsonArray(listOf(rule(ipa, after), rule(ipa, before), rule(ipa))) }), "after before before")
+        assertTrue(loads(withNounIpa("lead") { JsonArray(listOf(rule(ipa, before, led), rule(ipa, after, led), rule(leed))) }))
+        assertFalse(
+            loads(
+                withNounIpa("lead") {
+                    JsonArray(listOf(rule(ipa, after, led), rule(ipa, before, led), rule(leed)))
+                },
+            ),
+            "after before before",
+        )
         for (bad in listOf("Led", "le d", "l\u00e9d", "a".repeat(21), "")) {
             val spoken = "spokenAs" to JsonPrimitive(bad)
-            assertFalse(loads(withNounIpa("lead") { JsonArray(listOf(rule(ipa, before, spoken), rule(ipa))) }), "spokenAs \"$bad\"")
+            assertFalse(loads(withNounIpa("lead") { JsonArray(listOf(rule(ipa, before, spoken), rule(leed))) }), "spokenAs \"$bad\"")
         }
+    }
+
+    @Test
+    fun `a plural's spoken forms are its singular's plus s`() {
+        fun withRules(
+            form: String,
+            rules: List<JsonObject>,
+        ) = table.with(
+            "homographs",
+            JsonArray(
+                table["homographs"]!!.jsonArray.map {
+                        h ->
+                    if (h.jsonObject["form"]!!.jsonPrimitive.content != form) h else h.jsonObject.with("nounIpa", JsonArray(rules))
+                },
+            ),
+        )
+
+        fun rule(
+            ipa: String,
+            spoken: String?,
+        ) = JsonObject(listOfNotNull("ipa" to JsonPrimitive(ipa), spoken?.let { "spokenAs" to JsonPrimitive(it) }).toMap())
+        val near = "near" to JsonArray(listOf(JsonPrimitive("metal")))
+
+        fun ruleNear(
+            ipa: String,
+            spoken: String?,
+        ) = JsonObject(rule(ipa, spoken) + near)
+        assertTrue(loads(withRules("leads", listOf(ruleNear("lɛd", "leds"), rule("liːd", null)))))
+        assertFalse(loads(withRules("leads", listOf(ruleNear("lɛd", "led"), rule("liːd", null)))), "the singular's form")
+        assertFalse(loads(withRules("leads", listOf(ruleNear("lɛd", null), rule("liːd", null)))), "one has it, the other not")
+        assertFalse(loads(withRules("leads", listOf(ruleNear("lɛd", "leds"), rule("liːd", "leeds")))), "the singular has none for liːd")
+        assertFalse(loads(withRules("leads", listOf(ruleNear("lɛd", "leds"), rule("lɪd", null)))), "a sound the singular doesn't have")
     }
 
     @Test
