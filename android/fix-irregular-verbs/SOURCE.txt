@@ -1,2 +1,2 @@
-commit bc3a8ce946f4e09b45504695e690db118f6818c1
-run https://github.com/erobinsonc/lingleaf-android/actions/runs/40971822498
+commit 600551c8fd7bc5ee17a8394d1844c6e99c90965b
+run https://github.com/erobinsonc/lingleaf-android/actions/runs/41056377791
