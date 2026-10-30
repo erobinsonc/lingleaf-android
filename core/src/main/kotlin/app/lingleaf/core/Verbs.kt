@@ -2,36 +2,21 @@ package app.lingleaf.core
 
 /**
  * Verb forms used to tell a helper verb from a main verb ("has seen" vs "has a dog").
- * Same lists as `Verbs` in lingleaf-ios.
+ * Same lists as `Verbs` in lingleaf-ios; the irregular ones come from the irregular-verb table.
  */
 internal object Verbs {
-    /** Irregular past participles ("seen", "made"). "got" is left out: "have got" means "have". */
-    val irregularParticiples =
-        setOf(
-            "beaten", "become", "been", "begun", "bent", "bitten", "bought", "bound", "broken",
-            "brought", "built", "burnt", "burst", "cast", "caught", "chosen", "come", "cost",
-            "crept", "cut", "dealt", "done", "drawn", "dreamt", "driven", "drunk", "dug", "eaten",
-            "fallen", "fed", "felt", "fled", "flown", "forgiven", "forgotten", "fought", "found",
-            "frozen", "given", "gone", "gotten", "grown", "had", "heard", "held", "hidden", "hit",
-            "hung", "hurt", "kept", "known", "laid", "lain", "learnt", "led", "left", "lent",
-            "let", "lit", "lost", "made", "meant", "met", "mistaken", "overcome", "paid", "put",
-            "quit", "read", "ridden", "risen", "run", "said", "sat", "seen", "sent", "set",
-            "shaken", "shed", "shot", "shown", "shut", "slept", "sold", "sought", "spent",
-            "spoken", "spread", "stolen", "stood", "struck", "stuck", "sung", "swept", "sworn",
-            "swum", "taken", "taught", "thought", "thrown", "told", "torn", "understood", "wept",
-            "woken", "won", "worn", "wound", "written",
-        )
+    /**
+     * Irregular past participles ("seen", "made"), from the irregular-verb table.
+     * "got" is left out: "have got" means "have".
+     */
+    val irregularParticiples: Set<String> get() = IrregularVerbs.shared.participles
 
     /** Participles that are also base forms: after "'d" they mean "would" ("I'd come"). */
-    val baseLikeParticiples =
-        setOf(
-            "become", "burst", "cast", "come", "cost", "cut", "hit", "hurt", "let", "overcome",
-            "put", "quit", "read", "run", "set", "shed", "shut", "spread",
-        )
+    val baseLikeParticiples: Set<String> get() = IrregularVerbs.shared.baseLikeParticiples
 
     /**
      * Frequent regular verbs, to tell a past participle ("had finished") from a word that
-     * only ends in -ed ("had red hair"). Irregular verbs are in [TextTools]' table.
+     * only ends in -ed ("had red hair"). Irregular verbs are in [IrregularVerbs].
      */
     val regular =
         setOf(
@@ -70,19 +55,8 @@ internal object Verbs {
             "whisper", "wish", "wonder", "work", "worry", "yield",
         )
 
-    /** Frequent irregular verbs in their base form. */
-    val irregularBases =
-        setOf(
-            "be", "beat", "become", "begin", "bite", "break", "bring", "build", "buy", "catch",
-            "choose", "come", "cut", "do", "draw", "drink", "drive", "eat", "fall", "feed", "feel",
-            "fight", "find", "fly", "forget", "forgive", "get", "give", "go", "grow", "hang",
-            "have", "hear", "hide", "hit", "hold", "hurt", "keep", "know", "lead", "leave", "lend",
-            "let", "lie", "lose", "make", "mean", "meet", "pay", "put", "read", "ride", "rise",
-            "run", "say", "see", "seek", "sell", "send", "set", "shake", "shoot", "show", "shut",
-            "sing", "sit", "sleep", "speak", "spend", "stand", "steal", "stick", "swear", "sweep",
-            "swim", "take", "teach", "tear", "tell", "think", "throw", "understand", "wake",
-            "wear", "win", "write",
-        )
+    /** Irregular verbs in their base form, from the table; those used mostly as nouns ("light") left out. */
+    val irregularBases: Set<String> get() = IrregularVerbs.shared.bases
 
     /**
      * A past participle: irregular ("seen"), or -ed from a known verb ("finished", "tried").

@@ -69,6 +69,7 @@ import androidx.lifecycle.compose.LifecycleResumeEffect
 import androidx.lifecycle.compose.collectAsStateWithLifecycle
 import app.lingleaf.R
 import app.lingleaf.core.FunctionWords
+import app.lingleaf.core.LearningIndex
 import app.lingleaf.core.ReadAloud
 import app.lingleaf.core.SentencePosition
 import app.lingleaf.core.TextTools
@@ -191,7 +192,7 @@ fun ReaderScreen(
                         paragraphs = loaded,
                         initialParagraph = (book?.progressParagraph ?: 0).coerceIn(0, loaded.size - 1),
                         fontSize = fontSize,
-                        isLearning = state::isLearning,
+                        learningIndex = state.learningIndex,
                         selection = selection,
                         reading = reading.current,
                         loop = reading.loop,
@@ -225,7 +226,11 @@ fun ReaderScreen(
             onChanged = { change ->
                 scope.launch {
                     snackbar.showUndo(context.getString(change.message, change.label), context.getString(R.string.undo), undoTimeout()) {
-                        withContext(container.io) { library.restoreWord(change.word, change.previous) }
+                        withContext(container.io) {
+                            library.restoreWord(change.word, change.previous)
+                            // A form saved unsure that the new reading replaced comes back too.
+                            change.replaced?.let { library.restoreWord(it.key, it) }
+                        }
                     }
                 }
             },
@@ -243,7 +248,7 @@ private fun ReaderText(
     paragraphs: List<String>,
     initialParagraph: Int,
     fontSize: Float,
-    isLearning: (String) -> Boolean,
+    learningIndex: LearningIndex,
     selection: Selection?,
     reading: SentencePosition?,
     loop: Pair<SentencePosition, SentencePosition>?,
@@ -340,7 +345,7 @@ private fun ReaderText(
                     text = paragraph,
                     words = words[index],
                     style = style,
-                    isLearning = isLearning,
+                    learningIndex = learningIndex,
                     selected = selection?.takeIf { it.paragraph == index }?.word,
                     reading = highlighted(paragraphs, index, reading, loop),
                     onWordTap = { onWordTap(index, it) },

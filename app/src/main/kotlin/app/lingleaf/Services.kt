@@ -26,8 +26,12 @@ import app.lingleaf.core.GutenbergException
 import app.lingleaf.core.Hosts
 import app.lingleaf.core.HttpFetcher
 import app.lingleaf.core.HttpResponse
+import app.lingleaf.core.IrregularVerbs
 import app.lingleaf.core.Library
+import app.lingleaf.core.Meanings
 import app.lingleaf.core.NetworkException
+import app.lingleaf.core.Reading
+import app.lingleaf.core.Sense
 import app.lingleaf.core.Settings
 import app.lingleaf.core.Storage
 import app.lingleaf.core.StorageNames
@@ -145,6 +149,21 @@ class AppContainer(
 
     private val filling = AtomicBoolean(false)
 
+    init {
+        // Reads the irregular-verb table off the main thread, before the first tapped word. A
+        // refused table leaves the regular rules working. Both outcomes are logged, so the
+        // emulator tour can require the table in the shrunk build (release builds strip logs).
+        appScope.launch {
+            val forms = IrregularVerbs.shared.formToBase.size
+            val error = IrregularVerbs.loadError
+            if (error == null) {
+                Log.i("Lingleaf", "Irregular-verb table loaded ($forms forms)")
+            } else {
+                Log.w("Lingleaf", "Irregular-verb table refused", error)
+            }
+        }
+    }
+
     private val _downloads = MutableStateFlow<Map<Int, BookDownload>>(emptyMap())
 
     /**
@@ -223,18 +242,72 @@ class AppContainer(
         appScope.launch {
             try {
                 for (word in library.wordsNeedingTranslation(target)) {
-                    val translation = translateOrNull(word.word, target) ?: break
-                    library.setTranslation(word.word, translation, target)
+                    if (word.isUnsure) {
+                        // Saved unsure: each reading's meaning, as on the card (SPEC S3).
+                        val translated = Meanings.unsureMeanings(word) { meaningOf(it, target, first = true) } ?: break
+                        library.setMeanings(word.key, translated, target)
+                        continue
+                    }
+                    val sense = word.sense
+                    val translation =
+                        when (sense) {
+                            // An expression saved as a unit ("bound for"): its own meanings and query.
+                            null ->
+                                if (IrregularVerbs.shared.expressionEs(word.word).isNotEmpty()) {
+                                    meaningOf(Reading(Reading.Kind.EXPRESSION, word.word, Reading.Step.EXPRESSION), target)
+                                } else {
+                                    translateOrNull(word.word, target)
+                                }
+                            else -> meaningOf(sense, word.word, target, homonym = sense == Sense.HOMONYM)
+                        } ?: break
+                    library.setTranslation(word.key, translation, target)
                 }
                 // The saved sentences too, shown under the meaning in Review (SPEC S7).
                 for (word in library.contextsNeedingTranslation(target)) {
                     val translation = translateOrNull(word.context, target) ?: break
-                    library.setContextTranslation(word.word, translation, target)
+                    library.setContextTranslation(word.key, translation, target)
                 }
             } finally {
                 filling.set(false)
             }
         }
+    }
+
+    /**
+     * The meaning of a reading in [target] (SPEC S3): for a verb in Spanish the table's meanings
+     * (the first group alone with [first]), else the translation of "to {base}" / "the {noun}"
+     * without the article or infinitive marker the query added. Null if translation fails.
+     */
+    suspend fun meaningOf(
+        sense: String,
+        base: String,
+        target: String,
+        first: Boolean = false,
+        homonym: Boolean = false,
+    ): String? {
+        // The regular twin's sense ("lied": mentir) has the twin's meanings and English query.
+        val kind =
+            when {
+                sense == Sense.NOUN -> Reading.Kind.NOUN
+                sense == Sense.HOMONYM || homonym -> Reading.Kind.HOMONYM
+                else -> Reading.Kind.VERB
+            }
+        return meaningOf(Reading(kind, base, Reading.Step.CHOSEN), target, first)
+    }
+
+    /**
+     * The meaning of [reading] in [target]: the table's Spanish (a verb, the twin, an expression,
+     * the twin's noun), else the translation of its English query ("to lie down", "the left",
+     * "heading for") without what only the query needed. Null if translation fails.
+     */
+    suspend fun meaningOf(
+        reading: Reading,
+        target: String,
+        first: Boolean = false,
+    ): String? {
+        Meanings.fromTable(reading, target, first)?.let { return it }
+        val translated = translateOrNull(Meanings.query(reading), target) ?: return null
+        return Meanings.clean(translated, noun = reading.kind == Reading.Kind.NOUN, language = target)
     }
 
     companion object {

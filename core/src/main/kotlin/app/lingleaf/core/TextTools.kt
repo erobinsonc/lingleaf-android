@@ -3,6 +3,9 @@ package app.lingleaf.core
 /** A word inside a paragraph as UTF-16 offsets, the units Android text layout uses. */
 data class WordRange(val start: Int, val end: Int) {
     operator fun contains(offset: Int): Boolean = offset in start until end
+
+    /** Inside [text] (possibly empty): safe to cut out of it. */
+    fun fitsIn(text: String): Boolean = start in 0..end && end <= text.length
 }
 
 private val wordPattern = Regex("[A-Za-z]+(?:['’][A-Za-z]+)*")
@@ -240,9 +243,22 @@ object TextTools {
     /**
      * Likely dictionary forms of [word], most likely first, never the word
      * itself. Used to look words up and to recognise inflected forms
-     * ("animals", "walked") of a word being learned.
+     * ("animals", "walked", "stole") of a word being learned. A homograph of the
+     * irregular-verb table ("left", "leaves") gives the base of its [reading] in its
+     * sentence; without one (or unsure) only the base both readings share ("tears" → "tear").
      */
-    fun baseFormCandidates(word: String): List<String> {
+    fun baseFormCandidates(
+        word: String,
+        reading: Reading? = null,
+    ): List<String> = candidates(word, reading, irregular = true)
+
+    /** [irregular] false: a name ("Drew"), without the irregular-verb link. */
+    private fun candidates(
+        word: String,
+        reading: Reading?,
+        irregular: Boolean,
+        homographs: Boolean = true,
+    ): List<String> {
         val w = normalize(word)
         val out = mutableListOf<String>()
 
@@ -250,7 +266,30 @@ object TextTools {
             if (candidate.length >= 2 && candidate != w && candidate !in out) out += candidate
         }
 
-        IRREGULAR[w]?.let(::add)
+        val verbs = IrregularVerbs.shared
+        // An expression ("bound for") is saved as its text, with no base form; the twin's noun ("the
+        // lies") leads to its noun only.
+        if (reading?.kind == Reading.Kind.EXPRESSION) return out
+        if (reading?.step == Reading.Step.TWIN_NOUN) {
+            add(reading.base)
+            return out
+        }
+        if (homographs && verbs.isHomograph(w)) {
+            val base = if (reading == null || reading.kind == Reading.Kind.UNSURE) verbs.sharedBase(w) else reading.base
+            base?.let(::add)
+            return out
+        }
+        when (reading?.kind) {
+            // The twin's sense ("lied" → lie, to say what isn't true): its base only.
+            Reading.Kind.HOMONYM -> {
+                verbs.formToBase[w]?.let(::add)
+                return out
+            }
+            // An -s or -ing form no step proved: an ordinary word, no table link ("the lights";
+            // "a meeting" is the word itself).
+            Reading.Kind.WORD -> if (w.endsWith("ing")) return out
+            else -> ((if (irregular) verbs.formToBase[w] else null) ?: NON_VERB[w])?.let(::add)
+        }
 
         when {
             w.endsWith("'s") -> add(w.dropLast(2))
@@ -262,31 +301,65 @@ object TextTools {
             w.endsWith("s") && !w.endsWith("ss") && w.length > 3 -> add(w.dropLast(1))
         }
 
+        fun stemRules(stem: String) {
+            when {
+                // US double-l bases first, then the single l: install, instal.
+                stem in verbs.llBases -> {
+                    add(stem)
+                    add(stem.dropLast(1))
+                }
+                // travell → travel, controll → control; not call, fill (one vowel group).
+                stem.endsWith("ll") && vowelGroups(stem.dropLast(1)) >= 2 -> add(stem.dropLast(1))
+                isDoubled(stem) -> add(stem.dropLast(1))
+            }
+            add(stem)
+            add(stem + "e")
+        }
+
         if (w.endsWith("ied") && w.length > 4) {
             add(w.dropLast(3) + "y")
         } else if (w.endsWith("ed") && w.length > 4) {
             val stem = w.dropLast(2)
-            if (hasVowel(stem)) {
-                if (isDoubled(stem)) add(stem.dropLast(1))
-                add(stem)
-                add(stem + "e")
-            }
+            if (hasVowel(stem)) stemRules(stem)
         }
 
         if (w.endsWith("ing") && w.length > 5) {
             val stem = w.dropLast(3)
-            if (stem.length >= 3 && hasVowel(stem)) {
-                if (isDoubled(stem)) add(stem.dropLast(1))
-                add(stem)
-                add(stem + "e")
-            }
+            if (stem.length >= 3 && hasVowel(stem)) stemRules(stem)
         }
         return out
     }
 
+    /** [baseFormCandidates] of the word at [range] of [text], a homograph read in its sentence. */
+    fun baseFormCandidates(
+        text: String,
+        range: WordRange,
+    ): List<String> {
+        if (!range.fitsIn(text) || range.start == range.end) return emptyList()
+        val words = wordRanges(text)
+        val index = words.indexOf(range)
+        if (index < 0) return baseFormCandidates(text.substring(range.start, range.end))
+        return readingAndCandidates(text, words, index).second
+    }
+
+    /** Word [index] of [words] (the word ranges of [text]): its reading and base forms. */
+    private fun readingAndCandidates(
+        text: String,
+        words: List<WordRange>,
+        index: Int,
+    ): Pair<Reading?, List<String>> {
+        val range = words[index] // checked by the callers
+        val word = text.substring(range.start, range.end)
+        val verbs = IrregularVerbs.shared
+        val reading = verbs.resolve(text, words, index)
+        // A name ("Uncle Drew") has no irregular link.
+        return reading to candidates(word, reading, irregular = reading?.step != Reading.Step.NAME)
+    }
+
     /**
      * Where a saved word appears in [sentence], to mark it: its forms ("animals" for
-     * "animal"), or, for a saved group of words ("did not go"), that group (ignoring case).
+     * "animal", "stole" for "steal"; a homograph only where the sentence reads it that way),
+     * or, for a saved group of words ("did not go"), that group (ignoring case).
      */
     fun occurrences(
         word: String,
@@ -297,42 +370,155 @@ object TextTools {
             val start = normalize(sentence).indexOf(key)
             return if (start < 0) emptyList() else listOf(WordRange(start, start + key.length))
         }
-        return wordRanges(sentence).filter { key in matchKeys(sentence.substring(it.start, it.end)) }
+        val words = wordRanges(sentence)
+        return words.filterIndexed { index, _ -> key in matchKeys(sentence, words, index) }
     }
 
-    /** The word plus its likely base forms: what to match against saved words. */
+    /**
+     * The words of [text] ([words], its word ranges) that are forms of one of [saved] (the
+     * words being learned, normalised), homographs read in their sentence: what the reader
+     * underlines. One pass over the text, constant work per word.
+     */
+    fun marked(
+        text: String,
+        words: List<WordRange>,
+        saved: Set<String>,
+    ): List<WordRange> {
+        if (saved.isEmpty()) return emptyList()
+        return words.filterIndexed { index, _ -> matchKeys(text, words, index).any { it in saved } }
+    }
+
+    /**
+     * The words of [text] ([words], its word ranges) that are forms of a word being learned in
+     * [learning], homographs read in their sentence and senses kept apart (SPEC S4): "the wind"
+     * doesn't mark "She wound the clock", a word saved unsure marks its exact form. One pass.
+     */
+    fun marked(
+        text: String,
+        words: List<WordRange>,
+        learning: LearningIndex,
+    ): List<WordRange> {
+        if (learning.isEmpty) return emptyList()
+        return words.filterIndexed { index, _ ->
+            senseKeys(text, words, index)?.let { (surface, keys) -> learning.matches(surface, keys) } == true
+        }
+    }
+
+    /**
+     * Where the saved [word] appears in [sentence]: its forms read in its sense (or a saved
+     * group of words, as [occurrences] with a string).
+     */
+    fun occurrences(
+        word: VocabWord,
+        sentence: String,
+    ): List<WordRange> {
+        if (' ' in word.word || (word.sense == null && word.meanings == null)) return occurrences(word.word, sentence)
+        return marked(sentence, wordRanges(sentence), LearningIndex.of(listOf(word.copy(learned = false))))
+    }
+
+    /**
+     * Word [index] of [words] (the word ranges of [text]), normalised, and the base forms it
+     * leads to with the sense of each: a homograph's reading ("she left" → leave as a verb), an
+     * irregular form's verb ("stolen" → steal; "lied" → lie, the twin), a regular form's any.
+     */
+    internal fun senseKeys(
+        text: String,
+        words: List<WordRange>,
+        index: Int,
+    ): Pair<String, List<MatchKey>>? {
+        val range = words.getOrNull(index)?.takeIf { it.fitsIn(text) && it.start < it.end } ?: return null
+        val surface = normalize(text.substring(range.start, range.end))
+        val verbs = IrregularVerbs.shared
+        val reading = verbs.resolve(text, words, index)
+        if (reading != null) {
+            val name = reading.step == Reading.Step.NAME
+            val spellings = (listOf(surface) + candidates(surface, reading, irregular = !name)).distinct()
+            val keys =
+                when {
+                    // Unsure (or a name, "Aunt Rose"): the spellings, for words saved without a sense only.
+                    // An expression ("bound for") also its unit, so a saved expression marks it in any book.
+                    reading.kind == Reading.Kind.EXPRESSION ->
+                        spellings.map { MatchKey(it, LearningIndex.UNSURE) } + MatchKey(reading.base, null)
+                    reading.kind == Reading.Kind.UNSURE || name ->
+                        spellings.map { MatchKey(it, LearningIndex.UNSURE) }
+                    // An ordinary word ("the lights"): never a verb's sense.
+                    reading.kind == Reading.Kind.WORD -> spellings.map { MatchKey(it, LearningIndex.NOT_VERB) }
+                    // A form of the table that is no other word ("torn") also matches its own spelling.
+                    !verbs.isHomograph(surface) -> listOf(MatchKey(reading.base, Sense.of(reading)), MatchKey(surface, null))
+                    else -> listOf(MatchKey(reading.base, Sense.of(reading)))
+                }
+            return surface to keys
+        }
+        val keys = mutableListOf(MatchKey(surface, null))
+        for (candidate in candidates(surface, null, irregular = true)) {
+            if (keys.none { it.word == candidate }) keys += MatchKey(candidate, null)
+        }
+        return surface to keys
+    }
+
+    /**
+     * Base forms [word] had before the irregular-verb table read homographs in their sentence:
+     * the old context-free links ("left" → "leave", "lives" → "life", "live"). For correcting
+     * words saved then (SPEC S18).
+     */
+    internal fun oldCandidates(word: String): Set<String> {
+        val w = normalize(word)
+        return setOfNotNull(OLD_HOMOGRAPH_LINKS[w]) + candidates(w, null, irregular = false, homographs = false)
+    }
+
+    /** The links the hand-written table gave homographs before the table existed. */
+    private val OLD_HOMOGRAPH_LINKS =
+        mapOf(
+            "saw" to "see", "thought" to "think", "found" to "find", "felt" to "feel", "left" to "leave",
+            "spoke" to "speak", "fell" to "fall", "rose" to "rise", "lives" to "life", "leaves" to "leaf",
+        )
+
+    /** The word plus its likely base forms: what to match against saved words. Homographs are unsure. */
     fun matchKeys(word: String): Set<String> = setOf(normalize(word)) + baseFormCandidates(word)
+
+    /**
+     * [matchKeys] of the word at [range] of [text]. A homograph read as a verb or noun with
+     * another base ("she left" → "leave") doesn't match its own spelling: a saved "left"
+     * (the side) isn't marked in "she left".
+     */
+    fun matchKeys(
+        text: String,
+        range: WordRange,
+    ): Set<String> {
+        if (!range.fitsIn(text) || range.start == range.end) return emptySet()
+        val words = wordRanges(text)
+        val index = words.indexOf(range)
+        if (index < 0) return matchKeys(text.substring(range.start, range.end))
+        return matchKeys(text, words, index)
+    }
+
+    /** [matchKeys] of word [index] of [words], the word ranges of [text]. */
+    fun matchKeys(
+        text: String,
+        words: List<WordRange>,
+        index: Int,
+    ): Set<String> {
+        val range = words.getOrNull(index)?.takeIf { it.fitsIn(text) } ?: return emptySet()
+        val word = normalize(text.substring(range.start, range.end))
+        val (reading, candidates) = readingAndCandidates(text, words, index)
+        val claimed = reading != null && reading.kind != Reading.Kind.UNSURE && reading.base != word
+        return if (claimed) candidates.toSet() else setOf(word) + candidates
+    }
 
     private fun hasVowel(s: String) = s.any { it in "aeiouy" }
 
+    private val vowelGroup = Regex("[aeiouy]+")
+
+    private fun vowelGroups(s: String) = vowelGroup.findAll(s).count()
+
     private fun isDoubled(stem: String) = stem.length >= 3 && stem.last() == stem[stem.length - 2] && stem.last() !in "aeiouslz"
 
-    private val IRREGULAR =
+    /** Irregular nouns and comparatives; irregular verbs are in [IrregularVerbs]. */
+    private val NON_VERB =
         mapOf(
-            "am" to "be", "is" to "be", "are" to "be", "was" to "be", "were" to "be", "been" to "be",
-            "has" to "have", "had" to "have", "does" to "do", "did" to "do", "done" to "do",
-            "went" to "go", "gone" to "go", "goes" to "go", "saw" to "see", "seen" to "see",
-            "said" to "say", "made" to "make", "took" to "take", "taken" to "take",
-            "came" to "come", "knew" to "know", "known" to "know", "thought" to "think",
-            "got" to "get", "gotten" to "get", "gave" to "give", "given" to "give",
-            "found" to "find", "told" to "tell", "felt" to "feel", "left" to "leave",
-            "brought" to "bring", "began" to "begin", "begun" to "begin", "kept" to "keep",
-            "stood" to "stand", "heard" to "hear", "ran" to "run", "sat" to "sit",
-            "spoke" to "speak", "spoken" to "speak", "wrote" to "write", "written" to "write",
-            "bought" to "buy", "caught" to "catch", "taught" to "teach", "fought" to "fight",
-            "held" to "hold", "met" to "meet", "paid" to "pay", "sent" to "send", "spent" to "spend",
-            "built" to "build", "lost" to "lose", "meant" to "mean", "slept" to "sleep",
-            "won" to "win", "ate" to "eat", "eaten" to "eat", "drank" to "drink", "drunk" to "drink",
-            "drove" to "drive", "driven" to "drive", "flew" to "fly", "flown" to "fly",
-            "grew" to "grow", "grown" to "grow", "threw" to "throw", "thrown" to "throw",
-            "fell" to "fall", "fallen" to "fall", "forgot" to "forget", "forgotten" to "forget",
-            "broke" to "break", "broken" to "break", "chose" to "choose", "chosen" to "choose",
-            "rode" to "ride", "ridden" to "ride", "rose" to "rise", "risen" to "rise",
-            "sang" to "sing", "sung" to "sing", "swam" to "swim", "woke" to "wake",
-            "wore" to "wear", "worn" to "wear", "understood" to "understand", "led" to "lead",
             "children" to "child", "men" to "man", "women" to "woman", "feet" to "foot",
-            "teeth" to "tooth", "mice" to "mouse", "geese" to "goose", "lives" to "life",
-            "wives" to "wife", "knives" to "knife", "leaves" to "leaf", "wolves" to "wolf",
+            "teeth" to "tooth", "mice" to "mouse", "geese" to "goose",
+            "wives" to "wife", "knives" to "knife", "wolves" to "wolf",
             "better" to "good", "best" to "good", "worse" to "bad", "worst" to "bad",
         )
 }

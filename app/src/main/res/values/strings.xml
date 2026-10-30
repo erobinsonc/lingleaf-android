@@ -222,4 +222,15 @@
     <string name="note_whos">“who\'s” = “%1$s”; “whose” = of whom: “Whose book?”</string>
     <string name="note_had_or_would">“%1$s” can be “%2$s” or “%3$s”: the sentence\'s translation tells which.</string>
     <string name="either_or">%1$s or %2$s</string>
+    <string name="unsure_guide">The sentence\'s translation tells you which one:</string>
+    <string name="corrected_one">Fixed to match its sentence: “%1$s” → “%2$s”.</string>
+    <string name="corrected_one_spoken">Fixed to match its sentence: “%1$s” is now “%2$s”.</string>
+    <string name="corrected_many">Fixed to match their sentences:</string>
+    <string name="corrected_line">“%1$s” → “%2$s”</string>
+    <string name="corrected_line_spoken">“%1$s” is now “%2$s”</string>
+    <plurals name="corrected_more">
+        <item quantity="one">and %d more</item>
+        <item quantity="other">and %d more</item>
+    </plurals>
+    <string name="close">Close</string>
 </resources>
