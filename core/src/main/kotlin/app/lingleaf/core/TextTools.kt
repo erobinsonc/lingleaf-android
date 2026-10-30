@@ -436,7 +436,10 @@ object TextTools {
             val keys =
                 when {
                     // Unsure (or a name, "Aunt Rose"): the spellings, for words saved without a sense only.
-                    reading.kind == Reading.Kind.UNSURE || reading.kind == Reading.Kind.EXPRESSION || name ->
+                    // An expression ("bound for") also its unit, so a saved expression marks it in any book.
+                    reading.kind == Reading.Kind.EXPRESSION ->
+                        spellings.map { MatchKey(it, LearningIndex.UNSURE) } + MatchKey(reading.base, null)
+                    reading.kind == Reading.Kind.UNSURE || name ->
                         spellings.map { MatchKey(it, LearningIndex.UNSURE) }
                     // An ordinary word ("the lights"): never a verb's sense.
                     reading.kind == Reading.Kind.WORD -> spellings.map { MatchKey(it, LearningIndex.NOT_VERB) }

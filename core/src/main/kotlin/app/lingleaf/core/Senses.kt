@@ -161,6 +161,37 @@ object Meanings {
     }
 
     /**
+     * The rows of a word saved unsure, one per saved reading, each with the form it was saved as
+     * ("lies"), so a later translation reads them as the card did ("lies": estar, encontrarse).
+     * Null for a word not saved unsure.
+     */
+    fun unsureRows(word: VocabWord): List<Reading>? {
+        val meanings = word.meanings?.takeIf { word.isUnsure } ?: return null
+        return meanings.map {
+            val kind =
+                when (it.kind) {
+                    Sense.NOUN -> Reading.Kind.NOUN
+                    Sense.HOMONYM -> Reading.Kind.HOMONYM
+                    else -> Reading.Kind.VERB
+                }
+            Reading(kind, it.base, Reading.Step.CHOSEN, form = word.word)
+        }
+    }
+
+    /**
+     * A word saved unsure: each row's meaning from [meaning] (the first group alone, as on the
+     * card), told apart when two read the same (SPEC S3). Null for another word, or when one fails.
+     */
+    suspend fun unsureMeanings(
+        word: VocabWord,
+        meaning: suspend (Reading) -> String?,
+    ): List<String>? {
+        val rows = unsureRows(word) ?: return null
+        val translated = distinguished(rows, rows.map { meaning(it) })
+        return if (translated.any { it == null }) null else translated.filterNotNull()
+    }
+
+    /**
      * The two unsure rows' meanings, told apart: when both come out the same ("mentir" / "mentir"),
      * each adds its sense's short English gloss ("mentir (say what isn't true)").
      */

@@ -111,8 +111,9 @@ fun ReviewScreen(onBack: () -> Unit) {
                 word = state.word(current.key) ?: current,
                 // Before "Show meaning", two senses are named without their meaning: recall first (SPEC S7).
                 name = state.displayName(state.word(current.key) ?: current, withMeaning = revealed),
-                // Two senses of its spelling saved: the prompt also shows the sentence (SPEC S7).
-                twoSenses = state.words.count { it.word == current.word && it.sense != null } >= 2,
+                // Two senses of its spelling saved, or a label that doesn't tell the sense ("to lie"):
+                // the prompt also shows the sentence (SPEC S7).
+                showSentence = IrregularVerbs.shared.reviewShowsSentence(state.word(current.key) ?: current, state.words),
                 target = target,
                 reviewed = reviewed,
                 total = total,
@@ -166,7 +167,7 @@ private fun ReviewCard(
     word: VocabWord,
     /** "to wind" / "the wind" when both senses are saved, else the word (SPEC S4). */
     name: String,
-    twoSenses: Boolean,
+    showSentence: Boolean,
     target: String?,
     reviewed: Int,
     total: Int,
@@ -286,8 +287,8 @@ private fun ReviewCard(
                                     horizontalAlignment = Alignment.CenterHorizontally,
                                     verticalArrangement = Arrangement.spacedBy(12.dp),
                                 ) {
-                                    // Two senses of one spelling ("to lie"): the sentence tells which, its translation not yet.
-                                    if (twoSenses && word.context.isNotEmpty()) {
+                                    // The sentence tells which sense ("to lie"), its translation not yet.
+                                    if (showSentence) {
                                         Text(
                                             markedSentence(word),
                                             fontStyle = FontStyle.Italic,

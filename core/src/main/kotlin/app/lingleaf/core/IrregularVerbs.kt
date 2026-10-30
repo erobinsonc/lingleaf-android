@@ -154,6 +154,22 @@ class IrregularVerbs private constructor(table: Table) {
         return w in homographs || verb?.nounFirst == true || verb?.homonym != null
     }
 
+    /**
+     * Whether Review's prompt shows the sentence [word] was saved from (SPEC S7): when two senses
+     * of its spelling are saved ([saved]), or when its label alone doesn't tell the sense, a verb
+     * with a regular twin (lie, hang) saved as the verb or as the twin. Not when the sentence is
+     * just the word.
+     */
+    fun reviewShowsSentence(
+        word: VocabWord,
+        saved: Collection<VocabWord>,
+    ): Boolean {
+        if (word.context.isEmpty() || TextTools.normalize(word.context) == word.word) return false
+        val twoSenses = saved.count { it.word == word.word && it.sense != null } >= 2
+        val twin = (word.sense == Sense.VERB || word.sense == Sense.HOMONYM) && verbsByBase[word.word]?.homonym != null
+        return twoSenses || twin
+    }
+
     /** The base both readings of a homograph share ("tears" → "tear"), else null. */
     fun sharedBase(word: String): String? = homographs[word]?.takeIf { it.noun == it.verb }?.verb
 
@@ -260,6 +276,8 @@ class IrregularVerbs private constructor(table: Table) {
         val form = TextTools.normalize(text.substring(range.start, range.end))
         if (isHomograph(form) || form in tableForms) {
             val reading = resolve(text, words, index) ?: return null
+            // A noun as written, unless its sentence proves a sound the voice wouldn't make ("led").
+            if (reading.kind == Reading.Kind.NOUN) return nounSpoken(text, words, index)
             return slot(form, reading)?.let { verbsByBase[reading.base]?.spokenAs?.get(it) }
         }
         val verb = verbsByBase[formToBase[form] ?: form] ?: return null
@@ -348,6 +366,8 @@ class IrregularVerbs private constructor(table: Table) {
      */
     fun spokenSaved(word: VocabWord): String {
         val meanings = word.meanings
+        // A noun whose saved sentence proved a sound the voice wouldn't make: its IPA tells ("led").
+        if (word.sense == Sense.NOUN) return nounSpokenFor(word.word, word.phonetic) ?: word.word
         if (!word.isUnsure || meanings == null) return spokenHeadword(word.word, word.sense)
         val shown = word.form ?: word.word
         return meanings
@@ -382,7 +402,11 @@ class IrregularVerbs private constructor(table: Table) {
         val index = words.indexOf(range).takeIf { it >= 0 }
         val rows = index?.let { choices(text, words, it) }.orEmpty()
         if (rows.isNotEmpty()) {
-            return (chosen?.let(::listOf) ?: rows).map { spokenOf(normalized, it) ?: form }.distinct().joinToString(", ")
+            val nounSpoken = index?.let { nounSpoken(text, words, it) }
+            return (chosen?.let(::listOf) ?: rows)
+                .map { spokenOf(normalized, it) ?: nounSpoken.takeIf { _ -> it.kind == Reading.Kind.NOUN } ?: form }
+                .distinct()
+                .joinToString(", ")
         }
         val formSpoken = index?.let { spokenAt(text, words, it) } ?: form
         if (TextTools.normalize(headword) == normalized) return formSpoken
@@ -395,7 +419,13 @@ class IrregularVerbs private constructor(table: Table) {
             } else {
                 index?.let { baseAt(text, words, it) } != null
             }
-        val head = if (verb) spokenAs(TextTools.normalize(headword), "base") ?: headword else headword
+        val head =
+            when {
+                verb -> spokenAs(TextTools.normalize(headword), "base") ?: headword
+                // A noun ("leads" → "lead"): said as the sound its sentence proves, when the voice would say it wrong.
+                reading?.kind == Reading.Kind.NOUN -> nounSpokenFor(headword, index?.let { nounIpa(text, words, it) }) ?: headword
+                else -> headword
+            }
         return "$head, $formSpoken"
     }
 
@@ -441,7 +471,39 @@ class IrregularVerbs private constructor(table: Table) {
         text: String,
         words: List<WordRange>,
         index: Int,
+    ): String? = nounIpaRule(text, words, index)?.ipa
+
+    /**
+     * What the voice says for the noun at [index] instead of its spelling, when the rule its
+     * sentence matched has a spoken form ("made of lead" → "led", "a tear in my shirt" → "tare").
+     */
+    fun nounSpoken(
+        text: String,
+        words: List<WordRange>,
+        index: Int,
+    ): String? = nounIpaRule(text, words, index)?.spokenAs
+
+    /**
+     * What the voice says for the noun [noun] pronounced [ipa] (a saved word's IPA, with or
+     * without slashes), when the table says the voice would say it wrong: "lead" /lɛd/ → "led".
+     */
+    fun nounSpokenFor(
+        noun: String,
+        ipa: String?,
     ): String? {
+        val sound = ipa?.takeIf { it.isNotBlank() } ?: return null
+        return homographs[TextTools.normalize(noun)]
+            ?.nounIpa
+            ?.firstOrNull { it.spokenAs != null && DictionaryEntry.sameIpa(it.ipa, sound) }
+            ?.spokenAs
+    }
+
+    /** The first `nounIpa` rule of the homograph at [index] that its sentence matches, in the table's order. */
+    private fun nounIpaRule(
+        text: String,
+        words: List<WordRange>,
+        index: Int,
+    ): NounIpa? {
         val range = words.getOrNull(index)?.takeIf { it.fitsIn(text) } ?: return null
         val h = homographs[TextTools.normalize(text.substring(range.start, range.end))] ?: return null
         if (h.nounIpa.isEmpty()) return null
@@ -451,7 +513,7 @@ class IrregularVerbs private constructor(table: Table) {
             if (rule.after != null && window.prev(1) !in rule.after) continue
             if (rule.before != null && window.next(1) !in rule.before) continue
             if (rule.near != null && rule.near.none { it in sentence }) continue
-            return rule.ipa
+            return rule
         }
         return null
     }
@@ -518,8 +580,9 @@ class IrregularVerbs private constructor(table: Table) {
             return when (reading.step) {
                 // "She tells lies": the twin's noun or the verb ("the lie — mentira" / "to lie — estar, encontrarse").
                 Reading.Step.UNSURE_NOUN -> listOf(Reading(Reading.Kind.NOUN, entry.shared?.noun ?: form, Reading.Step.CHOSEN), verb)
-                // "The bell rings": the verb or the word as a noun ("to ring" / "the rings").
-                Reading.Step.UNSURE_NOUN_FIRST -> listOf(verb, Reading(Reading.Kind.NOUN, form, Reading.Step.CHOSEN))
+                // "The bell rings": the verb or the noun, its regular lemma spelled like the base
+                // ("to ring" / "the ring"; chosen, it is saved as "ring").
+                Reading.Step.UNSURE_NOUN_FIRST -> listOf(verb, Reading(Reading.Kind.NOUN, entry.base, Reading.Step.CHOSEN, form))
                 // lying, lies, hanging, hangs left unsure: the verb's sense and the twin's ("to lie — mentir").
                 else ->
                     listOf(
@@ -1025,8 +1088,8 @@ class IrregularVerbs private constructor(table: Table) {
         /** An English query or gloss: lower-case words, apostrophes and spaces, 2–40 characters. */
         private val englishPattern = Regex("^[a-z][a-z' ]{0,38}[a-z]$")
 
-        /** A Spanish meaning of the v4 fields: 1–100 characters, no surrounding space. */
-        private fun isSpanish(s: String) = s.length in 1..MAX_TEXT && s.trim() == s
+        /** A Spanish meaning of the v4 fields: shown text ([isText]) with no surrounding space. */
+        private fun isSpanish(s: String) = isText(s) && s.trim() == s
 
         private val articles = setOf("the", "a", "an")
         private val andOr = setOf("and", "or")
@@ -1171,12 +1234,16 @@ class IrregularVerbs private constructor(table: Table) {
                     ) { "homograph ${h.form}: noun phrase" }
                 }
                 h.subjectNounNext?.let { next -> check(next.all(formPattern::matches)) { "homograph ${h.form}: subjectNounNext" } }
-                // Pronunciation rules: words a–z, a rule with no condition only as the last.
+                // Pronunciation rules: words a–z, a spoken form like a verb's, a rule with no condition
+                // only as the last, and rules on the next word before those on the previous word only.
                 for ((n, rule) in h.nounIpa.withIndex()) {
                     val conditions = listOfNotNull(rule.near, rule.after, rule.before)
                     check(isIpa(rule.ipa) && conditions.flatten().all(formPattern::matches)) { "homograph ${h.form}: nounIpa" }
+                    check(rule.spokenAs?.let(formPattern::matches) ?: true) { "homograph ${h.form}: nounIpa spokenAs" }
                     check(conditions.isNotEmpty() || n == h.nounIpa.lastIndex) { "homograph ${h.form}: nounIpa default not last" }
                 }
+                val afterOnly = h.nounIpa.indexOfFirst { it.after != null && it.before == null }
+                check(afterOnly < 0 || h.nounIpa.drop(afterOnly).none { it.before != null }) { "homograph ${h.form}: nounIpa order" }
                 for (x in h.expressions) {
                     val ok = formPattern.matches(x.next) && x.es.size in 1..2 && x.es.all(::isSpanish) && englishPattern.matches(x.query)
                     check(ok && englishPattern.matches(x.gloss)) { "homograph ${h.form}: expression" }
@@ -1324,6 +1391,8 @@ internal data class NounIpa(
     val near: List<String>? = null,
     val after: List<String>? = null,
     val before: List<String>? = null,
+    /** What the voice says for the noun when this rule applies and it would say it wrong (lead /lɛd/ "led"). */
+    val spokenAs: String? = null,
 )
 
 /** An expression a homograph makes with the next word ("bound for"; "bound to" + a base verb). */

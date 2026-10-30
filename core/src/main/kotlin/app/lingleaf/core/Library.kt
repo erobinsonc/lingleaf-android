@@ -111,7 +111,7 @@ data class VocabWord(
      */
     fun bounded(): VocabWord {
         val cleanForm = form?.takeIf { it.length <= MAX_FORM && formPattern.matches(it) }
-        val withForm = copy(sense = sense?.takeIf { it in Sense.all }, form = cleanForm)
+        val withForm = copy(word = TextTools.truncated(word, MAX_WORD), sense = sense?.takeIf { it in Sense.all }, form = cleanForm)
         val range = withForm.formRange
         val bounded =
             withForm.copy(
@@ -130,6 +130,12 @@ data class VocabWord(
             word: String,
             sense: String?,
         ) = if (sense == null) word else "$word#$sense"
+
+        /** Longest saved word, in UTF-16 units: a verb group's sentence when it has no group (SPEC S16). */
+        const val MAX_WORD = TextTools.MAX_SENTENCE
+
+        /** Longest key: [MAX_WORD] and "#" with the longest sense, so a corrections cursor can always hold one. */
+        val MAX_KEY = MAX_WORD + 1 + Sense.all.maxOf { it.length }
 
         /** Longest tapped form kept, in UTF-16 units. */
         const val MAX_FORM = 40
@@ -427,7 +433,6 @@ class Library(
 
         companion object {
             private const val SEPARATOR = "\t"
-            private const val MAX_KEY = 200
 
             val order: Comparator<VocabWord> =
                 compareByDescending<VocabWord> { LocalDateTime.parse(it.createdAt) }.thenBy { it.key }
@@ -436,7 +441,7 @@ class Library(
                 val value = progress?.takeIf { it.startsWith(PARTIAL) }?.removePrefix(PARTIAL) ?: return null
                 val at = value.substringBefore(SEPARATOR, "")
                 val key = value.substringAfter(SEPARATOR, "")
-                if (key.isEmpty() || key.length > MAX_KEY) return null
+                if (key.isEmpty() || key.length > VocabWord.MAX_KEY) return null
                 return runCatching { Cursor(LocalDateTime.parse(at), key) }.getOrNull()
             }
         }
@@ -632,7 +637,7 @@ class Library(
         meanings: List<SavedMeaning>? = null,
         replacing: String? = null,
     ): VocabWord? {
-        val name = TextTools.normalize(word)
+        val name = TextTools.truncated(TextTools.normalize(word), VocabWord.MAX_WORD)
         val key = VocabWord.keyOf(name, sense?.takeIf { it in Sense.all })
         val now = now().toString()
         // A word saved before senses existed becomes the sense it is saved as now, keeping its progress.

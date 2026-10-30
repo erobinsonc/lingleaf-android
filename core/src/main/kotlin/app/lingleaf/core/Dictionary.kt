@@ -36,32 +36,37 @@ data class DictionaryEntry(
          * phonetic and its part of speech: so a reading can pick the meaning that matches it.
          */
         fun parseAll(answer: JsonArray): List<DictionaryEntry> =
-            answer.take(MAX_ENTRIES).mapNotNull { it as? JsonObject }.flatMap { json ->
-                val meanings = (json["meanings"] as? JsonArray)?.take(MAX_MEANINGS)?.mapNotNull { it as? JsonObject }.orEmpty()
-                val first = parse(json).copy(phonetics = pronunciations(json))
-                if (meanings.isEmpty()) {
-                    listOf(first)
-                } else {
-                    meanings.map { meaning ->
-                        val definition = (meaning["definitions"] as? JsonArray)?.firstOrNull() as? JsonObject
-                        first.copy(
-                            partOfSpeech =
-                                (meaning["partOfSpeech"] as? JsonPrimitive)?.contentOrNull?.let {
-                                    TextTools.truncated(
-                                        it,
-                                        MAX_SHORT_FIELD,
-                                    )
-                                },
-                            definition =
-                                (
-                                    definition?.get(
-                                        "definition",
-                                    ) as? JsonPrimitive
-                                )?.contentOrNull?.let { TextTools.truncated(it, MAX_DEFINITION) },
-                        )
+            // An entry without a word is skipped, not the whole answer.
+            answer
+                .take(MAX_ENTRIES)
+                .mapNotNull { it as? JsonObject }
+                .filter { (it["word"] as? JsonPrimitive)?.isString == true }
+                .flatMap { json ->
+                    val meanings = (json["meanings"] as? JsonArray)?.take(MAX_MEANINGS)?.mapNotNull { it as? JsonObject }.orEmpty()
+                    val first = parse(json).copy(phonetics = pronunciations(json))
+                    if (meanings.isEmpty()) {
+                        listOf(first)
+                    } else {
+                        meanings.map { meaning ->
+                            val definition = (meaning["definitions"] as? JsonArray)?.firstOrNull() as? JsonObject
+                            first.copy(
+                                partOfSpeech =
+                                    (meaning["partOfSpeech"] as? JsonPrimitive)?.contentOrNull?.let {
+                                        TextTools.truncated(
+                                            it,
+                                            MAX_SHORT_FIELD,
+                                        )
+                                    },
+                                definition =
+                                    (
+                                        definition?.get(
+                                            "definition",
+                                        ) as? JsonPrimitive
+                                    )?.contentOrNull?.let { TextTools.truncated(it, MAX_DEFINITION) },
+                            )
+                        }
                     }
                 }
-            }
 
         /** The entry's pronunciations: its phonetic, then each in its phonetics, at most [MAX_MEANINGS]. */
         private fun pronunciations(json: JsonObject): List<String> {
@@ -137,11 +142,21 @@ class DictionaryClient(private val http: HttpFetcher) {
         if (reading?.kind == Reading.Kind.HOMONYM) return null
         if (reading?.kind == Reading.Kind.NOUN && IrregularVerbs.shared.twinNounEs(reading.base) != null) return null
         // An expression ("bound for"): the adjective's definition of the word.
-        if (reading?.kind == Reading.Kind.EXPRESSION) return pick(entries(w)?.filter { it.partOfSpeech == "adjective" }.orEmpty(), null)
+        if (reading?.kind == Reading.Kind.EXPRESSION) {
+            return pick(
+                entries(w)?.filter {
+                    it.partOfSpeech.equals("adjective", ignoreCase = true)
+                }.orEmpty(),
+                null,
+            )
+        }
         // A noun of tear, lead or wind: the entry its sentence's pronunciation proves, or none.
         if (reading?.kind == Reading.Kind.NOUN && IrregularVerbs.shared.hasNounIpa(w)) {
             val ipa = nounIpa ?: return null
-            return pick(entries(TextTools.normalize(reading.base))?.filter { it.partOfSpeech == "noun" }.orEmpty(), ipa)
+            return pick(
+                entries(TextTools.normalize(reading.base))?.filter { it.partOfSpeech.equals("noun", ignoreCase = true) }.orEmpty(),
+                ipa,
+            )
         }
         val certain = reading != null && reading.step != Reading.Step.NAME
         if (certain && (reading?.kind == Reading.Kind.VERB || reading?.kind == Reading.Kind.NOUN)) {
@@ -151,9 +166,9 @@ class DictionaryClient(private val http: HttpFetcher) {
             // The table's IPA of the base tells which entry (etymology) is this verb ("wind" /waɪnd/).
             val ipa = if (verb) IrregularVerbs.shared.ipa(base, "base") else null
             // The tapped form only when the base has no entry of this part of speech at all.
-            val ofBase = entries(base)?.filter { it.partOfSpeech == pos }.orEmpty()
+            val ofBase = entries(base)?.filter { it.partOfSpeech.equals(pos, ignoreCase = true) }.orEmpty()
             if (ofBase.isNotEmpty() || base == w) return pick(ofBase, ipa)
-            return pick(entries(w)?.filter { it.partOfSpeech == pos }.orEmpty(), null)
+            return pick(entries(w)?.filter { it.partOfSpeech.equals(pos, ignoreCase = true) }.orEmpty(), null)
         }
         val direct = get(w)
         if (direct != null) {
@@ -185,7 +200,16 @@ class DictionaryClient(private val http: HttpFetcher) {
         partOfSpeech: String? = null,
     ): DictionaryEntry? {
         val entries = entries(word) ?: return null
-        return if (partOfSpeech == null) entries.firstOrNull() else entries.firstOrNull { it.partOfSpeech == partOfSpeech }
+        return if (partOfSpeech == null) {
+            entries.firstOrNull()
+        } else {
+            entries.firstOrNull {
+                it.partOfSpeech.equals(
+                    partOfSpeech,
+                    ignoreCase = true,
+                )
+            }
+        }
     }
 
     private suspend fun entries(word: String): List<DictionaryEntry>? {

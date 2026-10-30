@@ -80,8 +80,8 @@ class RoundFourTest {
     fun `a mostly-noun -s form after a noun subject with no object is unsure`() {
         assertEquals(Reading(Reading.Kind.UNSURE, "ring", Reading.Step.UNSURE_NOUN_FIRST), read("The bell rings.", "rings"))
         val rows = choices("The bell rings.", "rings")
-        assertEquals(listOf(Reading.Kind.VERB to "ring", Reading.Kind.NOUN to "rings"), rows.map { it.kind to it.base })
-        assertEquals(listOf("to ring", "the rings"), rows.map { SavedMeaning.of(it).label })
+        assertEquals(listOf(Reading.Kind.VERB to "ring", Reading.Kind.NOUN to "ring"), rows.map { it.kind to it.base })
+        assertEquals(listOf("to ring", "the ring"), rows.map { SavedMeaning.of(it).label })
         assertEquals("sonar", Meanings.fromTable(rows[0], "es", first = true))
         assertNull(Meanings.fromTable(rows[1], "es"), "the noun is translated")
     }

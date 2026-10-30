@@ -31,7 +31,7 @@ fun meaningsLine(
 ): AnnotatedString =
     buildAnnotatedString {
         meanings.filter { it.isNotBlank() }.forEachIndexed { index, meaning ->
-            if (index > 0) append(" · ")
+            if (index > 0) append(GROUP_SEPARATOR)
             appendMeaning(meaning, language)
         }
     }
@@ -40,10 +40,14 @@ private fun AnnotatedString.Builder.appendMeaning(
     meaning: String,
     language: String?,
 ) {
-    val isolated = BidiFormatter.getInstance().unicodeWrap(meaning)
+    // Each " · " group on its own ("mentir · ‏كذب‏"): a right-to-left one can't reorder the others.
+    val bidi = BidiFormatter.getInstance()
+    val isolated = meaning.split(GROUP_SEPARATOR).joinToString(GROUP_SEPARATOR) { bidi.unicodeWrap(it) }
     if (language == null) {
         append(isolated)
     } else {
         withStyle(SpanStyle(localeList = LocaleList(language))) { append(isolated) }
     }
 }
+
+private const val GROUP_SEPARATOR = " · "

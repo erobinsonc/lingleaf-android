@@ -64,7 +64,7 @@ class HomographCorpusTest {
         )
 
     private val sources =
-        setOf("constructed", "heldout1", "heldout2", "heldout3", "v2", "v2heldout", "v3", "v3heldout", "v4", "v4heldout", "stories")
+        setOf("constructed", "heldout1", "heldout2", "heldout3", "v2", "v2heldout", "v3", "v3heldout", "v4", "v4heldout", "v5", "stories")
 
     /** The steps added in v2 must each claim at least 15 cases too. */
     private val v2Steps =

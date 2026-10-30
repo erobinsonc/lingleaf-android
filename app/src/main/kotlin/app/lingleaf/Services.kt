@@ -242,23 +242,10 @@ class AppContainer(
         appScope.launch {
             try {
                 for (word in library.wordsNeedingTranslation(target)) {
-                    val meanings = word.meanings
-                    if (word.isUnsure && meanings != null) {
+                    if (word.isUnsure) {
                         // Saved unsure: each reading's meaning, as on the card (SPEC S3).
-                        val rows =
-                            meanings.map {
-                                val kind =
-                                    when (it.kind) {
-                                        Sense.NOUN -> Reading.Kind.NOUN
-                                        Sense.HOMONYM -> Reading.Kind.HOMONYM
-                                        else -> Reading.Kind.VERB
-                                    }
-                                Reading(kind, it.base, Reading.Step.CHOSEN)
-                            }
-                        // Two rows that read the same each add their sense's gloss.
-                        val translated = Meanings.distinguished(rows, rows.map { meaningOf(it, target, first = true) })
-                        if (translated.any { it == null }) break
-                        library.setMeanings(word.key, translated.filterNotNull(), target)
+                        val translated = Meanings.unsureMeanings(word) { meaningOf(it, target, first = true) } ?: break
+                        library.setMeanings(word.key, translated, target)
                         continue
                     }
                     val sense = word.sense
