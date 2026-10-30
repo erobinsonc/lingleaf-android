@@ -1,6 +1,7 @@
 package app.lingleaf.ui
 
 import androidx.compose.foundation.clickable
+import androidx.compose.foundation.layout.Arrangement
 import androidx.compose.foundation.layout.Box
 import androidx.compose.foundation.layout.Column
 import androidx.compose.foundation.layout.Row
@@ -11,7 +12,9 @@ import androidx.compose.material.icons.Icons
 import androidx.compose.material.icons.automirrored.filled.VolumeUp
 import androidx.compose.material.icons.filled.Add
 import androidx.compose.material.icons.filled.Code
+import androidx.compose.material.icons.filled.Description
 import androidx.compose.material.icons.filled.ExpandMore
+import androidx.compose.material.icons.filled.PrivacyTip
 import androidx.compose.material.icons.filled.Remove
 import androidx.compose.material3.Icon
 import androidx.compose.material3.IconButton
@@ -44,7 +47,7 @@ import kotlin.math.roundToInt
 private const val REPOSITORY_URL = "https://github.com/erobinsonc/lingleaf-android"
 
 @Composable
-fun SettingsScreen() {
+fun SettingsScreen(onOpenLicenses: () -> Unit = {}) {
     val container = LocalContainer.current
     val library = container.library
     val state by library.state.collectAsStateWithLifecycle()
@@ -155,12 +158,30 @@ fun SettingsScreen() {
                 headlineContent = { Text(stringResource(R.string.source_code)) },
                 supportingContent = { Text(stringResource(R.string.open_source_note)) },
             )
-            Text(
-                stringResource(R.string.credits),
-                style = MaterialTheme.typography.bodySmall,
-                color = MaterialTheme.colorScheme.onSurfaceVariant,
-                modifier = Modifier.padding(start = 16.dp, end = 16.dp, bottom = 32.dp),
+            ListItem(
+                colors = itemColors,
+                modifier = Modifier.clickable { uriHandler.openUri(Credits.PRIVACY_POLICY_URL) },
+                leadingContent = { Icon(Icons.Filled.PrivacyTip, contentDescription = null) },
+                headlineContent = { Text(stringResource(R.string.privacy_policy)) },
             )
+            ListItem(
+                colors = itemColors,
+                modifier = Modifier.clickable(onClick = onOpenLicenses),
+                leadingContent = { Icon(Icons.Filled.Description, contentDescription = null) },
+                headlineContent = { Text(stringResource(R.string.open_source_licenses)) },
+                supportingContent = { Text(stringResource(R.string.open_source_licenses_note)) },
+            )
+            Column(
+                Modifier.padding(start = 16.dp, end = 16.dp, bottom = 32.dp),
+                verticalArrangement = Arrangement.spacedBy(6.dp),
+            ) {
+                val credit = MaterialTheme.typography.bodySmall
+                val muted = MaterialTheme.colorScheme.onSurfaceVariant
+                Text(stringResource(R.string.credits), style = credit, color = muted)
+                Text(stringResource(R.string.public_domain_notice), style = credit, color = muted)
+                val definitions = Credits.definitionsCredit(stringResource(R.string.definitions_credit), MaterialTheme.colorScheme.primary)
+                Text(definitions, style = credit, color = muted)
+            }
         }
     }
 }

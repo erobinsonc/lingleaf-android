@@ -59,6 +59,29 @@ class GutenbergTest {
         assertEquals("B2", GutenbergClient.levelFor(11))
     }
 
+    /**
+     * Option A: only books in the public domain worldwide (author died in 1925 or earlier),
+     * none with "to-day"/"to-night" spellings (Dorian Gray, The Garden Party) and not Dear Enemy.
+     */
+    @Test
+    fun `recommended list is the worldwide public domain selection`() {
+        val expected =
+            listOf(
+                25519 to "B1", 55 to "B1", 54 to "B1", 486 to "B1", 517 to "B1",
+                1874 to "B2", 3536 to "B2", 157 to "B2", 11 to "B2", 14522 to "B2",
+                160 to "C1", 208 to "C1", 209 to "C2",
+            )
+        assertEquals(expected, GutenbergClient.RECOMMENDED.toList())
+        for (removed in listOf(21, 16, 236, 74, 120, 1661, 1342, 84, 174, 1400, 345, 2701, 219, 145, 238, 1429)) {
+            assertNull(GutenbergClient.levelFor(removed), "$removed is no longer recommended")
+        }
+        val books = GutenbergClient.RECOMMENDED_BOOKS.associateBy { it.id }
+        assertEquals("Little Wizard Stories of Oz", books.getValue(25519).displayTitle)
+        assertEquals("E. Nesbit", books.getValue(1874).authorName)
+        assertEquals("Henry James", books.getValue(209).authorName)
+        assertEquals("https://www.gutenberg.org/cache/epub/25519/pg25519.txt", books.getValue(25519).textUrl)
+    }
+
     @Test
     fun `catalog books download from the file cache`() =
         runTest {
@@ -95,8 +118,8 @@ class GutenbergTest {
     fun `filter by level keeps order and null keeps everything`() {
         val books = GutenbergClient.RECOMMENDED.keys.map { GutenbergBook(id = it, title = "Book $it") }
         assertEquals(books, GutenbergClient.filter(books, null))
-        assertEquals(listOf(55, 16, 236), GutenbergClient.filter(books, "B1").map { it.id })
-        assertEquals(listOf(2701, 219, 145), GutenbergClient.filter(books, "C2").map { it.id })
+        assertEquals(listOf(25519, 55, 54, 486, 517), GutenbergClient.filter(books, "B1").map { it.id })
+        assertEquals(listOf(209), GutenbergClient.filter(books, "C2").map { it.id })
         assertEquals(emptyList(), GutenbergClient.filter(books, "A1"))
         assertEquals(emptyList(), GutenbergClient.filter(listOf(GutenbergBook(id = 999_999, title = "Unlisted")), "B1"))
     }
@@ -105,7 +128,8 @@ class GutenbergTest {
     fun `every recommended level is a known CEFR level`() {
         assertEquals(listOf("A1", "A2", "B1", "B2", "C1", "C2"), GutenbergClient.LEVELS)
         assertTrue(GutenbergClient.RECOMMENDED.values.all { it in GutenbergClient.LEVELS })
-        assertEquals(listOf("A2", "B1", "B2", "C1", "C2"), GutenbergClient.RECOMMENDED.values.distinct())
+        assertEquals(listOf("B1", "B2", "C1", "C2"), GutenbergClient.RECOMMENDED.values.distinct())
+        assertEquals(listOf("B1", "B2", "C1", "C2"), GutenbergClient.FILTER_LEVELS, "the filter shows only levels that have books")
     }
 
     private suspend fun reason(block: suspend () -> Unit) = assertFailsWith<GutenbergException> { block() }.reason
@@ -253,12 +277,12 @@ class HostileAnswersTest {
     @Test
     fun `search shows each book once and recommended books as shipped`() =
         runTest {
-            val fake = """{"id": 21, "title": "\u202eFake", "formats": {"text/plain": "x"}}"""
+            val fake = """{"id": 25519, "title": "\u202eFake", "formats": {"text/plain": "x"}}"""
             val other = """{"id": 99, "title": "Other", "formats": {"text/plain": "x"}}"""
             val many = (1000 until 1100).joinToString(",") { """{"id": $it, "title": "B"}""" }
             val found = GutenbergClient { ok("""{"results": [$fake, $other, $fake, $many]}""") }.search("x")
-            assertEquals(listOf(21, 99), found.take(2).map { it.id }, "the duplicate is dropped")
-            assertEquals(GutenbergClient.RECOMMENDED_BOOKS.first { it.id == 21 }.title, found.first().title)
+            assertEquals(listOf(25519, 99), found.take(2).map { it.id }, "the duplicate is dropped")
+            assertEquals(GutenbergClient.RECOMMENDED_BOOKS.first { it.id == 25519 }.title, found.first().title)
             assertEquals(GutenbergClient.MAX_RESULTS, found.size)
         }
 }

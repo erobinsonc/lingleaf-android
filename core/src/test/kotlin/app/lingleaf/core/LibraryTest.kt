@@ -325,6 +325,9 @@ class LibraryTest {
         val library = library()
         library.updateSettings { it.copy(dailyGoalMinutes = 20, targetLanguage = "pt") }
         assertEquals(20, library().state.value.settings.dailyGoalMinutes)
+        assertFalse(library().state.value.settings.translationStarted, "no word card opened yet")
+        library.updateSettings { it.copy(translationStarted = true) }
+        assertTrue(library().state.value.settings.translationStarted)
 
         storage.files["settings.json"] = "{broken"
         assertEquals(Settings(), library().state.value.settings)

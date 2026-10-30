@@ -17,7 +17,7 @@ iOS version: [lingleaf-ios](https://github.com/erobinsonc/lingleaf-ios) · Produ
 - **Review** with spaced repetition (1, 3, 7, 14, 30 days).
 - **Read aloud** a word, a sentence or a paragraph.
 - **Thousands of free books** from Project Gutenberg, plus 3 original graded stories (A1–B1). Import your own `.txt`.
-- **Recommended classics from A2 to C2**, filterable by level in Discover.
+- **Recommended classics from B1 to C2**, public domain worldwide, filterable by level in Discover.
 - **Daily goal and streak.**
 - No accounts, no ads, no tracking.
 
@@ -56,17 +56,30 @@ Requirements: Android Studio (recent) with JDK 17.
 ## Privacy
 
 Lingleaf has no accounts, ads or analytics, and keeps your books and words on your
-device (and in your Android backup, if you have backup turned on). The app itself
+device (and in your Android backup, if you have backup turned on). Lingleaf is for ages 13 and up
+(the open Project Gutenberg catalog includes books for adults). The app itself
 talks only to `gutendex.com` / `www.gutenberg.org` (books) and `api.dictionaryapi.dev`
 (definitions), always over HTTPS.
 
-Translation runs on the device with Google ML Kit. ML Kit downloads each language
-model (about 30 MB) from Google in the background as soon as the translation language is known, over Wi‑Fi only, and, as Google documents for ML Kit,
-sends Google anonymous usage and diagnostics data
-([ML Kit terms](https://developers.google.com/ml-kit/terms)). The words you look up
-are translated on the device and are not sent.
+Translation runs on the device with Google ML Kit. ML Kit starts only after you first tap a
+word: it then downloads the language model (about 30 MB) from Google, over Wi‑Fi only, and, as
+Google documents for ML Kit, sends Google diagnostics data (device model, OS and app version,
+performance metrics and a per-installation identifier)
+([ML Kit terms](https://developers.google.com/ml-kit/terms)). The first word card says so. The
+words you look up are translated on the device and are not sent.
+Full policy: [PRIVACY.md](PRIVACY.md), also linked in the app (Settings → About).
+
+## Credits
+
+Definitions come from [Wiktionary](https://en.wiktionary.org/) under
+[CC BY-SA 3.0/4.0](https://creativecommons.org/licenses/by-sa/4.0/), via the
+[Free Dictionary API](https://dictionaryapi.dev/); the app may shorten them and says so on the word card.
+The open-source licences of the libraries inside the app are in Settings → About → Open-source licenses.
 
 ## License
 
-[MIT](LICENSE). Bundled stories in `app/src/main/assets/books` are original and
-dedicated to the public domain (CC0). Project Gutenberg books are public domain in the US.
+[MIT](LICENSE) for the code. The MIT licence does not cover the Lingleaf name and icon:
+please don't use them for your own builds or forks. Bundled stories in `app/src/main/assets/books`
+are original and dedicated to the public domain ([CC0 1.0](app/src/main/assets/books/LICENSE)).
+Project Gutenberg books are public domain in the US; outside the US, check your country's laws.
+The recommended books are public domain worldwide (every author died in 1925 or earlier).

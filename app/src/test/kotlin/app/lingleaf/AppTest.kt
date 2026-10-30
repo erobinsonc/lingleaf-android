@@ -15,6 +15,7 @@ import androidx.compose.ui.test.click
 import androidx.compose.ui.test.hasAnyAncestor
 import androidx.compose.ui.test.hasClickAction
 import androidx.compose.ui.test.hasContentDescription
+import androidx.compose.ui.test.hasScrollAction
 import androidx.compose.ui.test.hasScrollToIndexAction
 import androidx.compose.ui.test.hasSetTextAction
 import androidx.compose.ui.test.hasTestTag
@@ -27,6 +28,7 @@ import androidx.compose.ui.test.onNodeWithTag
 import androidx.compose.ui.test.onNodeWithText
 import androidx.compose.ui.test.performClick
 import androidx.compose.ui.test.performImeAction
+import androidx.compose.ui.test.performScrollTo
 import androidx.compose.ui.test.performScrollToIndex
 import androidx.compose.ui.test.performScrollToNode
 import androidx.compose.ui.test.performTextInput
@@ -133,6 +135,10 @@ class AppTest {
     /** When true every request fails and translation throws, like a phone with no internet and no language model. */
     private var offline = false
 
+    /** What reached the translator (Google's ML Kit in the app): texts translated, languages prepared. */
+    private val translated = java.util.Collections.synchronizedList(mutableListOf<String>())
+    private val prepared = java.util.Collections.synchronizedList(mutableListOf<String>())
+
     /** The system's preferred-language list. Only English: no translation language can be picked from it. */
     private var preferred = listOf("en-US")
 
@@ -145,8 +151,8 @@ class AppTest {
                     url.endsWith("/equal") -> HttpResponse(200, dictionaryJson.toByteArray())
                     "gutendex" in url -> HttpResponse(200, catalogJson.toByteArray())
                     url == ALICE_TEXT_URL -> HttpResponse(200, aliceText.toByteArray())
-                    // Peter Pan is "not available right now", to show that message.
-                    "cache/epub/16/" in url -> HttpResponse(404, ByteArray(0))
+                    // The Marvelous Land of Oz is "not available right now", to show that message.
+                    "cache/epub/54/" in url -> HttpResponse(404, ByteArray(0))
                     else -> HttpResponse(404, ByteArray(0))
                 }
             }
@@ -155,10 +161,21 @@ class AppTest {
                 library = Library(FileStorage(folder.root)),
                 dictionary = DictionaryClient(http),
                 gutenberg = GutenbergClient(http),
-                translator = { text, _ ->
-                    if (offline) throw IllegalStateException("Language model not downloaded")
-                    if (text == "equal") "igual" else "[es] $text"
-                },
+                translator =
+                    object : Translator {
+                        override suspend fun translate(
+                            text: String,
+                            target: String,
+                        ): String {
+                            translated += text
+                            if (offline) throw IllegalStateException("Language model not downloaded")
+                            return if (text == "equal") "igual" else "[es] $text"
+                        }
+
+                        override fun prepare(target: String) {
+                            prepared += target
+                        }
+                    },
                 speaker = speaker,
                 bundledStories = { listOf(BundledStory("The Red Boat", "A1", STORY)) },
                 preferredLanguages = { preferred },
@@ -199,6 +216,61 @@ class AppTest {
         assertEquals("es", saved.translationLanguage)
         assertEquals("/ˈiːkwəl/", saved.phonetic)
         assertTrue(container.library.state.value.isLearning("equal"))
+    }
+
+    /** ML Kit starts only after the first word tap, and the card says so; definitions credit Wiktionary. */
+    @Test
+    fun translationStartsWithTheFirstWordTapAndTheCardSaysWhoIsInvolved() {
+        compose.waitForIdle()
+        assertTrue("nothing reaches the translator before a word is tapped", translated.isEmpty() && prepared.isEmpty())
+
+        tapInParagraph("All animals are equal, but some are more equal.", "All animals are ".length + 2)
+        compose.waitUntil(WAIT_MS) { compose.onAllNodesWithText("igual").fetchSemanticsNodes().isNotEmpty() }
+        compose.onNodeWithText("Translation uses Google's on-device model; Google receives diagnostics.").assertExists()
+        compose.onNodeWithText("Definition: Wiktionary (CC BY-SA), may be shortened").assertExists()
+        assertTrue(translated.contains("equal"))
+
+        // From the first card on, the language may download in the background.
+        compose.waitUntil(WAIT_MS) { prepared.contains("es") }
+        assertTrue(container.library.state.value.settings.translationStarted)
+    }
+
+    /** Settings → About: privacy policy, credits with fixed links, and the open-source licences. */
+    @Test
+    fun aboutLinksThePrivacyPolicyCreditsAndLicenses() {
+        compose.onAllNodesWithText("Settings").onFirst().performClick()
+        val list = compose.onNode(hasScrollAction())
+        list.performScrollToNode(hasText("Privacy policy"))
+        compose.onNodeWithText("Privacy policy").assert(hasClickAction())
+        list.performScrollToNode(hasText("Definitions from Wiktionary", substring = true))
+        compose.onNodeWithText("Public domain in the US. Outside the US, check your country's laws.").assertExists()
+        compose.onNodeWithText("Books: Project Gutenberg. No accounts, no ads, no tracking.").assertExists()
+
+        list.performScrollToNode(hasText("Open-source licenses"))
+        compose.onNodeWithText("Open-source licenses").performClick()
+        compose.waitUntil(WAIT_MS) { compose.onAllNodesWithText("Google ML Kit Translation").fetchSemanticsNodes().isNotEmpty() }
+        compose.onNodeWithText("ML Kit Terms of Service").assertExists()
+        compose.onNodeWithText("TERMS AND CONDITIONS FOR USE, REPRODUCTION, AND DISTRIBUTION", substring = true).assertExists()
+        compose.onNodeWithContentDescription("Back").performClick()
+        compose.waitUntil(WAIT_MS) { compose.onAllNodesWithText("Privacy policy").fetchSemanticsNodes().isNotEmpty() }
+    }
+
+    @Test
+    fun discoverSaysWherePublicDomainIsVouchedFor() {
+        compose.onAllNodesWithText("Discover").onFirst().performClick()
+        val list = compose.onNode(hasScrollToIndexAction())
+        list.performScrollToNode(hasText("Public domain in the US. Outside the US, check your country's laws."))
+        compose.onNodeWithText("Free classics from Project Gutenberg.").assertExists()
+    }
+
+    /** The notice is said once: after the first card, cards don't repeat it. */
+    @Test
+    fun theTranslationNoticeIsShownOnce() {
+        container.library.updateSettings { it.copy(translationStarted = true) }
+        tapInParagraph("All animals are equal, but some are more equal.", "All animals are ".length + 2)
+        compose.waitUntil(WAIT_MS) { compose.onAllNodesWithText("igual").fetchSemanticsNodes().isNotEmpty() }
+        compose.onNodeWithText("Translation uses Google's on-device model; Google receives diagnostics.").assertDoesNotExist()
+        compose.waitUntil(WAIT_MS) { prepared.contains("es") }
     }
 
     @Test
@@ -514,14 +586,17 @@ class AppTest {
         compose.waitUntil(WAIT_MS) { compose.onAllNodes(hasTestTag("level-filter-B1")).fetchSemanticsNodes().isNotEmpty() }
 
         compose.onNodeWithTag("level-filter-B1").performClick()
+        // Only levels that have books get a chip.
+        compose.onNodeWithTag("level-filter-A2").assertDoesNotExist()
         val list = compose.onNode(hasScrollToIndexAction())
-        list.performScrollToNode(hasText("Peter Pan"))
-        compose.onNodeWithText("Peter Pan").assertIsDisplayed()
-        compose.onNodeWithText("Aesop's Fables").assertDoesNotExist()
+        list.performScrollToNode(hasText("Ozma of Oz"))
+        compose.onNodeWithText("Ozma of Oz").assertIsDisplayed()
+        compose.onNodeWithText("The Turn of the Screw").assertDoesNotExist()
 
         list.performScrollToIndex(0)
         compose.onNodeWithTag("level-filter-all").performClick()
-        compose.onNodeWithText("Aesop's Fables").assertExists()
+        list.performScrollToNode(hasText("The Turn of the Screw"))
+        compose.onNodeWithText("The Turn of the Screw").assertExists()
     }
 
     @Test
@@ -581,10 +656,17 @@ class AppTest {
         compose.onNodeWithContentDescription("Listen to the sentence").performClick()
         assertEquals("paused: nothing more read", listOf("The sun is up.", "equal", "All animals are equal."), speaker.spoken.drop(3))
 
-        // Read from here starts at the word's sentence (issue #33).
-        compose.onNodeWithText("Read from here").performClick()
+        // Read from here starts at the word's sentence (issue #33). On a small screen the first
+        // card (with the translation notice) is taller than the sheet, so it is scrolled to, as a
+        // learner would. The sheet closes and the sentence is read again, after Listen's.
+        compose.onNodeWithText("Read from here").performScrollTo().performClick()
         compose.waitForIdle()
-        assertEquals("All animals are equal.", speaker.spoken.last())
+        compose.onNodeWithText("Read from here").assertDoesNotExist()
+        assertEquals(
+            "read from the word's sentence",
+            listOf("The sun is up.", "equal", "All animals are equal.", "All animals are equal."),
+            speaker.spoken.drop(3),
+        )
 
         // The bar at the bottom repeats the sentence and grows the stretch backwards (issue #33).
         compose.onNodeWithContentDescription("Repeat sentence").performClick()
@@ -669,8 +751,8 @@ class AppTest {
         assertEquals(listOf("Down the Rabbit-Hole", "Alice was beginning to get very tired."), container.library.openBook(book.id))
         compose.waitUntil(WAIT_MS) { compose.onAllNodes(hasContentDescription("Read $ALICE_TITLE")).fetchSemanticsNodes().isNotEmpty() }
 
-        list.performScrollToNode(hasContentDescription("Get Peter Pan"))
-        compose.onNode(hasContentDescription("Get Peter Pan")).performClick()
+        list.performScrollToNode(hasContentDescription("Get The Marvelous Land of Oz"))
+        compose.onNode(hasContentDescription("Get The Marvelous Land of Oz")).performClick()
         compose.waitUntil(WAIT_MS) {
             compose.onAllNodesWithText("This book isn't available right now.").fetchSemanticsNodes().isNotEmpty()
         }

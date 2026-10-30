@@ -148,7 +148,7 @@ fun DiscoverScreen(onOpenBook: (String) -> Unit) {
     fun download(book: GutenbergBook) = container.download(book, unknownAuthor)
 
     val recommended = GutenbergClient.filter(GutenbergClient.RECOMMENDED_BOOKS, levelFilter)
-    val levels = remember { GutenbergClient.RECOMMENDED.values.distinct() }
+    val levels = GutenbergClient.FILTER_LEVELS
 
     ScreenScaffold(title = stringResource(R.string.discover_title), snackbarHostState = snackbar) { modifier ->
         LazyColumn(modifier) {
@@ -234,12 +234,19 @@ fun DiscoverScreen(onOpenBook: (String) -> Unit) {
                 }
             }
             item {
-                Text(
-                    stringResource(R.string.gutenberg_credit),
-                    style = MaterialTheme.typography.bodySmall,
-                    color = MaterialTheme.colorScheme.onSurfaceVariant,
-                    modifier = Modifier.padding(16.dp),
-                )
+                // Project Gutenberg vouches only for the US; the learner checks the rest.
+                Column(Modifier.padding(16.dp)) {
+                    Text(
+                        stringResource(R.string.gutenberg_credit),
+                        style = MaterialTheme.typography.bodySmall,
+                        color = MaterialTheme.colorScheme.onSurfaceVariant,
+                    )
+                    Text(
+                        stringResource(R.string.public_domain_notice),
+                        style = MaterialTheme.typography.bodySmall,
+                        color = MaterialTheme.colorScheme.onSurfaceVariant,
+                    )
+                }
             }
         }
     }

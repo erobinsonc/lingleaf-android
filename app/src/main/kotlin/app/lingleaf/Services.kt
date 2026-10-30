@@ -656,7 +656,7 @@ class HttpsFetcher(
     }
 }
 
-/** Largest download or imported file accepted. The longest recommended book (Middlemarch) is under 2 MB. */
+/** Largest download or imported file accepted. Even long novels (Middlemarch) are under 2 MB. */
 const val MAX_BYTES = 10 * 1024 * 1024
 
 /**

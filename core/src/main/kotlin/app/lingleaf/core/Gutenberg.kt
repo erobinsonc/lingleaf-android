@@ -164,22 +164,19 @@ class GutenbergClient(private val http: HttpFetcher) {
          */
         val RECOMMENDED_BOOKS: List<GutenbergBook> by lazy {
             listOf(
-                Triple(21, "Aesop's Fables", "Aesop"),
+                Triple(25519, "Little Wizard Stories of Oz", "Baum, L. Frank"),
                 Triple(55, "The Wonderful Wizard of Oz", "Baum, L. Frank"),
-                Triple(16, "Peter Pan", "Barrie, J. M."),
-                Triple(236, "The Jungle Book", "Kipling, Rudyard"),
+                Triple(54, "The Marvelous Land of Oz", "Baum, L. Frank"),
+                Triple(486, "Ozma of Oz", "Baum, L. Frank"),
+                Triple(517, "The Emerald City of Oz", "Baum, L. Frank"),
+                Triple(1874, "The Railway Children", "Nesbit, E."),
+                Triple(3536, "The Enchanted Castle", "Nesbit, E."),
+                Triple(157, "Daddy-Long-Legs", "Webster, Jean"),
                 Triple(11, "Alice's Adventures in Wonderland", "Carroll, Lewis"),
-                Triple(74, "The Adventures of Tom Sawyer", "Twain, Mark"),
-                Triple(120, "Treasure Island", "Stevenson, Robert Louis"),
-                Triple(1661, "The Adventures of Sherlock Holmes", "Doyle, Arthur Conan"),
-                Triple(1342, "Pride and Prejudice", "Austen, Jane"),
-                Triple(84, "Frankenstein", "Shelley, Mary Wollstonecraft"),
-                Triple(174, "The Picture of Dorian Gray", "Wilde, Oscar"),
-                Triple(1400, "Great Expectations", "Dickens, Charles"),
-                Triple(345, "Dracula", "Stoker, Bram"),
-                Triple(2701, "Moby-Dick", "Melville, Herman"),
-                Triple(219, "Heart of Darkness", "Conrad, Joseph"),
-                Triple(145, "Middlemarch", "Eliot, George"),
+                Triple(14522, "The Canterville Ghost", "Wilde, Oscar"),
+                Triple(160, "The Awakening and Selected Short Stories", "Chopin, Kate"),
+                Triple(208, "Daisy Miller", "James, Henry"),
+                Triple(209, "The Turn of the Screw", "James, Henry"),
             ).map { (id, title, author) ->
                 GutenbergBook(
                     id = id,
@@ -190,45 +187,45 @@ class GutenbergClient(private val http: HttpFetcher) {
             }
         }
 
-        /** Hand-picked classics with a CEFR level hint, easiest first (A2 to C2). */
+        /**
+         * Hand-picked classics with a CEFR level hint, easiest first (B1 to C2): public domain
+         * worldwide (every author died in 1925 or earlier) and without old spellings such as "to-day".
+         */
         val RECOMMENDED: Map<Int, String> =
             linkedMapOf(
-                // Aesop's Fables
-                21 to "A2",
+                // Little Wizard Stories of Oz
+                25519 to "B1",
                 // The Wonderful Wizard of Oz
                 55 to "B1",
-                // Peter Pan
-                16 to "B1",
-                // The Jungle Book
-                236 to "B1",
+                // The Marvelous Land of Oz
+                54 to "B1",
+                // Ozma of Oz
+                486 to "B1",
+                // The Emerald City of Oz
+                517 to "B1",
+                // The Railway Children
+                1874 to "B2",
+                // The Enchanted Castle
+                3536 to "B2",
+                // Daddy-Long-Legs
+                157 to "B2",
                 // Alice's Adventures in Wonderland
                 11 to "B2",
-                // The Adventures of Tom Sawyer
-                74 to "B2",
-                // Treasure Island
-                120 to "B2",
-                // The Adventures of Sherlock Holmes
-                1661 to "B2",
-                // Pride and Prejudice
-                1342 to "C1",
-                // Frankenstein
-                84 to "C1",
-                // The Picture of Dorian Gray
-                174 to "C1",
-                // Great Expectations
-                1400 to "C1",
-                // Dracula
-                345 to "C1",
-                // Moby-Dick
-                2701 to "C2",
-                // Heart of Darkness
-                219 to "C2",
-                // Middlemarch
-                145 to "C2",
+                // The Canterville Ghost
+                14522 to "B2",
+                // The Awakening and Selected Short Stories
+                160 to "C1",
+                // Daisy Miller
+                208 to "C1",
+                // The Turn of the Screw
+                209 to "C2",
             )
 
         /** CEFR levels, easiest first. */
         val LEVELS = listOf("A1", "A2", "B1", "B2", "C1", "C2")
+
+        /** Levels that have at least one recommended book, easiest first: the filter's chips. */
+        val FILTER_LEVELS: List<String> by lazy { LEVELS.filter { it in RECOMMENDED.values } }
 
         fun levelFor(id: Int): String? = RECOMMENDED[id]
 

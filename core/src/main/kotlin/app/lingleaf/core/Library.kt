@@ -71,6 +71,11 @@ data class Settings(
     val fontSize: Float = 20f,
     val speechRate: Float = 0.9f,
     val targetLanguage: String? = null,
+    /**
+     * True once the learner has opened a word card. Android's translation (Google's ML Kit,
+     * which sends Google diagnostics) runs only from then on, and the first card says so.
+     */
+    val translationStarted: Boolean = false,
 ) {
     /**
      * Within the ranges Settings offers: a restored or edited settings file can't make the
