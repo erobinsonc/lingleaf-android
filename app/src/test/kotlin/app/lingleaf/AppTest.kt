@@ -28,6 +28,7 @@ import androidx.compose.ui.test.onNodeWithTag
 import androidx.compose.ui.test.onNodeWithText
 import androidx.compose.ui.test.performClick
 import androidx.compose.ui.test.performImeAction
+import androidx.compose.ui.test.performScrollTo
 import androidx.compose.ui.test.performScrollToIndex
 import androidx.compose.ui.test.performScrollToNode
 import androidx.compose.ui.test.performTextInput
@@ -655,10 +656,17 @@ class AppTest {
         compose.onNodeWithContentDescription("Listen to the sentence").performClick()
         assertEquals("paused: nothing more read", listOf("The sun is up.", "equal", "All animals are equal."), speaker.spoken.drop(3))
 
-        // Read from here starts at the word's sentence (issue #33).
-        compose.onNodeWithText("Read from here").performClick()
+        // Read from here starts at the word's sentence (issue #33). On a small screen the first
+        // card (with the translation notice) is taller than the sheet, so it is scrolled to, as a
+        // learner would. The sheet closes and the sentence is read again, after Listen's.
+        compose.onNodeWithText("Read from here").performScrollTo().performClick()
         compose.waitForIdle()
-        assertEquals("All animals are equal.", speaker.spoken.last())
+        compose.onNodeWithText("Read from here").assertDoesNotExist()
+        assertEquals(
+            "read from the word's sentence",
+            listOf("The sun is up.", "equal", "All animals are equal.", "All animals are equal."),
+            speaker.spoken.drop(3),
+        )
 
         // The bar at the bottom repeats the sentence and grows the stretch backwards (issue #33).
         compose.onNodeWithContentDescription("Repeat sentence").performClick()
