@@ -40,6 +40,7 @@ import app.lingleaf.core.GutenbergClient
 import app.lingleaf.core.HttpResponse
 import app.lingleaf.core.Library
 import app.lingleaf.core.NetworkException
+import app.lingleaf.core.WordRange
 import app.lingleaf.ui.LingleafApp
 import kotlinx.coroutines.flow.MutableStateFlow
 import kotlinx.coroutines.flow.StateFlow
@@ -198,7 +199,7 @@ class AppTest {
         assertEquals("igual", saved.translation)
         assertEquals("es", saved.translationLanguage)
         assertEquals("/ˈiːkwəl/", saved.phonetic)
-        assertTrue(container.library.state.value.isLearning("equal"))
+        assertTrue(container.library.state.value.isLearning("equal", WordRange(0, 5)))
     }
 
     @Test
@@ -405,7 +406,7 @@ class AppTest {
 
         // "Save word" moves it to learning; Undo puts it back as known.
         compose.onNodeWithText("Save word").performClick()
-        compose.waitUntil(WAIT_MS) { container.library.state.value.isLearning("equal") }
+        compose.waitUntil(WAIT_MS) { container.library.state.value.isLearning("equal", WordRange(0, 5)) }
         val savedMessage = context.getString(R.string.word_saved_message, "equal")
         compose.waitUntil(WAIT_MS) { compose.onAllNodesWithText(savedMessage).fetchSemanticsNodes().isNotEmpty() }
 
@@ -454,7 +455,7 @@ class AppTest {
 
         compose.onNodeWithText("Undo").performClick()
         compose.waitUntil(WAIT_MS) { container.library.state.value.word("equal") != null }
-        assertTrue(container.library.state.value.isLearning("equal"))
+        assertTrue(container.library.state.value.isLearning("equal", WordRange(0, 5)))
         assertEquals("igual", container.library.state.value.word("equal")!!.translation)
     }
 
@@ -714,7 +715,7 @@ class AppTest {
         val saved = container.library.state.value.word("equal")!!
         assertEquals("", saved.translation)
         assertNull(saved.translationLanguage)
-        assertTrue(container.library.state.value.isLearning("equal"))
+        assertTrue(container.library.state.value.isLearning("equal", WordRange(0, 5)))
     }
 
     // S12: a word saved without a translation says so in Review until one can be made.

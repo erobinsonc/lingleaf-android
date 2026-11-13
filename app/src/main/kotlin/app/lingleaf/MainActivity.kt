@@ -20,6 +20,8 @@ class LingleafApplication : Application() {
         container.appScope.launch {
             container.library.load()
             container.library.seedIfNeeded(container.bundledStories())
+            // Once after the update: saved words read against their sentence again (SPEC S18), off the main thread.
+            container.library.correctWordsOnce()
         }
     }
 }

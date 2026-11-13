@@ -35,7 +35,9 @@ Requirements: Android Studio (recent) with JDK 17.
 ## Architecture
 
 - `core/` — pure Kotlin, no Android: text tools, base forms, spaced repetition,
-  streak, Gutenberg catalog, dictionary client, library storage. ≥90% test coverage is enforced.
+  streak, Gutenberg catalog, dictionary client, library storage. Irregular verbs come from one
+  bundled table, `core/src/main/resources/irregular-verbs.json` (identical in lingleaf-ios), read strictly.
+  ≥90% test coverage is enforced.
 - `app/` — Jetpack Compose UI, ML Kit translation, system text-to-speech, HTTPS-only networking.
 
 ## Quality gates (every pull request)

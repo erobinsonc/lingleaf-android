@@ -56,13 +56,91 @@ data class VocabWord(
      */
     val contextTranslation: String? = null,
     val contextTranslationLanguage: String? = null,
+    /** Which meaning of [word] this is ([Sense]); null for a word saved without one. */
+    val sense: String? = null,
+    /** The word as tapped in [context] ("left") and where, so Review bolds only that occurrence. */
+    val form: String? = null,
+    val formStart: Int? = null,
+    val formEnd: Int? = null,
+    /**
+     * A word saved unsure ([sense] null, [word] the tapped form): both readings with their
+     * meanings in [translationLanguage], shown in place of a translation (SPEC S4, S7).
+     */
+    val meanings: List<SavedMeaning>? = null,
+    /**
+     * A word corrected to match its sentence that has no meaning yet: not due until its
+     * translation arrives (SPEC S18, S12), so it is never rehearsed without one.
+     */
+    val waitsForMeaning: Boolean = false,
 ) {
+    /** What identifies the saved word: its spelling and, when it has one, its sense. */
+    val key: String get() = keyOf(word, sense)
+
+    /** Saved unsure: the tapped form with both readings. */
+    val isUnsure: Boolean get() = sense == null && meanings != null
+
+    /** Where the tapped occurrence is in [context], when known and still matching. */
+    val formRange: WordRange?
+        get() {
+            val start = formStart ?: return null
+            val end = formEnd ?: return null
+            val range = WordRange(start, end)
+            if (form == null || start >= end || !range.fitsIn(context)) return null
+            return range.takeIf { TextTools.normalize(context.substring(start, end)) == TextTools.normalize(form) }
+        }
+
     /** [contextTranslation] when it is in [language]. */
     fun contextTranslation(language: String?) = contextTranslation.takeIf { contextTranslationLanguage == language }
 
-    fun isDue(now: LocalDateTime) = !learned && !LocalDateTime.parse(nextReview).isAfter(now)
+    fun isDue(now: LocalDateTime) = !learned && !waitsForMeaning && !LocalDateTime.parse(nextReview).isAfter(now)
 
-    fun needsTranslation(language: String) = translation.isEmpty() || translationLanguage != language
+    /** Whether it has something to show as its meaning: a translation, or both readings' meanings. */
+    val hasMeaning: Boolean
+        get() = if (isUnsure) meanings.orEmpty().all { it.meaning.isNotBlank() } else translation.isNotBlank()
+
+    fun needsTranslation(language: String) =
+        if (isUnsure) {
+            translationLanguage != language || meanings.orEmpty().any { it.meaning.isBlank() }
+        } else {
+            translation.isEmpty() || translationLanguage != language
+        }
+
+    /**
+     * As read back from storage: an unknown sense, a form that isn't a word of [context] or more
+     * than two meanings are dropped, so a restored or edited file can't confuse what is shown.
+     */
+    fun bounded(): VocabWord {
+        val cleanForm = form?.takeIf { it.length <= MAX_FORM && formPattern.matches(it) }
+        val withForm = copy(word = TextTools.truncated(word, MAX_WORD), sense = sense?.takeIf { it in Sense.all }, form = cleanForm)
+        val range = withForm.formRange
+        val bounded =
+            withForm.copy(
+                formStart = range?.start,
+                formEnd = range?.end,
+                form = cleanForm.takeIf { range != null },
+                meanings = if (withForm.sense != null) null else SavedMeaning.bounded(meanings),
+            )
+        // A word that has its meaning waits for nothing, however it got it.
+        return if (bounded.waitsForMeaning && bounded.hasMeaning) bounded.copy(waitsForMeaning = false) else bounded
+    }
+
+    companion object {
+        /** The key of [word] in [sense]: "leave", "leave#verb". */
+        fun keyOf(
+            word: String,
+            sense: String?,
+        ) = if (sense == null) word else "$word#$sense"
+
+        /** Longest saved word, in UTF-16 units: a verb group's sentence when it has no group (SPEC S16). */
+        const val MAX_WORD = TextTools.MAX_SENTENCE
+
+        /** Longest key: [MAX_WORD] and "#" with the longest sense, so a corrections cursor can always hold one. */
+        val MAX_KEY = MAX_WORD + 1 + Sense.all.maxOf { it.length }
+
+        /** Longest tapped form kept, in UTF-16 units. */
+        const val MAX_FORM = 40
+        private val formPattern = Regex("^[A-Za-z]+(?:['’][A-Za-z]+)*$")
+    }
 }
 
 @Serializable
@@ -91,13 +169,81 @@ data class LibraryState(
     val words: List<VocabWord> = emptyList(),
     val readingLog: Map<String, Int> = emptyMap(),
     val settings: Settings = Settings(),
+    /** Words whose sentence was read again after an update, until the learner closes the card (SPEC S18). */
+    val corrections: List<Correction> = emptyList(),
 ) {
     /** Base forms of words being learned. */
     val learningWords: Set<String> = words.filterNot { it.learned }.map { it.word }.toSet()
 
-    fun isLearning(token: String) = learningWords.isNotEmpty() && TextTools.matchKeys(token).any { it in learningWords }
+    /** What the reader underlines: words being learned, with their senses (SPEC S4). */
+    val learningIndex: LearningIndex = LearningIndex.of(words)
 
-    fun word(base: String) = words.firstOrNull { it.word == TextTools.normalize(base) }
+    /**
+     * Whether the word at [range] of [text] is a form of a word being learned, a homograph
+     * read in its sentence ("she left" for a saved "leave", not "turn left").
+     */
+    fun isLearning(
+        text: String,
+        range: WordRange,
+    ): Boolean {
+        if (learningIndex.isEmpty || !range.fitsIn(text)) return false
+        val words = TextTools.wordRanges(text)
+        val (surface, keys) = TextTools.senseKeys(text, words, words.indexOf(range)) ?: return false
+        return learningIndex.matches(surface, keys)
+    }
+
+    /** The words of [text] ([words], its word ranges) that are forms of words being learned. */
+    fun learning(
+        text: String,
+        words: List<WordRange>,
+    ): List<WordRange> = TextTools.marked(text, words, learningIndex)
+
+    /** The saved word with [key] ("leave", or "leave#verb" with its sense). */
+    fun word(key: String) = words.firstOrNull { it.key == TextTools.normalize(key) }
+
+    /**
+     * How Words and Review name [word] (SPEC S4): its spelling, or "to wind" / "the wind" when
+     * another sense of the same spelling is saved too, or always for a spelling that is also
+     * another word (a homograph, a base mostly a noun, a verb with a twin); two verb senses add
+     * their first meaning, except [withMeaning] false (Review's prompt).
+     */
+    fun displayName(
+        word: VocabWord,
+        withMeaning: Boolean = true,
+    ): String {
+        val sense = word.sense ?: return word.word
+        val others = words.filter { it.word == word.word && it.sense != null && it.sense != sense }
+        if (others.isEmpty() && !IrregularVerbs.shared.namesItsSense(word.word)) return word.word
+        val name = if (sense == Sense.NOUN) "the ${word.word}" else "to ${word.word}"
+        // Two verbs ("to lie": recline, say what isn't true): their first meanings tell them apart,
+        // the table's in Spanish, else the translated one.
+        val twin = others.any { it.sense != Sense.NOUN } && sense != Sense.NOUN
+        // Review's prompt names it without its meaning: recall comes first (SPEC S7).
+        if (!twin || !withMeaning) return name
+        val spanish = settings.targetLanguage?.substringBefore('-') == "es"
+        val meaning =
+            if (spanish) {
+                IrregularVerbs.shared.meanings(word.word, homonym = sense == Sense.HOMONYM).firstOrNull()
+            } else {
+                word.translation.substringBefore(" · ").trim().takeIf { it.isNotEmpty() }
+            }
+        return if (meaning != null) "$name ($meaning)" else name
+    }
+
+    /**
+     * The saved entry for [word] in [sense]: that sense's, or, for a sense, the same word saved
+     * before senses existed (no sense, not unsure), which saving converts to the sense.
+     */
+    fun saved(
+        word: String,
+        sense: String?,
+    ): VocabWord? {
+        val name = TextTools.normalize(word)
+        return word(VocabWord.keyOf(name, sense)) ?: if (sense == null) null else plainEntry(name)
+    }
+
+    internal fun plainEntry(name: String) =
+        words.firstOrNull { it.word == name && it.sense == null && it.meanings == null && it.kind == null }
 
     val lastOpened: Book? get() = books.filter { it.lastOpenedAt != null }.maxByOrNull { it.lastOpenedAt!! }
 }
@@ -137,6 +283,12 @@ class Library(
     private val _state = MutableStateFlow(LibraryState())
     val state: StateFlow<LibraryState> = _state.asStateFlow()
 
+    /** Runs between planning the corrections and applying them (tests change a word there). */
+    internal var beforeApply: () -> Unit = {}
+
+    /** Whether the irregular-verb table loaded; the corrections need it (tests can say it didn't). */
+    internal var tableReady: () -> Boolean = { IrregularVerbs.loadError == null && IrregularVerbs.shared.formToBase.isNotEmpty() }
+
     private fun now() = LocalDateTime.now(clock)
 
     private fun isDate(text: String) = runCatching { LocalDateTime.parse(text) }.isSuccess
@@ -171,13 +323,187 @@ class Library(
                 // Saved before contexts were capped, or restored from a backup: cut to size.
                 words =
                     decode(WORDS, ListSerializer(VocabWord.serializer()))
-                        ?.map { it.copy(context = TextTools.truncated(it.context, TextTools.MAX_SENTENCE)) }
                         // A date that can't be read is due now rather than a crash on every screen.
-                        ?.map(::withReadableDates)
+                        ?.map(::storedWord)
+                        // One entry per spelling and sense, whatever a restored file holds.
+                        ?.distinctBy { it.key }
                         ?: emptyList(),
                 readingLog = decode(READING_LOG, readingLogSerializer) ?: emptyMap(),
                 settings = (decode(SETTINGS, Settings.serializer()) ?: Settings()).bounded(),
+                // Read back like the word list: a restored or edited file can't put anything unbounded back.
+                corrections =
+                    decode(CORRECTIONS, ListSerializer(Correction.serializer()))
+                        .orEmpty()
+                        .take(MAX_CORRECTIONS)
+                        .map { it.bounded(::storedWord) }
+                        .distinctBy { it.original.key },
             )
+    }
+
+    /** A word as read back from storage: cut to size, bounded and with readable dates. */
+    private fun storedWord(word: VocabWord): VocabWord =
+        withReadableDates(word.copy(context = TextTools.truncated(word.context, TextTools.MAX_SENTENCE)).bounded())
+
+    /**
+     * Once after the update that reads homographs in their sentence (SPEC S18): a saved word
+     * whose sentence now reads differently becomes what the sentence says ("leave" saved from
+     * "Turn left" → "left", the noun), or, when it can't tell, the tapped form with both readings.
+     * A corrected word in Learning starts its review again (first box, due now, once it has a
+     * meaning); a known one stays known; one that matches an entry already saved is merged into
+     * it. Words shows the corrections until closed, with Undo. The app runs this off the main
+     * thread after [load]; at most [MAX_CORRECTED_PER_RUN] words are read per run.
+     */
+    fun correctWordsOnce() {
+        val progress = storage.read(CORRECTED)
+        if (progress == DONE || progress == LEGACY_DONE) return
+        // Only with the table: a refused table would read every word as unsure.
+        if (!tableReady()) return
+        // Plan on a snapshot, outside the lock: reading thousands of sentences must not hold up
+        // the screens' saves and answers. The plan is applied under the lock, word by word, only
+        // to entries still exactly as they were read.
+        val snapshot = _state.value
+        val cursor = Cursor.parse(progress)
+        val eligible = snapshot.words.sortedWith(Cursor.order).filter { cursor == null || cursor.isBefore(it) }
+        val room = MAX_CORRECTIONS - snapshot.corrections.size
+        val plan = mutableListOf<Pair<VocabWord, VocabWord>>()
+        var read = 0
+        for (original in eligible) {
+            if (read == MAX_CORRECTED_PER_RUN || plan.size >= room) break
+            read++
+            Corrections.correct(original, snapshot.settings.targetLanguage)?.let { plan += original to it }
+        }
+        val done = read == eligible.size
+        // No room at all for Undo (the card still holds a full run): nothing read, the cursor stays.
+        if (read == 0 && !done) return
+        val last = eligible.getOrNull(read - 1)
+        beforeApply()
+        apply(plan, if (done || last == null) DONE else Cursor(LocalDateTime.parse(last.createdAt), last.key).toString())
+    }
+
+    @Synchronized
+    private fun apply(
+        plan: List<Pair<VocabWord, VocabWord>>,
+        progress: String,
+    ) {
+        val items = mutableListOf<Correction>()
+        var words = _state.value.words
+        // Only words still exactly as they were read (one changed or deleted meanwhile is left
+        // alone). All of them leave first, so a word merges only into an entry that stays or that
+        // the plan adds: "leave" → "left" while that "left" itself becomes "leave".
+        val current = words.distinctBy { it.key }.associateBy { it.key }
+        val valid = plan.filter { (original, _) -> current[original.key] == original }
+        val leaving = valid.map { it.first.key }.toSet()
+        words = words.filterNot { it.key in leaving }
+        for ((original, corrected) in valid) {
+            val merged = words.any { it.key == corrected.key }
+            val next =
+                if (original.learned) {
+                    corrected
+                } else {
+                    // Rehearsed with a wrong meaning: from the first box, due now, once it has a meaning.
+                    corrected.copy(box = 0, nextReview = now().toString(), waitsForMeaning = !corrected.hasMeaning)
+                }.bounded()
+            if (!merged) words = words + next
+            items += Correction(original.word, corrected.word, original, next.key, merged, next.takeUnless { merged })
+        }
+        // The flag is written before the result is saved: a crash while saving can't make every
+        // start run (and crash in) the migration again.
+        storage.write(CORRECTED, progress)
+        if (items.isEmpty()) return
+        _state.update { it.copy(words = words.sortedByDescending { w -> w.createdAt }, corrections = it.corrections + items) }
+        saveWords()
+        saveCorrections()
+    }
+
+    /**
+     * Where a run of [correctWordsOnce] stopped: words are read newest first, ties by key, so the
+     * next run starts right after ([createdAt], [key]); "after:" followed by both. A value that
+     * isn't one starts over.
+     */
+    private data class Cursor(
+        val createdAt: LocalDateTime,
+        val key: String,
+    ) {
+        fun isBefore(word: VocabWord): Boolean {
+            val at = LocalDateTime.parse(word.createdAt)
+            return at < createdAt || (at == createdAt && word.key > key)
+        }
+
+        override fun toString() = "$PARTIAL$createdAt$SEPARATOR$key"
+
+        companion object {
+            private const val SEPARATOR = "\t"
+
+            val order: Comparator<VocabWord> =
+                compareByDescending<VocabWord> { LocalDateTime.parse(it.createdAt) }.thenBy { it.key }
+
+            fun parse(progress: String?): Cursor? {
+                val value = progress?.takeIf { it.startsWith(PARTIAL) }?.removePrefix(PARTIAL) ?: return null
+                val at = value.substringBefore(SEPARATOR, "")
+                val key = value.substringAfter(SEPARATOR, "")
+                if (key.isEmpty() || key.length > VocabWord.MAX_KEY) return null
+                return runCatching { Cursor(LocalDateTime.parse(at), key) }.getOrNull()
+            }
+        }
+    }
+
+    /**
+     * Undo for the corrections card (SPEC S18): latest first, each corrected entry that is still
+     * exactly as the correction left it is removed and its original put back (with its review
+     * box); one changed since (reviewed, edited) stays as it is now, a word deleted since isn't
+     * brought back, and an original whose place another entry has taken isn't forced in.
+     */
+    @Synchronized
+    fun undoCorrections() {
+        val items = _state.value.corrections
+        if (items.isEmpty()) return
+        var words = _state.value.words
+        // What can be undone: an entry still as the correction left it, or one merged into an
+        // entry still there (one deleted since stays gone, as the learner left it). Every such
+        // entry leaves first, so an original whose key another correction took ("left" saved
+        // from "leave" while that "left" became "leave") comes back too.
+        val undone =
+            items.filter { item ->
+                val result = item.result
+                if (item.merged) {
+                    words.any { it.key == item.key }
+                } else {
+                    result != null && words.firstOrNull { it.key == result.key }?.changedSince(result) == false
+                }
+            }
+        val leaving = undone.mapNotNull { item -> item.result?.key.takeUnless { item.merged } }.toSet()
+        words = words.filterNot { it.key in leaving }
+        for (item in undone.asReversed()) {
+            if (words.none { it.key == item.original.key }) words = words + item.original.bounded()
+        }
+        _state.update { it.copy(words = words.sortedByDescending { w -> w.createdAt }, corrections = emptyList()) }
+        saveWords()
+        saveCorrections()
+    }
+
+    /**
+     * Whether the learner changed this entry after the correction wrote it as [then]: reviewed,
+     * marked known or not, or saved as another sense. A translation arriving is no change.
+     */
+    private fun VocabWord.changedSince(then: VocabWord) =
+        box != then.box || learned != then.learned || nextReview != then.nextReview || sense != then.sense
+
+    /** Closes the corrections card; the corrections stay. */
+    @Synchronized
+    fun closeCorrections() {
+        _state.update { it.copy(corrections = emptyList()) }
+        saveCorrections()
+    }
+
+    private fun saveCorrections() {
+        val items = _state.value.corrections
+        if (items.isEmpty()) {
+            storage.delete(
+                CORRECTIONS,
+            )
+        } else {
+            storage.write(CORRECTIONS, json.encodeToString(ListSerializer(Correction.serializer()), items))
+        }
     }
 
     /** Adds the bundled stories the first time the app runs. */
@@ -288,6 +614,10 @@ class Library(
      * goes back to the first box. Blank values keep what was saved before.
      * Returns the previous record (null if the word was new), for Undo with [restoreWord].
      * For a helper or modal verb, [word] is its verb group and [kind]/[base] say what it is.
+     * [sense] saves one meaning of a homograph's spelling; [form] and [formRange] say which
+     * occurrence of [context] was tapped; [meanings] save a word unsure (both readings).
+     * [replacing] is the key of the same form saved unsure before: it is removed, and the new
+     * entry keeps its review progress (Undo puts it back with [restoreWord]).
      */
     @Synchronized
     fun saveWord(
@@ -301,21 +631,41 @@ class Library(
         kind: FunctionWord.Kind? = null,
         base: String? = null,
         contextTranslation: String? = null,
+        sense: String? = null,
+        form: String? = null,
+        formRange: WordRange? = null,
+        meanings: List<SavedMeaning>? = null,
+        replacing: String? = null,
     ): VocabWord? {
-        val key = TextTools.normalize(word)
+        val name = TextTools.truncated(TextTools.normalize(word), VocabWord.MAX_WORD)
+        val key = VocabWord.keyOf(name, sense?.takeIf { it in Sense.all })
         val now = now().toString()
-        val existing = _state.value.words.firstOrNull { it.word == key }
-        var entry = existing ?: VocabWord(word = key, createdAt = now, nextReview = now)
+        // A word saved before senses existed becomes the sense it is saved as now, keeping its progress.
+        val existing =
+            _state.value.words.firstOrNull { it.key == key }
+                ?: sense?.takeIf { it in Sense.all && kind == null }?.let { _state.value.plainEntry(name) }
+        val replacedKey = replacing?.let(TextTools::normalize)?.takeIf { it != key }
+        val replaced = replacedKey?.let { r -> _state.value.words.firstOrNull { it.key == r } }
+        // A form saved unsure lends its review progress to the reading chosen now.
+        val start =
+            existing
+                ?: replaced?.let {
+                    VocabWord(word = name, createdAt = it.createdAt, nextReview = it.nextReview, box = it.box, learned = it.learned)
+                }
+        var entry = start ?: VocabWord(word = name, createdAt = now, nextReview = now)
         // A new word is first reviewed tomorrow, after a night's sleep (S7).
-        if (!learned && (existing == null || existing.learned)) {
+        if (!learned && (start == null || start.learned)) {
             entry = entry.copy(box = 0, nextReview = Srs.startOfDay(1, now()).toString())
         }
         val newTranslation = translation?.takeIf { it.isNotBlank() }
+        val unsure = sense == null && kind == null && !meanings.isNullOrEmpty()
+        val sameContext = context.isBlank() || context == entry.context
         entry =
             entry.copy(
                 learned = learned,
-                translation = newTranslation ?: entry.translation,
-                translationLanguage = if (newTranslation != null) translationLanguage else entry.translationLanguage,
+                translation = if (unsure) "" else newTranslation ?: entry.translation,
+                translationLanguage =
+                    if (newTranslation != null || unsure) translationLanguage else entry.translationLanguage,
                 phonetic = phonetic?.takeIf { it.isNotBlank() } ?: entry.phonetic,
                 context = context.ifBlank { entry.context },
                 contextTranslation =
@@ -330,19 +680,26 @@ class Library(
                 source = source.ifBlank { entry.source },
                 kind = kind,
                 base = if (kind == null) null else base,
+                sense = sense?.takeIf { it in Sense.all },
+                form = if (form != null) form else entry.form.takeIf { sameContext },
+                formStart = if (form != null) formRange?.start else entry.formStart.takeIf { sameContext },
+                formEnd = if (form != null) formRange?.end else entry.formEnd.takeIf { sameContext },
+                meanings = if (unsure) meanings else null,
             )
+        val gone = listOfNotNull(replaced?.key, existing?.key?.takeIf { it != key })
+        if (gone.isNotEmpty()) _state.update { st -> st.copy(words = st.words.filterNot { it.key in gone }) }
         replaceWord(key, entry)
         return existing
     }
 
-    /** Undo: puts back exactly [previous] for [word], or removes the word when [previous] is null. */
+    /** Undo: puts back exactly [previous] for [key], or removes the word when [previous] is null. */
     @Synchronized
     fun restoreWord(
-        word: String,
+        key: String,
         previous: VocabWord?,
     ) {
-        val key = TextTools.normalize(word)
-        if (previous == null) deleteWord(key) else replaceWord(key, previous)
+        val k = TextTools.normalize(key)
+        if (previous == null) deleteWord(k) else replaceWord(k, previous)
     }
 
     /**
@@ -351,27 +708,46 @@ class Library(
      */
     @Synchronized
     fun setTranslation(
-        word: String,
+        key: String,
         translation: String,
         language: String,
     ) {
-        val key = TextTools.normalize(word)
-        val entry = _state.value.words.firstOrNull { it.word == key } ?: return
-        if (translation.isBlank() || !entry.needsTranslation(language)) return
-        replaceWord(key, entry.copy(translation = translation, translationLanguage = language))
+        val k = TextTools.normalize(key)
+        val entry = _state.value.words.firstOrNull { it.key == k } ?: return
+        if (translation.isBlank() || entry.isUnsure || !entry.needsTranslation(language)) return
+        replaceWord(k, entry.copy(translation = translation, translationLanguage = language).withMeaningArrived(entry))
+    }
+
+    /** A corrected word waiting for its meaning is due (it already was, from the correction) once it has one (SPEC S18). */
+    private fun VocabWord.withMeaningArrived(before: VocabWord): VocabWord =
+        if (before.waitsForMeaning && hasMeaning) copy(waitsForMeaning = false) else this
+
+    /** Records the meanings of a word saved unsure, in [language], in the order it has them. */
+    @Synchronized
+    fun setMeanings(
+        key: String,
+        meanings: List<String>,
+        language: String,
+    ) {
+        val k = TextTools.normalize(key)
+        val entry = _state.value.words.firstOrNull { it.key == k } ?: return
+        val saved = entry.meanings ?: return
+        if (meanings.size != saved.size || meanings.any { it.isBlank() }) return
+        val updated = entry.copy(meanings = saved.zip(meanings) { m, t -> m.copy(meaning = t) }, translationLanguage = language)
+        replaceWord(k, updated.withMeaningArrived(entry))
     }
 
     /** Records the translation of a word's sentence that arrived after it was saved. */
     @Synchronized
     fun setContextTranslation(
-        word: String,
+        key: String,
         translation: String,
         language: String,
     ) {
-        val key = TextTools.normalize(word)
-        val entry = _state.value.words.firstOrNull { it.word == key } ?: return
+        val k = TextTools.normalize(key)
+        val entry = _state.value.words.firstOrNull { it.key == k } ?: return
         if (translation.isBlank() || entry.context.isEmpty()) return
-        replaceWord(key, entry.copy(contextTranslation = translation, contextTranslationLanguage = language))
+        replaceWord(k, entry.copy(contextTranslation = translation, contextTranslationLanguage = language))
     }
 
     /** Words whose sentence has no translation into [language] yet. */
@@ -383,26 +759,26 @@ class Library(
 
     @Synchronized
     fun answerReview(
-        word: String,
+        key: String,
         correct: Boolean,
     ) {
-        val entry = _state.value.words.firstOrNull { it.word == word } ?: return
+        val entry = _state.value.words.firstOrNull { it.key == key } ?: return
         val result = Srs.review(entry.box, correct, now())
-        replaceWord(word, entry.copy(box = result.box, nextReview = result.nextReview.toString(), learned = result.learned))
+        replaceWord(key, entry.copy(box = result.box, nextReview = result.nextReview.toString(), learned = result.learned))
     }
 
     @Synchronized
     fun setLearned(
-        word: String,
+        key: String,
         learned: Boolean,
     ) {
-        val entry = _state.value.words.firstOrNull { it.word == word } ?: return
-        replaceWord(word, if (learned) entry.copy(learned = true) else entry.copy(learned = false, box = 0, nextReview = now().toString()))
+        val entry = _state.value.words.firstOrNull { it.key == key } ?: return
+        replaceWord(key, if (learned) entry.copy(learned = true) else entry.copy(learned = false, box = 0, nextReview = now().toString()))
     }
 
     @Synchronized
-    fun deleteWord(word: String) {
-        _state.update { s -> s.copy(words = s.words.filterNot { it.word == word }) }
+    fun deleteWord(key: String) {
+        _state.update { s -> s.copy(words = s.words.filterNot { it.key == key }) }
         saveWords()
     }
 
@@ -412,12 +788,13 @@ class Library(
     ) {
         // Every saved word passes here: whatever a caller hands in, nothing huge is kept.
         val bounded =
-            entry.copy(
-                context = TextTools.truncated(entry.context, TextTools.MAX_SENTENCE),
-                contextTranslation = entry.contextTranslation?.let { TextTools.truncated(it, MAX_CONTEXT_TRANSLATION) },
-            )
+            entry
+                .copy(
+                    context = TextTools.truncated(entry.context, TextTools.MAX_SENTENCE),
+                    contextTranslation = entry.contextTranslation?.let { TextTools.truncated(it, MAX_CONTEXT_TRANSLATION) },
+                ).bounded()
         _state.update { s ->
-            val others = s.words.filterNot { it.word == key }
+            val others = s.words.filterNot { it.key == key }
             s.copy(words = (others + bounded).sortedByDescending { it.createdAt })
         }
         saveWords()
@@ -472,6 +849,17 @@ class Library(
         private const val READING_LOG = "reading-log.json"
         private const val SETTINGS = "settings.json"
         private const val SEEDED = "seeded"
+        private const val CORRECTED = "corrected-homographs"
+        private const val CORRECTIONS = "corrections.json"
+        private const val DONE = "done"
+        private const val LEGACY_DONE = "1"
+        private const val PARTIAL = "after:"
+
+        /** Corrections kept for the card. */
+        const val MAX_CORRECTIONS = 1000
+
+        /** Saved words read against their sentence in one run of [correctWordsOnce]. */
+        const val MAX_CORRECTED_PER_RUN = 5000
         private const val MAX_SESSION_SECONDS = 3600L
         private const val IMPORTED_AUTHOR = "—"
         private const val DEFAULT_TITLE = "Book"

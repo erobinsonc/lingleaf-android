@@ -2,6 +2,7 @@ package app.lingleaf.core
 
 import kotlin.test.Test
 import kotlin.test.assertEquals
+import kotlin.test.assertFalse
 import kotlin.test.assertNull
 import kotlin.test.assertTrue
 
@@ -116,6 +117,71 @@ class TextToolsTest {
         assertEquals(listOf("cat"), TextTools.baseFormCandidates("cat's"))
         assertTrue(TextTools.baseFormCandidates("thing").isEmpty())
         assertTrue(TextTools.baseFormCandidates("glass").isEmpty())
+    }
+
+    @Test
+    fun `-ll stems give the single l when the word has two vowel groups`() {
+        for ((form, base) in listOf(
+            "travelled" to "travel",
+            "travelling" to "travel",
+            "cancelled" to "cancel",
+            "quarrelling" to "quarrel",
+            "controlled" to "control",
+            "compelled" to "compel",
+            "patrolling" to "patrol",
+        )) {
+            assertEquals(base, TextTools.baseFormCandidates(form).first(), form)
+        }
+        assertEquals(listOf("call", "calle"), TextTools.baseFormCandidates("called"), "one vowel group: as before")
+        assertEquals(listOf("fill", "fille"), TextTools.baseFormCandidates("filled"))
+        assertFalse("fuel" in TextTools.baseFormCandidates("fuelled"), "missed on purpose: one vowel group before the l")
+    }
+
+    @Test
+    fun `irregular forms come from the table`() {
+        for ((form, base) in listOf(
+            "stolen" to "steal", "learnt" to "learn", "lying" to "lie", "lied" to "lie", "being" to "be", "became" to "become",
+            "shook" to "shake", "drew" to "draw", "torn" to "tear", "blew" to "blow", "sold" to "sell", "spilt" to "spill",
+        )) {
+            assertEquals(base, TextTools.baseFormCandidates(form).firstOrNull(), form)
+        }
+        assertEquals("wife", TextTools.baseFormCandidates("wives").first(), "irregular nouns stay")
+        assertEquals(listOf("good"), TextTools.baseFormCandidates("better"))
+    }
+
+    @Test
+    fun `homographs need their sentence`() {
+        for (word in listOf("left", "saw", "felt", "found", "lives", "leaves", "lay")) {
+            assertEquals(emptyList(), TextTools.baseFormCandidates(word), "$word without a sentence")
+        }
+        assertEquals(listOf("tear"), TextTools.baseFormCandidates("tears"), "both readings share the base")
+        val she = "She left early."
+        assertEquals(listOf("leave"), TextTools.baseFormCandidates(she, she.rangeOf("left")))
+        assertEquals(setOf("leave"), TextTools.matchKeys(she, she.rangeOf("left")), "not \"left\" the side")
+        val turn = "Turn left here."
+        assertEquals(setOf("left"), TextTools.matchKeys(turn, turn.rangeOf("left")))
+        val leaves = "The leaves fell. She leaves today."
+        assertEquals(setOf("leaf"), TextTools.matchKeys(leaves, leaves.rangeOf("leaves")))
+        val unsure = "She wore a fur stole."
+        assertEquals(setOf("stole"), TextTools.matchKeys(unsure, unsure.rangeOf("stole")))
+        val name = "We met Uncle Drew."
+        assertEquals(emptyList(), TextTools.baseFormCandidates(name, name.rangeOf("Drew")), "a name: no irregular link")
+        val drew = "She drew a map."
+        assertEquals(listOf("draw"), TextTools.baseFormCandidates(drew, drew.rangeOf("drew")))
+        assertEquals(setOf("animals", "animal"), TextTools.matchKeys("Big animals.", "Big animals.".rangeOf("animals")))
+    }
+
+    @Test
+    fun `occurrences read homographs in their sentence`() {
+        fun marked(
+            word: String,
+            sentence: String,
+        ) = TextTools.occurrences(word, sentence).map { sentence.substring(it.start, it.end) }
+        assertEquals(listOf("left"), marked("leave", "Turn left, then she left."))
+        assertEquals(listOf(5), TextTools.occurrences("left", "Turn left, then she left.").map { it.start })
+        assertEquals(listOf("leaves"), marked("leaf", "The leaves fell. She leaves today."))
+        assertEquals(listOf("stole", "stolen"), marked("steal", "He stole it; it was stolen."))
+        assertEquals(listOf("travelled"), marked("travel", "We travelled far."))
     }
 
     @Test
